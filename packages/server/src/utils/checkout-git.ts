@@ -6,7 +6,7 @@ import { open as openFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
-import { findExecutable, resolveShellEnv } from "./executable.js";
+import { findExecutable } from "./executable.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
 import { requirePaseoWorktreeBaseRefName } from "./worktree-metadata.js";
 
@@ -1845,7 +1845,7 @@ export async function createPullRequest(
 
   await execAsync(`git push -u origin ${head}`, { cwd });
 
-  const ghEnv = { ...resolveShellEnv(), GIT_TERMINAL_PROMPT: "0" };
+  const ghEnv: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
   const args = ["api", "-X", "POST", `repos/${repo}/pulls`, "-f", `title=${options.title}`];
   args.push("-f", `head=${head}`);
   args.push("-f", `base=${normalizedBase}`);
@@ -1912,7 +1912,7 @@ async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestSta
         "--json",
         "url,title,state,baseRefName,headRefName,mergedAt",
       ],
-      { cwd, env: { ...resolveShellEnv(), GIT_TERMINAL_PROMPT: "0" } },
+      { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
     );
     const pr = JSON.parse(stdout.trim());
     if (!pr || typeof pr !== "object" || !pr.url || !pr.title) {

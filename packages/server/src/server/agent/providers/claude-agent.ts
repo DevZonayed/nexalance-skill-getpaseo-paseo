@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promises } from "node:fs";
@@ -39,6 +39,12 @@ import {
 } from "./claude/claude-models.js";
 import { parsePartialJsonObject } from "./claude/partial-json.js";
 import { ClaudeSidechainTracker } from "./claude/sidechain-tracker.js";
+import {
+  formatDiagnosticStatus,
+  formatProviderDiagnostic,
+  formatProviderDiagnosticError,
+  toDiagnosticErrorMessage,
+} from "./diagnostic-utils.js";
 
 import type {
   AgentCapabilityFlags,
@@ -1085,11 +1091,72 @@ export class ClaudeAgentClient implements AgentClient {
     return true;
   }
 
+  async getDiagnostic(): Promise<{ diagnostic: string }> {
+    try {
+      const resolvedBinary = findExecutable("claude") ?? "not found";
+      const available = await this.isAvailable();
+      const version = resolveClaudeVersion(this.runtimeSettings);
+      let modelsValue = "Not checked";
+      let status = formatDiagnosticStatus(available);
+
+      if (available) {
+        try {
+          const models = await this.listModels();
+          modelsValue = String(models.length);
+        } catch (error) {
+          modelsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
+          status = formatDiagnosticStatus(available, {
+            source: "model fetch",
+            cause: error,
+          });
+        }
+      }
+
+      return {
+        diagnostic: formatProviderDiagnostic("Claude Code", [
+          { label: "Binary", value: resolvedBinary },
+          ...(version ? [{ label: "Version", value: version }] : []),
+          { label: "Models", value: modelsValue },
+          { label: "Status", value: status },
+        ]),
+      };
+    } catch (error) {
+      return {
+        diagnostic: formatProviderDiagnosticError("Claude Code", error),
+      };
+    }
+  }
+
   private assertConfig(config: AgentSessionConfig): ClaudeAgentConfig {
     if (config.provider !== "claude") {
       throw new Error(`ClaudeAgentClient received config for provider '${config.provider}'`);
     }
     return { ...config, provider: "claude" } as ClaudeAgentConfig;
+  }
+}
+
+function resolveClaudeVersion(runtimeSettings?: ProviderRuntimeSettings): string | null {
+  const command = runtimeSettings?.command;
+
+  try {
+    if (command?.mode === "replace") {
+      return execFileSync(command.argv[0]!, [...command.argv.slice(1), "--version"], {
+        encoding: "utf8",
+        timeout: 5_000,
+      }).trim() || null;
+    }
+
+    const executable = findExecutable("claude");
+    if (!executable) {
+      return null;
+    }
+
+    return execFileSync(executable, ["--version"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    }).trim() || null;
+  } catch {
+    return null;
   }
 }
 

@@ -425,6 +425,10 @@ export function Composer({
       }
 
       switch (action.id) {
+        case "message-input.send":
+          return messageInputRef.current?.runKeyboardAction("send") ?? false;
+        case "message-input.dictation-confirm":
+          return messageInputRef.current?.runKeyboardAction("dictation-confirm") ?? false;
         case "message-input.focus":
           if (Platform.OS !== "web") {
             messageInputRef.current?.focus();

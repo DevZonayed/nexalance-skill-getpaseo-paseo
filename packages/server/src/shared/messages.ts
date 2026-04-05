@@ -1554,6 +1554,12 @@ export const ServerInfoStatusPayloadSchema = z
     hostname: ServerInfoHostnameSchema.optional(),
     version: ServerInfoVersionSchema.optional(),
     capabilities: ServerCapabilitiesFromUnknownSchema,
+    // COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
+    features: z
+      .object({
+        providersSnapshot: z.boolean().optional(),
+      })
+      .optional(),
   })
   .passthrough()
   .transform((payload) => ({
@@ -2323,6 +2329,7 @@ export const ListAvailableProvidersResponseSchema = z.object({
   }),
 });
 
+// COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
 export const GetProvidersSnapshotResponseMessageSchema = z.object({
   type: z.literal("get_providers_snapshot_response"),
   payload: z.object({
@@ -2332,6 +2339,7 @@ export const GetProvidersSnapshotResponseMessageSchema = z.object({
   }),
 });
 
+// COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
 export const ProvidersSnapshotUpdateMessageSchema = z.object({
   type: z.literal("providers_snapshot_update"),
   payload: z.object({
@@ -2341,6 +2349,7 @@ export const ProvidersSnapshotUpdateMessageSchema = z.object({
   }),
 });
 
+// COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
 export const RefreshProvidersSnapshotResponseMessageSchema = z.object({
   type: z.literal("refresh_providers_snapshot_response"),
   payload: z.object({
@@ -2349,6 +2358,7 @@ export const RefreshProvidersSnapshotResponseMessageSchema = z.object({
   }),
 });
 
+// COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
 export const ProviderDiagnosticResponseMessageSchema = z.object({
   type: z.literal("provider_diagnostic_response"),
   payload: z.object({

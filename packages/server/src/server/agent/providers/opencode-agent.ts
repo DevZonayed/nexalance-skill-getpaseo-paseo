@@ -43,6 +43,13 @@ import {
   quoteWindowsCommand,
 } from "../../../utils/executable.js";
 import { mapOpencodeToolCall } from "./opencode/tool-call-mapper.js";
+import {
+  formatDiagnosticStatus,
+  formatProviderDiagnostic,
+  formatProviderDiagnosticError,
+  resolveBinaryVersion,
+  toDiagnosticErrorMessage,
+} from "./diagnostic-utils.js";
 
 const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -615,6 +622,63 @@ export class OpenCodeAgentClient implements AgentClient {
     return true;
   }
 
+  async getDiagnostic(): Promise<{ diagnostic: string }> {
+    try {
+      const available = await this.isAvailable();
+      const resolvedBinary = findExecutable("opencode");
+      let serverStatus = "Not running";
+      let modelsValue = "Not checked";
+      let status = formatDiagnosticStatus(available);
+
+      try {
+        const { url } = await this.serverManager.ensureRunning();
+        serverStatus = `Running (${url})`;
+      } catch (error) {
+        serverStatus = `Unavailable (${normalizeTurnFailureError(error)})`;
+      }
+
+      if (available) {
+        try {
+          const models = await this.listModels();
+          modelsValue = String(models.length);
+        } catch (error) {
+          modelsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
+          status = formatDiagnosticStatus(available, {
+            source: "model fetch",
+            cause: error,
+          });
+        }
+
+        if (!modelsValue.startsWith("Error -")) {
+          try {
+            await this.listModes();
+          } catch (error) {
+            status = formatDiagnosticStatus(available, {
+              source: "mode fetch",
+              cause: error,
+            });
+          }
+        }
+      }
+
+      return {
+        diagnostic: formatProviderDiagnostic("OpenCode", [
+          {
+            label: "Binary",
+            value: resolvedBinary ?? "not found",
+          },
+          { label: "Version", value: resolvedBinary ? resolveBinaryVersion(resolvedBinary) : "unknown" },
+          { label: "Server", value: serverStatus },
+          { label: "Models", value: modelsValue },
+          { label: "Status", value: status },
+        ]),
+      };
+    } catch (error) {
+      return {
+        diagnostic: formatProviderDiagnosticError("OpenCode", error),
+      };
+    }
+  }
   private assertConfig(config: AgentSessionConfig): OpenCodeAgentConfig {
     if (config.provider !== "opencode") {
       throw new Error(`OpenCodeAgentClient received config for provider '${config.provider}'`);

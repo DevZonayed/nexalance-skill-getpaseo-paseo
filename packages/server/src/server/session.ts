@@ -682,6 +682,7 @@ export class Session {
     }
     if (this.providerSnapshotManager) {
       const handleProviderSnapshotChange = (entries: ProviderSnapshotEntry[], cwd?: string) => {
+        // COMPAT(providersSnapshot): keep provider visibility gating for older clients.
         const visibleEntries = entries.filter((entry) =>
           this.isProviderVisibleToClient(entry.provider),
         );
@@ -3140,6 +3141,7 @@ export class Session {
   private async handleGetProvidersSnapshotRequest(
     msg: Extract<SessionInboundMessage, { type: "get_providers_snapshot_request" }>,
   ): Promise<void> {
+    // COMPAT(providersSnapshot): keep legacy provider-list RPCs alongside snapshot flow.
     const entries = this.providerSnapshotManager
       ? this.providerSnapshotManager
           .getSnapshot(msg.cwd ? expandTilde(msg.cwd) : undefined)
@@ -6981,6 +6983,10 @@ export class Session {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
     }
+    if (this.unsubscribeProviderSnapshotEvents) {
+      this.unsubscribeProviderSnapshotEvents();
+      this.unsubscribeProviderSnapshotEvents = null;
+    }
 
     // Abort any ongoing operations
     this.abortController.abort();
@@ -7016,10 +7022,6 @@ export class Session {
     if (this.unsubscribeTerminalsChanged) {
       this.unsubscribeTerminalsChanged();
       this.unsubscribeTerminalsChanged = null;
-    }
-    if (this.unsubscribeProviderSnapshotEvents) {
-      this.unsubscribeProviderSnapshotEvents();
-      this.unsubscribeProviderSnapshotEvents = null;
     }
     this.subscribedTerminalDirectories.clear();
 

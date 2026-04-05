@@ -2,7 +2,6 @@ import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import path from "node:path";
-import { shellEnvSync } from "shell-env";
 import { z } from "zod";
 
 import type { AgentProvider } from "./agent-sdk-types.js";
@@ -144,12 +143,10 @@ export function resolveProviderCommandPrefix(
 let cachedShellEnv: Record<string, string> | null = null;
 
 export function resolveShellEnv(): Record<string, string> {
-  if (cachedShellEnv) return cachedShellEnv;
-  try {
-    cachedShellEnv = shellEnvSync();
-  } catch {
-    cachedShellEnv = { ...process.env } as Record<string, string>;
+  if (cachedShellEnv) {
+    return cachedShellEnv;
   }
+  cachedShellEnv = { ...process.env } as Record<string, string>;
   return cachedShellEnv;
 }
 
@@ -167,11 +164,9 @@ const PARENT_SESSION_ENV_VARS = [
 export function applyProviderEnv(
   baseEnv: Record<string, string | undefined>,
   runtimeSettings?: ProviderRuntimeSettings,
-  shellEnv?: Record<string, string>,
 ): Record<string, string | undefined> {
   const merged: Record<string, string | undefined> = {
     ...baseEnv,
-    ...(shellEnv ?? resolveShellEnv()),
     ...(runtimeSettings?.env ?? {}),
   };
   for (const key of PARENT_SESSION_ENV_VARS) {

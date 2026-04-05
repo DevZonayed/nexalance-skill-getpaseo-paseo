@@ -540,7 +540,6 @@ function ProvidersSection({ routeServerId }: ProvidersSectionProps) {
   );
 }
 
-
 interface DiagnosticsSectionProps {
   voiceAudioEngine: ReturnType<typeof useVoiceAudioEngineOptional>;
   isPlaybackTestRunning: boolean;

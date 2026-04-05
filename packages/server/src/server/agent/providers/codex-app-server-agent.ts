@@ -52,6 +52,13 @@ import {
 } from "../../../utils/executable.js";
 import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
+import {
+  formatDiagnosticStatus,
+  formatProviderDiagnostic,
+  formatProviderDiagnosticError,
+  resolveBinaryVersion,
+  toDiagnosticErrorMessage,
+} from "./diagnostic-utils.js";
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const TURN_START_TIMEOUT_MS = 90 * 1000;
@@ -3946,6 +3953,49 @@ export class CodexAppServerAgentClient implements AgentClient {
       return existsSync(command.argv[0]);
     }
     return true;
+  }
+
+  async getDiagnostic(): Promise<{ diagnostic: string }> {
+    try {
+      const available = await this.isAvailable();
+      const resolvedBinary = findExecutable("codex");
+      const entries: Array<{ label: string; value: string }> = [
+        {
+          label: "Binary",
+          value: resolvedBinary ?? "not found",
+        },
+        { label: "Version", value: resolvedBinary ? resolveBinaryVersion(resolvedBinary) : "unknown" },
+      ];
+      let status = formatDiagnosticStatus(available);
+
+      if (!available) {
+        entries.push({ label: "Models", value: "Not checked" });
+      } else {
+        try {
+          const models = await this.listModels();
+          entries.push({ label: "Models", value: String(models.length) });
+        } catch (error) {
+          entries.push({
+            label: "Models",
+            value: `Error - ${toDiagnosticErrorMessage(error)}`,
+          });
+          status = formatDiagnosticStatus(available, {
+            source: "model fetch",
+            cause: error,
+          });
+        }
+      }
+
+      entries.push({ label: "Status", value: status });
+
+      return {
+        diagnostic: formatProviderDiagnostic("Codex", entries),
+      };
+    } catch (error) {
+      return {
+        diagnostic: formatProviderDiagnosticError("Codex", error),
+      };
+    }
   }
 }
 
