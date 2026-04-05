@@ -1,6 +1,9 @@
 import log from "electron-log/main";
 log.initialize({ spyRendererConsole: true });
 
+import { inheritLoginShellEnv } from "./login-shell-env.js";
+inheritLoginShellEnv();
+
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";

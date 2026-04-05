@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  isCommandAvailable,
-  resolveShellEnv,
-} from "../../utils/executable.js";
+import { isCommandAvailable } from "../../utils/executable.js";
 import type { AgentProvider } from "./agent-sdk-types.js";
 import { AgentProviderSchema } from "./provider-manifest.js";
 
@@ -94,11 +91,9 @@ const PARENT_SESSION_ENV_VARS = [
 export function applyProviderEnv(
   baseEnv: Record<string, string | undefined>,
   runtimeSettings?: ProviderRuntimeSettings,
-  shellEnv?: Record<string, string>,
 ): Record<string, string | undefined> {
   const merged: Record<string, string | undefined> = {
     ...baseEnv,
-    ...(shellEnv ?? resolveShellEnv()),
     ...(runtimeSettings?.env ?? {}),
   };
   for (const key of PARENT_SESSION_ENV_VARS) {

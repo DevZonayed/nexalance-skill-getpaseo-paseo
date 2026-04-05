@@ -1,15 +1,11 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import path from "node:path";
-import { shellEnvSync } from "shell-env";
-
 export interface FindExecutableDependencies {
-  execSync: typeof execSync;
   execFileSync: typeof execFileSync;
   existsSync: typeof existsSync;
   platform: typeof platform;
-  shell: string | undefined;
 }
 
 function resolveWindowsPathEntries(deps: FindExecutableDependencies): string[] {
@@ -42,7 +38,7 @@ function resolveWindowsPathEntries(deps: FindExecutableDependencies): string[] {
 function resolveExecutableFromWhichOutput(
   name: string,
   output: string,
-  source: "login-shell" | "which",
+  source: "which",
 ): string | null {
   const lines = output
     .split(/\r?\n/)
@@ -65,10 +61,8 @@ function resolveExecutableFromWhichOutput(
 }
 
 /**
- * On Unix we first try `$SHELL -lic "which <name>"` so that rc-file PATH
- * additions (asdf, nvm, homebrew, nix, etc.) are visible — exactly as if the
- * user opened a terminal and typed the command.  If that fails (e.g. the login
- * shell itself errors) we fall back to a plain `which`.
+ * On Unix we use plain `which` — the daemon's process.env.PATH is enriched
+ * with the login shell environment at Electron desktop startup.
  *
  * On Windows we augment the daemon PATH with machine/user registry PATH values
  * and return the first `where.exe` match. Launch-time execution decides whether
@@ -85,11 +79,9 @@ export function findExecutable(
   }
 
   const deps: FindExecutableDependencies = {
-    execSync,
     execFileSync,
     existsSync,
     platform,
-    shell: process.env["SHELL"],
     ...dependencies,
   };
 
@@ -122,25 +114,6 @@ export function findExecutable(
       );
     } catch {
       return null;
-    }
-  }
-
-  // Unix: try the user's login shell so rc-file PATH entries are visible.
-  const shell = deps.shell;
-  if (shell) {
-    try {
-      const out = deps
-        .execSync(`${shell} -lic "which ${trimmed}"`, {
-          encoding: "utf8",
-          timeout: 5000,
-        })
-        .trim();
-      const resolved = resolveExecutableFromWhichOutput(trimmed, out, "login-shell");
-      if (resolved) {
-        return resolved;
-      }
-    } catch {
-      // Login shell failed (broken rc, etc.) — fall through to plain which.
     }
   }
 
@@ -184,14 +157,3 @@ export function quoteWindowsArgument(argument: string): string {
   return `"${argument}"`;
 }
 
-let cachedShellEnv: Record<string, string> | null = null;
-
-export function resolveShellEnv(): Record<string, string> {
-  if (cachedShellEnv) return cachedShellEnv;
-  try {
-    cachedShellEnv = shellEnvSync();
-  } catch {
-    cachedShellEnv = { ...process.env } as Record<string, string>;
-  }
-  return cachedShellEnv;
-}

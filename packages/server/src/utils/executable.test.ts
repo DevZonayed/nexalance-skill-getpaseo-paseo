@@ -11,10 +11,8 @@ type FindExecutableDependencies = NonNullable<Parameters<typeof findExecutable>[
 function createFindExecutableDependencies(): FindExecutableDependencies {
   return {
     execFileSync: vi.fn(),
-    execSync: vi.fn(),
     existsSync: vi.fn(),
     platform: vi.fn(() => "darwin"),
-    shell: undefined,
   };
 }
 
@@ -77,25 +75,25 @@ describe("findExecutable", () => {
     expect(findExecutable("codex", findExecutableDependencies)).toBe("C:\\nvm4w\\nodejs\\codex");
   });
 
-  test("uses the last line from login-shell which output", () => {
-    findExecutableDependencies.shell = "/bin/zsh";
-    findExecutableDependencies.execSync.mockReturnValue(
-      "echo from profile\n/usr/local/bin/codex\n",
+  test("on Unix, uses the last line from which output", () => {
+    findExecutableDependencies.execFileSync.mockReturnValue(
+      "/usr/local/bin/codex\n",
     );
 
     expect(findExecutable("codex", findExecutableDependencies)).toBe("/usr/local/bin/codex");
-    expect(findExecutableDependencies.execSync).toHaveBeenCalledOnce();
-    expect(findExecutableDependencies.execFileSync).not.toHaveBeenCalled();
+    expect(findExecutableDependencies.execFileSync).toHaveBeenCalledWith(
+      "which",
+      ["codex"],
+      { encoding: "utf8" },
+    );
   });
 
   test("warns and returns null when the final which line is not an absolute path", () => {
-    findExecutableDependencies.shell = "/bin/zsh";
-    findExecutableDependencies.execSync.mockReturnValue("profile noise\ncodex\n");
     findExecutableDependencies.execFileSync.mockReturnValue("codex\n");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     expect(findExecutable("codex", findExecutableDependencies)).toBeNull();
-    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledOnce();
 
     warnSpy.mockRestore();
   });
