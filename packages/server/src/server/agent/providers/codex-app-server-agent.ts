@@ -573,6 +573,17 @@ class CodexAppServerClient {
     this.child.stdin.write(`${JSON.stringify(payload)}\n`);
   }
 
+  private writeJsonRpcResponse(response: JsonRpcResponse): void {
+    if (this.disposed || this.child.stdin.destroyed || !this.child.stdin.writable) {
+      return;
+    }
+    try {
+      this.child.stdin.write(`${JSON.stringify(response)}\n`);
+    } catch (error) {
+      this.logger.debug({ error }, "Failed to write Codex app-server JSON-RPC response");
+    }
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
@@ -617,14 +628,12 @@ class CodexAppServerClient {
         const handler = this.requestHandlers.get(request.method);
         try {
           const result = handler ? await handler(request.params) : {};
-          const response: JsonRpcResponse = { id: request.id, result };
-          this.child.stdin.write(`${JSON.stringify(response)}\n`);
+          this.writeJsonRpcResponse({ id: request.id, result });
         } catch (error) {
-          const response: JsonRpcResponse = {
+          this.writeJsonRpcResponse({
             id: request.id,
             error: { message: error instanceof Error ? error.message : String(error) },
-          };
-          this.child.stdin.write(`${JSON.stringify(response)}\n`);
+          });
         }
         return;
       }
@@ -721,6 +730,187 @@ function mapCodexPlanToToolCall(params: { callId: string; text: string }): ToolC
       text,
     },
   };
+}
+
+type CodexQuestionOption = {
+  label: string;
+  description?: string;
+};
+
+type CodexQuestionPrompt = {
+  id: string;
+  header: string;
+  question: string;
+  options: CodexQuestionOption[];
+  multiSelect?: boolean;
+  isOther?: boolean;
+  isSecret?: boolean;
+};
+
+function normalizeCodexQuestionPrompts(raw: unknown): CodexQuestionPrompt[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const questions: CodexQuestionPrompt[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const id = nonEmptyString(record.id);
+    const header = nonEmptyString(record.header);
+    const question = nonEmptyString(record.question);
+    if (!id || !header || !question) {
+      continue;
+    }
+    const options = Array.isArray(record.options)
+      ? record.options.flatMap((option): CodexQuestionOption[] => {
+          if (!option || typeof option !== "object") {
+            return [];
+          }
+          const optionRecord = option as Record<string, unknown>;
+          const label = nonEmptyString(optionRecord.label);
+          if (!label) {
+            return [];
+          }
+          return [
+            {
+              label,
+              ...(typeof optionRecord.description === "string" &&
+              optionRecord.description.trim().length > 0
+                ? { description: optionRecord.description }
+                : {}),
+            },
+          ];
+        })
+      : [];
+    questions.push({
+      id,
+      header,
+      question,
+      options,
+      ...(record.multiSelect === true ? { multiSelect: true } : {}),
+      ...(record.isOther === true ? { isOther: true } : {}),
+      ...(record.isSecret === true ? { isSecret: true } : {}),
+    });
+  }
+  return questions;
+}
+
+function formatCodexQuestionPrompts(questions: CodexQuestionPrompt[]): string {
+  return questions
+    .map((question) => {
+      const lines = [`${question.header}: ${question.question}`];
+      if (question.options.length > 0) {
+        lines.push(`Options: ${question.options.map((option) => option.label).join(", ")}`);
+      }
+      return lines.join("\n");
+    })
+    .join("\n\n")
+    .trim();
+}
+
+function mapCodexQuestionRequestToToolCall(params: {
+  callId: string;
+  questions: CodexQuestionPrompt[];
+  status: ToolCallTimelineItem["status"];
+  answers?: Record<string, string[]>;
+  error?: unknown;
+}): ToolCallTimelineItem {
+  const formattedQuestions = formatCodexQuestionPrompts(params.questions);
+  const formattedAnswers =
+    params.answers && Object.keys(params.answers).length > 0
+      ? Object.entries(params.answers)
+          .map(([id, values]) => `${id}: ${values.join(", ")}`)
+          .join("\n")
+      : null;
+  const detailText =
+    params.status === "completed" && formattedAnswers
+      ? [formattedQuestions, "Answers:", formattedAnswers].filter(Boolean).join("\n\n")
+      : formattedQuestions;
+
+  const base = {
+    type: "tool_call" as const,
+    callId: params.callId,
+    name: "request_user_input",
+    detail: {
+      type: "plain_text" as const,
+      text: detailText,
+      icon: "brain" as const,
+    },
+    metadata: {
+      questions: params.questions,
+      ...(params.answers ? { answers: params.answers } : {}),
+    },
+  };
+
+  if (params.status === "failed") {
+    return {
+      ...base,
+      status: "failed",
+      error: params.error ?? { message: "Question dismissed" },
+    };
+  }
+  if (params.status === "canceled") {
+    return {
+      ...base,
+      status: "canceled",
+      error: null,
+    };
+  }
+  if (params.status === "running") {
+    return {
+      ...base,
+      status: "running",
+      error: null,
+    };
+  }
+  return {
+    ...base,
+    status: "completed",
+    error: null,
+  };
+}
+
+function mapCodexQuestionResponseByHeader(params: {
+  questions: CodexQuestionPrompt[];
+  response: AgentPermissionResponse;
+}): Record<string, { answers: string[] }> | null {
+  if (params.response.behavior !== "allow") {
+    return null;
+  }
+  const answersRecord =
+    params.response.updatedInput && typeof params.response.updatedInput === "object"
+      ? ((params.response.updatedInput as Record<string, unknown>).answers as
+          | Record<string, unknown>
+          | undefined)
+      : undefined;
+  if (!answersRecord || typeof answersRecord !== "object") {
+    return null;
+  }
+
+  const answers: Record<string, { answers: string[] }> = {};
+  for (const question of params.questions) {
+    const rawAnswer = answersRecord[question.header];
+    if (typeof rawAnswer !== "string") {
+      continue;
+    }
+    const normalizedAnswer = rawAnswer.trim();
+    if (!normalizedAnswer) {
+      continue;
+    }
+    const values = question.multiSelect
+      ? normalizedAnswer
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+      : [normalizedAnswer];
+    if (values.length > 0) {
+      answers[question.id] = { answers: values };
+    }
+  }
+
+  return Object.keys(answers).length > 0 ? answers : null;
 }
 
 type CodexPatchFileChange = {
@@ -2072,8 +2262,8 @@ class CodexAppServerAgentSession implements AgentSession {
     string,
     {
       resolve: (value: unknown) => void;
-      kind: "command" | "file" | "tool";
-      questions?: Array<{ id: string; options?: Array<{ label?: string; value?: string }> }>;
+      kind: "command" | "file" | "question";
+      questions?: CodexQuestionPrompt[];
     }
   >();
   private resolvedPermissionRequests = new Set<string>();
@@ -2284,6 +2474,10 @@ class CodexAppServerAgentSession implements AgentSession {
     this.client.setRequestHandler("item/fileChange/requestApproval", (params) =>
       this.handleFileChangeApprovalRequest(params),
     );
+    this.client.setRequestHandler("item/tool/requestUserInput", (params) =>
+      this.handleToolApprovalRequest(params),
+    );
+    // Keep the legacy method name for older Codex builds.
     this.client.setRequestHandler("tool/requestUserInput", (params) =>
       this.handleToolApprovalRequest(params),
     );
@@ -2745,26 +2939,53 @@ class CodexAppServerAgentSession implements AgentSession {
       return;
     }
 
-    // tool/requestUserInput
-    const answers: Record<string, { answers: string[] }> = {};
     const questions = pending.questions ?? [];
-    const decision =
-      response.behavior === "allow" ? "accept" : response.interrupt ? "cancel" : "decline";
-    for (const question of questions) {
-      let picked = decision;
-      const options = question.options ?? [];
-      if (options.length > 0) {
-        const byLabel = options.find((opt) => (opt.label ?? "").toLowerCase().includes(decision));
-        const byValue = options.find((opt) => (opt.value ?? "").toLowerCase().includes(decision));
-        const option = byLabel ?? byValue ?? options[0]!;
-        picked = option.value ?? option.label ?? decision;
-      }
-      answers[question.id] = { answers: [picked] };
+    const itemId =
+      typeof pendingRequest?.metadata?.itemId === "string" ? pendingRequest.metadata.itemId : requestId;
+    if (response.behavior === "allow") {
+      const mappedAnswers = mapCodexQuestionResponseByHeader({
+        questions,
+        response,
+      });
+      const answers =
+        mappedAnswers ??
+        Object.fromEntries(
+          questions
+            .map((question) => {
+              const fallback = question.options[0]?.label?.trim();
+              return fallback
+                ? [question.id, { answers: [fallback] }]
+                : null;
+            })
+            .filter((entry): entry is [string, { answers: string[] }] => entry !== null),
+        );
+      this.emitEvent({
+        type: "timeline",
+        provider: CODEX_PROVIDER,
+        item: mapCodexQuestionRequestToToolCall({
+          callId: itemId,
+          questions,
+          status: "completed",
+          answers: Object.fromEntries(
+            Object.entries(answers).map(([id, value]) => [id, value.answers]),
+          ),
+        }),
+      });
+      pending.resolve({ answers });
+      return;
     }
-    if (questions.length === 0) {
-      answers["default"] = { answers: [decision] };
-    }
-    pending.resolve({ answers });
+
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: mapCodexQuestionRequestToToolCall({
+        callId: itemId,
+        questions,
+        status: response.interrupt ? "canceled" : "failed",
+        error: { message: response.message ?? "Question dismissed" },
+      }),
+    });
+    pending.resolve({ answers: {} });
   }
 
   describePersistence(): {
@@ -3463,34 +3684,43 @@ class CodexAppServerAgentSession implements AgentSession {
   private handleToolApprovalRequest(params: unknown): Promise<unknown> {
     const parsed = params as { itemId: string; threadId: string; turnId: string; questions: any[] };
     const requestId = `permission-${parsed.itemId}`;
+    const questions = normalizeCodexQuestionPrompts(parsed.questions);
     const request: AgentPermissionRequest = {
       id: requestId,
       provider: CODEX_PROVIDER,
-      name: "CodexTool",
-      kind: "tool",
-      title: "Tool action requires approval",
+      name: "request_user_input",
+      kind: "question",
+      title: "Question",
       description: undefined,
       detail: {
-        type: "unknown",
-        input: {
-          questions: Array.isArray(parsed.questions) ? parsed.questions : [],
-        },
-        output: null,
+        type: "plain_text",
+        text: formatCodexQuestionPrompts(questions),
+        icon: "brain",
       },
+      input: { questions },
       metadata: {
         itemId: parsed.itemId,
         threadId: parsed.threadId,
         turnId: parsed.turnId,
-        questions: parsed.questions,
+        questions,
       },
     };
     this.pendingPermissions.set(requestId, request);
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: mapCodexQuestionRequestToToolCall({
+        callId: parsed.itemId,
+        questions,
+        status: "running",
+      }),
+    });
     this.emitEvent({ type: "permission_requested", provider: CODEX_PROVIDER, request });
     return new Promise((resolve) => {
       this.pendingPermissionHandlers.set(requestId, {
         resolve,
-        kind: "tool",
-        questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+        kind: "question",
+        questions,
       });
     });
   }
@@ -3723,8 +3953,11 @@ export const __codexAppServerInternals = {
   buildCodexAppServerEnv,
   codexModelSupportsFastMode,
   CodexAppServerAgentSession,
+  formatCodexQuestionPrompts,
+  mapCodexQuestionRequestToToolCall,
   mapCodexPatchNotificationToToolCall,
   planStepsToMarkdown,
   mapCodexPlanToToolCall,
+  normalizeCodexQuestionPrompts,
   threadItemToTimeline,
 };
