@@ -22,6 +22,7 @@ import {
   EllipsisVertical,
   PanelRight,
   RotateCw,
+  Settings,
   SquarePen,
   SquareTerminal,
   X,
@@ -1363,6 +1364,23 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     }
   }, [currentBranchName, toast]);
 
+  const handleOpenSetupTab = useCallback(() => {
+    if (!persistenceKey) {
+      return;
+    }
+    const target = normalizeWorkspaceTabTarget({
+      kind: "setup",
+      workspaceId: normalizedWorkspaceId,
+    });
+    if (!target) {
+      return;
+    }
+    const tabId = openWorkspaceTab(persistenceKey, target);
+    if (tabId) {
+      focusWorkspaceTab(persistenceKey, tabId);
+    }
+  }, [focusWorkspaceTab, normalizedWorkspaceId, openWorkspaceTab, persistenceKey]);
+
   const handleBulkCloseTabs = useCallback(
     async (input: { tabsToClose: WorkspaceTabDescriptor[]; title: string; logLabel: string }) => {
       const { tabsToClose, title, logLabel } = input;
@@ -2021,6 +2039,14 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                           Copy branch name
                         </DropdownMenuItem>
                       ) : null}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        testID="workspace-header-show-setup"
+                        leading={<Settings size={16} color={theme.colors.foregroundMuted} />}
+                        onSelect={handleOpenSetupTab}
+                      >
+                        Show setup
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </View>

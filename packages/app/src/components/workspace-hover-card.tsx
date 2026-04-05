@@ -365,15 +365,26 @@ function WorkspaceHoverCardContent({
                       backgroundColor:
                         service.status === "running"
                           ? theme.colors.palette.green[500]
-                          : theme.colors.palette.red[500],
+                          : theme.colors.foregroundMuted,
                     },
                   ]}
                 />
-                <Text style={styles.serviceName} numberOfLines={1}>
+                <Text
+                  style={[
+                    styles.serviceName,
+                    { color: service.status === "running" ? theme.colors.foreground : theme.colors.foregroundMuted },
+                  ]}
+                  numberOfLines={1}
+                >
                   {service.serviceName}
                 </Text>
                 {service.url ? (
-                  <ExternalLink size={12} color={theme.colors.foregroundMuted} />
+                  <Text style={styles.serviceUrl} numberOfLines={1}>
+                    {service.url.replace(/^https?:\/\//, "")}
+                  </Text>
+                ) : null}
+                {service.url ? (
+                  <ExternalLink size={11} color={theme.colors.foregroundMuted} />
                 ) : null}
               </Pressable>
             ))}
@@ -482,8 +493,12 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   serviceName: {
-    color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    flexShrink: 0,
+  },
+  serviceUrl: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
     flex: 1,
     minWidth: 0,
   },

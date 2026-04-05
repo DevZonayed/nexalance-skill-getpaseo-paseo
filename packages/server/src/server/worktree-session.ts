@@ -644,7 +644,7 @@ export async function handleWorkspaceSetupStatusRequest(
   dependencies: HandleWorkspaceSetupStatusRequestDependencies,
   request: Extract<SessionInboundMessage, { type: "workspace_setup_status_request" }>,
 ): Promise<void> {
-  const workspaceId = normalizePersistedWorkspaceId(request.workspaceId);
+  const workspaceId = request.workspaceId;
   dependencies.emit({
     type: "workspace_setup_status_response",
     payload: {
@@ -669,7 +669,7 @@ export async function createPaseoWorktreeInBackground(
   let setupResults: WorktreeSetupCommandResult[] = [];
   let setupStarted = false;
   const progressAccumulator = createWorktreeSetupProgressAccumulator();
-  const workspaceId = normalizePersistedWorkspaceId(worktree.worktreePath);
+  const workspaceId = String(options.workspaceId);
 
   const emitSetupProgress = (status: "running" | "completed" | "failed", error: string | null) => {
     const snapshot: WorkspaceSetupSnapshot = {

@@ -146,6 +146,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
+        workspaceId: 42,
         worktree: {
           branchName: "feature-no-setup",
           worktreePath,
@@ -160,7 +161,7 @@ describe("createPaseoWorktreeInBackground", () => {
     );
     expect(progressMessages).toHaveLength(2);
     expect(progressMessages[0]?.payload).toMatchObject({
-      workspaceId: worktreePath,
+      workspaceId: "42",
       status: "running",
       error: null,
       detail: {
@@ -172,7 +173,7 @@ describe("createPaseoWorktreeInBackground", () => {
       },
     });
     expect(progressMessages[1]?.payload).toMatchObject({
-      workspaceId: worktreePath,
+      workspaceId: "42",
       status: "completed",
       error: null,
       detail: {
@@ -183,7 +184,7 @@ describe("createPaseoWorktreeInBackground", () => {
         commands: [],
       },
     });
-    expect(snapshots.get(worktreePath)).toMatchObject({
+    expect(snapshots.get("42")).toMatchObject({
       status: "completed",
       error: null,
       detail: {
@@ -274,7 +275,7 @@ describe("createPaseoWorktreeInBackground", () => {
     expect(progressMessages[1]?.payload.status).toBe("failed");
     expect(progressMessages[1]?.payload.error).toContain("Failed to parse paseo.json");
     expect(progressMessages[1]?.payload.detail.commands).toEqual([]);
-    expect(snapshots.get(worktreePath)).toMatchObject({
+    expect(snapshots.get("101")).toMatchObject({
       status: "failed",
       error: expect.stringContaining("Failed to parse paseo.json"),
     });
@@ -323,6 +324,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
+        workspaceId: 43,
         worktree: {
           branchName: "feature-running-setup",
           worktreePath,
@@ -337,7 +339,7 @@ describe("createPaseoWorktreeInBackground", () => {
     );
     expect(progressMessages.length).toBeGreaterThan(1);
     expect(progressMessages[0]?.payload).toMatchObject({
-      workspaceId: worktreePath,
+      workspaceId: "43",
       status: "running",
       error: null,
       detail: {
@@ -368,7 +370,7 @@ describe("createPaseoWorktreeInBackground", () => {
     });
 
     expect(progressMessages.at(-1)?.payload).toMatchObject({
-      workspaceId: worktreePath,
+      workspaceId: "43",
       status: "completed",
       error: null,
       detail: {
@@ -385,7 +387,7 @@ describe("createPaseoWorktreeInBackground", () => {
       status: "completed",
       exitCode: 0,
     });
-    expect(snapshots.get(worktreePath)).toMatchObject({
+    expect(snapshots.get("43")).toMatchObject({
       status: "completed",
       error: null,
     });
@@ -439,6 +441,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
+        workspaceId: 44,
         worktree: {
           branchName: "reused-worktree",
           worktreePath: existingWorktree.worktreePath,
@@ -453,12 +456,12 @@ describe("createPaseoWorktreeInBackground", () => {
     );
     expect(progressMessages).toHaveLength(2);
     expect(progressMessages[0]?.payload).toMatchObject({
-      workspaceId: existingWorktree.worktreePath,
+      workspaceId: "44",
       status: "running",
       error: null,
     });
     expect(progressMessages[1]?.payload).toMatchObject({
-      workspaceId: existingWorktree.worktreePath,
+      workspaceId: "44",
       status: "completed",
       error: null,
       detail: {
@@ -487,7 +490,7 @@ describe("createPaseoWorktreeInBackground", () => {
       readFileSync(path.join(existingWorktree.worktreePath, "README.md"), "utf8"),
     ).toContain("hello");
     expect(() => readFileSync(path.join(existingWorktree.worktreePath, "setup-ran.txt"), "utf8")).toThrow();
-    expect(snapshots.get(existingWorktree.worktreePath)).toMatchObject({
+    expect(snapshots.get("44")).toMatchObject({
       status: "completed",
       error: null,
     });
@@ -544,6 +547,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
+        workspaceId: 45,
         worktree: {
           branchName: "feature-service-failure",
           worktreePath,
@@ -572,7 +576,7 @@ describe("createPaseoWorktreeInBackground", () => {
       }),
       "Failed to spawn worktree services after workspace setup completed",
     );
-    expect(snapshots.get(worktreePath)).toMatchObject({
+    expect(snapshots.get("45")).toMatchObject({
       status: "completed",
       error: null,
     });
@@ -625,6 +629,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
+        workspaceId: 46,
         worktree: {
           branchName: "feature-socket-mode",
           worktreePath,
@@ -646,7 +651,7 @@ describe("createPaseoWorktreeInBackground", () => {
     expect(terminalManager.terminals[0]?.env?.PORT).toEqual(expect.any(String));
     expect(terminalManager.terminals[0]?.env?.PASEO_SERVICE_URL).toBeUndefined();
     expect(terminalManager.terminals[0]?.sent).toEqual(["npm run dev\r"]);
-    expect(snapshots.get(worktreePath)).toMatchObject({
+    expect(snapshots.get("46")).toMatchObject({
       status: "completed",
       error: null,
     });
