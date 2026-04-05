@@ -21,7 +21,6 @@ import {
   type AgentScreenMissingState,
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
-import { useDelayedHistoryRefreshToast } from "@/hooks/use-delayed-history-refresh-toast";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useStableEvent } from "@/hooks/use-stable-event";
@@ -704,27 +703,6 @@ function AgentPanelBody({
     shouldUseOptimisticStream,
   ]);
 
-  const isHistoryRefreshCatchingUp =
-    viewState.tag === "ready" &&
-    viewState.sync.status === "catching_up" &&
-    viewState.sync.ui === "toast";
-  const shouldEmitSyncErrorToast =
-    viewState.tag === "ready" &&
-    viewState.sync.status === "sync_error" &&
-    viewState.sync.shouldEmitSyncErrorToast;
-
-  useDelayedHistoryRefreshToast({
-    isCatchingUp: isHistoryRefreshCatchingUp,
-    indicatorColor: theme.colors.primary,
-    showToast: panelToast.api.show,
-  });
-
-  useEffect(() => {
-    if (!shouldEmitSyncErrorToast) {
-      return;
-    }
-    panelToast.api.error("Failed to refresh agent. Retrying in background.");
-  }, [panelToast.api, shouldEmitSyncErrorToast]);
 
   if (viewState.tag === "not_found") {
     return (

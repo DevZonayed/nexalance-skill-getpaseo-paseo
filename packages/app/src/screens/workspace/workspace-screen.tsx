@@ -1308,29 +1308,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab],
   );
 
-  const prevCloseTabDeps = useRef({
-    allTabDescriptorsById,
-    handleCloseAgentTab,
-    handleCloseDraftOrFileTab,
-    handleCloseTerminalTab,
-  });
-  useEffect(() => {
-    const prev = prevCloseTabDeps.current;
-    const changed: string[] = [];
-    if (prev.allTabDescriptorsById !== allTabDescriptorsById) changed.push("allTabDescriptorsById");
-    if (prev.handleCloseAgentTab !== handleCloseAgentTab) changed.push("handleCloseAgentTab");
-    if (prev.handleCloseDraftOrFileTab !== handleCloseDraftOrFileTab)
-      changed.push("handleCloseDraftOrFileTab");
-    if (prev.handleCloseTerminalTab !== handleCloseTerminalTab)
-      changed.push("handleCloseTerminalTab");
-    if (changed.length > 0) console.log("[handleCloseTabById] deps changed:", changed.join(", "));
-    prevCloseTabDeps.current = {
-      allTabDescriptorsById,
-      handleCloseAgentTab,
-      handleCloseDraftOrFileTab,
-      handleCloseTerminalTab,
-    };
-  });
   const handleCopyAgentId = useCallback(
     async (agentId: string) => {
       if (!agentId) return;
@@ -1795,44 +1772,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       retargetWorkspaceTab,
     ],
   );
-  const prevBuildDeps = useRef({
-    handleCloseTabById,
-    handleOpenFileFromChat,
-    focusWorkspacePane,
-    navigateToTabId,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openWorkspaceTab,
-    persistenceKey,
-    retargetWorkspaceTab,
-  });
-  useEffect(() => {
-    const prev = prevBuildDeps.current;
-    const changed: string[] = [];
-    if (prev.handleCloseTabById !== handleCloseTabById) changed.push("handleCloseTabById");
-    if (prev.handleOpenFileFromChat !== handleOpenFileFromChat)
-      changed.push("handleOpenFileFromChat");
-    if (prev.focusWorkspacePane !== focusWorkspacePane) changed.push("focusWorkspacePane");
-    if (prev.navigateToTabId !== navigateToTabId) changed.push("navigateToTabId");
-    if (prev.normalizedServerId !== normalizedServerId) changed.push("normalizedServerId");
-    if (prev.normalizedWorkspaceId !== normalizedWorkspaceId) changed.push("normalizedWorkspaceId");
-    if (prev.openWorkspaceTab !== openWorkspaceTab) changed.push("openWorkspaceTab");
-    if (prev.persistenceKey !== persistenceKey) changed.push("persistenceKey");
-    if (prev.retargetWorkspaceTab !== retargetWorkspaceTab) changed.push("retargetWorkspaceTab");
-    if (changed.length > 0)
-      console.log("[buildPaneContentModel] deps changed:", changed.join(", "));
-    prevBuildDeps.current = {
-      handleCloseTabById,
-      handleOpenFileFromChat,
-      focusWorkspacePane,
-      navigateToTabId,
-      normalizedServerId,
-      normalizedWorkspaceId,
-      openWorkspaceTab,
-      persistenceKey,
-      retargetWorkspaceTab,
-    };
-  });
   const focusedPaneId = focusedPaneTabState.pane?.id ?? null;
   const focusedPaneTabIds = useMemo(() => tabs.map((tab) => tab.tabId), [tabs]);
   const focusedPaneTabDescriptorMap = useStableTabDescriptorMap(tabs);
