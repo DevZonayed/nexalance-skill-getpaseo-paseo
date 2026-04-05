@@ -203,7 +203,6 @@ export class WorkspaceReconciliationService {
 
       // 4. Reconcile workspace display names (branch name changes)
       for (const workspace of siblings) {
-        if (workspace.kind !== "checkout") continue;
         if (!existsSync(workspace.directory)) continue;
 
         const wsDirName =
