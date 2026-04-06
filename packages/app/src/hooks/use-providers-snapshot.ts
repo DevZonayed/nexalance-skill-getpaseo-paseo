@@ -14,6 +14,7 @@ interface UseProvidersSnapshotResult {
   entries: ProviderSnapshotEntry[] | undefined;
   isLoading: boolean;
   isFetching: boolean;
+  error: string | null;
   supportsSnapshot: boolean;
   refresh: () => void;
 }
@@ -69,6 +70,7 @@ export function useProvidersSnapshot(serverId: string | null): UseProvidersSnaps
     entries: snapshotQuery.data?.entries ?? undefined,
     isLoading: snapshotQuery.isLoading,
     isFetching: snapshotQuery.isFetching,
+    error: snapshotQuery.error instanceof Error ? snapshotQuery.error.message : null,
     supportsSnapshot,
     refresh,
   };

@@ -887,26 +887,17 @@ export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStat
   const models = snapshotModels;
 
   const agentProviderDefinitions = useMemo(() => {
-    if (snapshotEntries) {
-      return AGENT_PROVIDER_DEFINITIONS.filter((d) =>
-        snapshotEntries.some((e) => e.provider === d.id),
-      );
-    }
     const definition = AGENT_PROVIDER_DEFINITIONS.find((d) => d.id === agent?.provider);
     return definition ? [definition] : [];
-  }, [agent?.provider, snapshotEntries]);
+  }, [agent?.provider]);
 
   const agentProviderModels = useMemo(() => {
     const map = new Map<string, AgentModelDefinition[]>();
-    if (snapshotEntries) {
-      for (const entry of snapshotEntries) {
-        if (entry.models) {
-          map.set(entry.provider, entry.models);
-        }
-      }
+    if (agent?.provider && snapshotModels) {
+      map.set(agent.provider, snapshotModels);
     }
     return map;
-  }, [snapshotEntries]);
+  }, [agent?.provider, snapshotModels]);
 
   const displayMode =
     availableModes.find((mode) => mode.id === agent?.currentModeId)?.label ||
