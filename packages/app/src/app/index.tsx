@@ -11,15 +11,9 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
+import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 
 const WELCOME_ROUTE = "/welcome";
-
-function getCurrentPathname(fallbackPathname: string): string {
-  if (typeof window === "undefined") {
-    return fallbackPathname;
-  }
-  return window.location.pathname || fallbackPathname;
-}
 
 function useAnyOnlineHostServerId(serverIds: string[]): string | null {
   const runtime = getHostRuntimeStore();
@@ -46,6 +40,8 @@ function useAnyOnlineHostServerId(serverIds: string[]): string | null {
   );
 }
 
+const isDesktop = shouldUseDesktopDaemon();
+
 export default function Index() {
   const router = useRouter();
   const pathname = usePathname();
@@ -58,8 +54,7 @@ export default function Index() {
     if (!storeReady) {
       return;
     }
-    const currentPathname = getCurrentPathname(pathname);
-    if (currentPathname !== "/" && currentPathname !== "") {
+    if (pathname !== "/" && pathname !== "") {
       return;
     }
 
@@ -69,5 +64,5 @@ export default function Index() {
     router.replace(targetRoute as any);
   }, [anyOnlineServerId, pathname, router, storeReady]);
 
-  return <StartupSplashScreen bootstrapState={bootstrapState} />;
+  return <StartupSplashScreen bootstrapState={isDesktop ? bootstrapState : undefined} />;
 }
