@@ -1,15 +1,15 @@
 import net from "node:net";
 import type { ServiceRouteEntry, ServiceRouteStore } from "./service-proxy.js";
 
-export interface ServiceStatusEntry {
+export interface ServiceHealthEntry {
   serviceName: string;
   hostname: string;
   port: number;
-  status: "running" | "stopped";
+  health: "healthy" | "unhealthy";
 }
 
 type RouteHealthState = {
-  status: ServiceStatusEntry["status"] | null;
+  health: ServiceHealthEntry["health"] | null;
   consecutiveFailures: number;
   registeredAt: number;
 };
@@ -18,7 +18,7 @@ export class ServiceHealthMonitor {
   private readonly routeStore: ServiceRouteStore;
   private readonly onChange: (
     workspaceId: string,
-    services: ServiceStatusEntry[],
+    services: ServiceHealthEntry[],
   ) => void;
   private readonly pollIntervalMs: number;
   private readonly probeTimeoutMs: number;
@@ -39,7 +39,7 @@ export class ServiceHealthMonitor {
     failuresBeforeStopped = 2,
   }: {
     routeStore: ServiceRouteStore;
-    onChange: (workspaceId: string, services: ServiceStatusEntry[]) => void;
+    onChange: (workspaceId: string, services: ServiceHealthEntry[]) => void;
     pollIntervalMs?: number;
     probeTimeoutMs?: number;
     graceMs?: number;
@@ -94,19 +94,19 @@ export class ServiceHealthMonitor {
         }
 
         const isHealthy = await this.probeRoute(route.port);
-        const previousStatus = state.status;
+        const previousHealth = state.health;
 
         if (isHealthy) {
           state.consecutiveFailures = 0;
-          state.status = "running";
+          state.health = "healthy";
         } else {
           state.consecutiveFailures += 1;
           if (state.consecutiveFailures >= this.failuresBeforeStopped) {
-            state.status = "stopped";
+            state.health = "unhealthy";
           }
         }
 
-        if (state.status !== null && state.status !== previousStatus) {
+        if (state.health !== null && state.health !== previousHealth) {
           changedWorkspaceIds.add(route.workspaceId);
         }
       }
@@ -135,7 +135,7 @@ export class ServiceHealthMonitor {
     }
 
     const state: RouteHealthState = {
-      status: null,
+      health: null,
       consecutiveFailures: 0,
       registeredAt,
     };
@@ -152,31 +152,31 @@ export class ServiceHealthMonitor {
     }
   }
 
-  private buildWorkspaceServiceList(workspaceId: string): ServiceStatusEntry[] {
+  private buildWorkspaceServiceList(workspaceId: string): ServiceHealthEntry[] {
     return this.routeStore
       .listRoutesForWorkspace(workspaceId)
       .flatMap((route) => {
         const state = this.routeStates.get(route.hostname);
-        if (!state?.status) {
+        if (!state?.health) {
           return [];
         }
-        return [this.toServiceStatusEntry(route, state.status)];
+        return [this.toServiceHealthEntry(route, state.health)];
       });
   }
 
-  getStatusForHostname(hostname: string): ServiceStatusEntry["status"] | null {
-    return this.routeStates.get(hostname)?.status ?? null;
+  getHealthForHostname(hostname: string): ServiceHealthEntry["health"] | null {
+    return this.routeStates.get(hostname)?.health ?? null;
   }
 
-  private toServiceStatusEntry(
+  private toServiceHealthEntry(
     route: ServiceRouteEntry,
-    status: ServiceStatusEntry["status"],
-  ): ServiceStatusEntry {
+    health: ServiceHealthEntry["health"],
+  ): ServiceHealthEntry {
     return {
       serviceName: route.serviceName,
       hostname: route.hostname,
       port: route.port,
-      status,
+      health,
     };
   }
 

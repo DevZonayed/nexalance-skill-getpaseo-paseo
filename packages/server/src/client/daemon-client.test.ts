@@ -289,6 +289,61 @@ describe("DaemonClient", () => {
     });
   });
 
+  test("sends create_agent_request with string workspace ids", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const createPromise = client.createAgent({
+      provider: "codex",
+      cwd: "/tmp/project/.paseo/worktrees/feature-a",
+      workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+      title: "Compat agent",
+      modeId: "default",
+    });
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(String(mock.sent[0])) as {
+      type: "session";
+      message: {
+        type: "create_agent_request";
+        requestId: string;
+        workspaceId: string;
+      };
+    };
+    expect(request.message).toEqual(
+      expect.objectContaining({
+        type: "create_agent_request",
+        workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+      }),
+    );
+
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "status",
+        payload: {
+          status: "agent_create_failed",
+          requestId: request.message.requestId,
+          error: "compat test sentinel",
+        },
+      }),
+    );
+
+    await expect(createPromise).rejects.toThrow("compat test sentinel");
+  });
+
   test("sends explicit shutdown_server_request via shutdownServer", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();

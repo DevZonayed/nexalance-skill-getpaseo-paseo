@@ -6,15 +6,18 @@ import {
   type PropsWithChildren,
   type ReactElement,
 } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Dimensions, Platform, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Check, ExternalLink, GitPullRequest, Minus, X } from "lucide-react-native";
+import { Check, ExternalLink, GitPullRequest, LoaderCircle, Minus, Play, X } from "lucide-react-native";
 import { Pressable } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { PrHint } from "@/hooks/use-checkout-pr-status-query";
+import { useToast } from "@/contexts/toast-context";
+import { useSessionStore } from "@/stores/session-store";
 import { openExternalUrl } from "@/utils/open-external-url";
 
 interface Rect {
@@ -194,6 +197,31 @@ const GITHUB_PR_STATE_LABELS: Record<PrHint["state"], string> = {
   closed: "Closed",
 };
 
+function getServiceHealthColor(input: {
+  health: SidebarWorkspaceEntry["services"][number]["health"];
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}): string {
+  if (input.health === "healthy") {
+    return input.theme.colors.palette.green[500];
+  }
+  if (input.health === "unhealthy") {
+    return input.theme.colors.palette.red[500];
+  }
+  return input.theme.colors.foregroundMuted;
+}
+
+function getServiceHealthLabel(
+  health: SidebarWorkspaceEntry["services"][number]["health"],
+): "Healthy" | "Unhealthy" | "Unknown" {
+  if (health === "healthy") {
+    return "Healthy";
+  }
+  if (health === "unhealthy") {
+    return "Unhealthy";
+  }
+  return "Unknown";
+}
+
 
 export function CheckStatusIndicator({
   status,
@@ -287,10 +315,30 @@ function WorkspaceHoverCardContent({
   onContentLeave: () => void;
 }): ReactElement | null {
   const { theme } = useUnistyles();
+  const toast = useToast();
+  const client = useSessionStore((state) => state.sessions[workspace.serverId]?.client ?? null);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const startServiceMutation = useMutation({
+    mutationFn: async (serviceName: string) => {
+      if (!client) {
+        throw new Error("Daemon client not available");
+      }
+      const result = await client.startWorkspaceService(workspace.workspaceId, serviceName);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    onError: (error, serviceName) => {
+      toast.show(
+        error instanceof Error ? error.message : `Failed to start ${serviceName}`,
+        { variant: "error" },
+      );
+    },
+  });
 
   // Measure trigger — same pattern as tooltip.tsx
   useEffect(() => {
@@ -418,50 +466,95 @@ function WorkspaceHoverCardContent({
                 {workspace.services.map((service) => (
                   <Pressable
                     key={service.hostname}
-                    accessibilityRole="link"
+                    accessibilityRole={service.lifecycle === "running" && service.url ? "link" : undefined}
                     accessibilityLabel={`${service.serviceName} service`}
                     testID={`hover-card-service-${service.serviceName}`}
                     style={({ hovered }) => [
                       styles.serviceRow,
-                      hovered && styles.serviceRowHovered,
+                      hovered &&
+                        service.lifecycle === "running" &&
+                        service.url &&
+                        styles.serviceRowHovered,
                     ]}
                     onPress={() => {
-                      if (service.url) {
+                      if (service.lifecycle === "running" && service.url) {
                         void openExternalUrl(service.url);
                       }
                     }}
-                    disabled={!service.url}
                   >
-                    <View
-                      testID={`hover-card-service-status-${service.serviceName}`}
-                      accessibilityLabel={service.status === "running" ? "Running" : "Stopped"}
-                      style={[
-                        styles.statusDot,
-                        {
-                          backgroundColor:
-                            service.status === "running"
-                              ? theme.colors.palette.green[500]
-                              : theme.colors.foregroundMuted,
-                        },
-                      ]}
-                    />
                     <Text
                       style={[
                         styles.serviceName,
-                        { color: service.status === "running" ? theme.colors.foreground : theme.colors.foregroundMuted },
+                        {
+                          color:
+                            service.lifecycle === "running"
+                              ? theme.colors.foreground
+                              : theme.colors.foregroundMuted,
+                        },
                       ]}
                       numberOfLines={1}
                     >
                       {service.serviceName}
                     </Text>
-                    {service.url ? (
+                    <View style={styles.serviceMeta}>
+                      <Text
+                        testID={`hover-card-service-status-${service.serviceName}`}
+                        accessibilityLabel={service.lifecycle === "running" ? "Running" : "Stopped"}
+                        style={styles.serviceLifecycleText}
+                      >
+                        {service.lifecycle === "running" ? "Running" : "Stopped"}
+                      </Text>
+                      <View
+                        testID={`hover-card-service-health-${service.serviceName}`}
+                        accessibilityLabel={getServiceHealthLabel(service.health)}
+                        style={[
+                          styles.statusDot,
+                          {
+                            backgroundColor: getServiceHealthColor({
+                              health: service.health,
+                              theme,
+                            }),
+                          },
+                        ]}
+                      />
+                      <Text style={styles.serviceHealthText}>{getServiceHealthLabel(service.health)}</Text>
+                    </View>
+                    {service.lifecycle === "running" && service.url ? (
                       <Text style={styles.serviceUrl} numberOfLines={1}>
                         {service.url.replace(/^https?:\/\//, "")}
                       </Text>
-                    ) : null}
-                    {service.url ? (
+                    ) : (
+                      <View style={styles.serviceUrlSpacer} />
+                    )}
+                    {service.lifecycle === "running" && service.url ? (
                       <ExternalLink size={11} color={theme.colors.foregroundMuted} />
-                    ) : null}
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Start ${service.serviceName} service`}
+                        testID={`hover-card-service-start-${service.serviceName}`}
+                        style={({ hovered, pressed }) => [
+                          styles.startServiceButton,
+                          (hovered || pressed) && styles.startServiceButtonHovered,
+                        ]}
+                        disabled={startServiceMutation.isPending}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          startServiceMutation.mutate(service.serviceName);
+                        }}
+                      >
+                        {startServiceMutation.isPending &&
+                        startServiceMutation.variables === service.serviceName ? (
+                          <LoaderCircle
+                            size={12}
+                            color={theme.colors.foregroundMuted}
+                            style={styles.startServiceSpinner}
+                          />
+                        ) : (
+                          <Play size={12} color={theme.colors.foregroundMuted} fill="transparent" />
+                        )}
+                      </Pressable>
+                    )}
                   </Pressable>
                 ))}
               </View>
@@ -558,11 +651,43 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     flexShrink: 0,
   },
+  serviceMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 0,
+  },
+  serviceLifecycleText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  serviceHealthText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
   serviceUrl: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     flex: 1,
     minWidth: 0,
+  },
+  serviceUrlSpacer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  startServiceButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surface2,
+  },
+  startServiceButtonHovered: {
+    backgroundColor: theme.colors.surface3,
+  },
+  startServiceSpinner: {
+    transform: [{ rotate: "0deg" }],
   },
   sectionLabel: {
     fontSize: theme.fontSize.xs,

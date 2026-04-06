@@ -38,7 +38,8 @@ describe("normalizeWorkspaceDescriptor", () => {
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
-        status: "running" as const,
+        lifecycle: "running" as const,
+        health: "healthy" as const,
       },
     ];
     const workspace = normalizeWorkspaceDescriptor({
@@ -63,7 +64,8 @@ describe("normalizeWorkspaceDescriptor", () => {
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
-        status: "running",
+        lifecycle: "running",
+        health: "healthy",
       },
     ]);
     expect(workspace.services).not.toBe(services);
@@ -109,7 +111,8 @@ describe("mergeWorkspaces", () => {
             hostname: "main.web.localhost",
             port: 3000,
             url: "http://main.web.localhost:6767",
-            status: "running",
+            lifecycle: "running",
+            health: "healthy",
           },
         ],
       }),
@@ -121,7 +124,8 @@ describe("mergeWorkspaces", () => {
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
-        status: "running",
+        lifecycle: "running",
+        health: "healthy",
       },
     ]);
   });

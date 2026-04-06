@@ -19,6 +19,7 @@ import {
   type SubscribeTerminalsRequest,
   type UnsubscribeTerminalsRequest,
   type CreateTerminalRequest,
+  type StartWorkspaceServiceRequest,
   type SubscribeTerminalRequest,
   type UnsubscribeTerminalRequest,
   type TerminalInput,
@@ -63,6 +64,8 @@ import { experimental_createMCPClient } from "ai";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import { buildWorkspaceServicePayloads } from "./service-status-projection.js";
+import { spawnWorkspaceService } from "./worktree-bootstrap.js";
+import { readGitCommand } from "./workspace-git-metadata.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
 import { buildProviderRegistry } from "./agent/provider-registry.js";
@@ -404,7 +407,7 @@ export type SessionOptions = {
     newBranch: string | null,
   ) => void;
   getDaemonTcpPort?: () => number | null;
-  resolveServiceStatus?: (hostname: string) => "running" | "stopped" | null;
+  resolveServiceHealth?: (hostname: string) => "healthy" | "unhealthy" | null;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
@@ -587,7 +590,9 @@ export class Session {
     newBranch: string | null,
   ) => void;
   private readonly getDaemonTcpPort: (() => number | null) | null;
-  private readonly resolveServiceStatus: ((hostname: string) => "running" | "stopped" | null) | null;
+  private readonly resolveServiceHealth:
+    | ((hostname: string) => "healthy" | "unhealthy" | null)
+    | null;
   private readonly subscribedTerminalDirectories = new Set<string>();
   private unsubscribeTerminalsChanged: (() => void) | null = null;
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
@@ -646,7 +651,7 @@ export class Session {
       serviceRouteStore,
       onBranchChanged,
       getDaemonTcpPort,
-      resolveServiceStatus,
+      resolveServiceHealth,
       voice,
       voiceBridge,
       dictation,
@@ -688,7 +693,7 @@ export class Session {
     this.serviceRouteStore = serviceRouteStore ?? null;
     this.onBranchChanged = onBranchChanged;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
-    this.resolveServiceStatus = resolveServiceStatus ?? null;
+    this.resolveServiceHealth = resolveServiceHealth ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged((event) =>
         this.handleTerminalsChanged(event),
@@ -1737,6 +1742,10 @@ export class Session {
 
         case "create_terminal_request":
           await this.handleCreateTerminalRequest(msg);
+          break;
+
+        case "start_workspace_service_request":
+          await this.handleStartWorkspaceServiceRequest(msg);
           break;
 
         case "subscribe_terminal_request":
@@ -5225,7 +5234,7 @@ export class Session {
             this.serviceRouteStore,
             workspace.directory,
             this.getDaemonTcpPort?.() ?? null,
-            this.resolveServiceStatus ?? undefined,
+            this.resolveServiceHealth ?? undefined,
           )
         : [],
     };
@@ -5945,6 +5954,87 @@ export class Session {
     }
   }
 
+  private buildWorkspaceServicePayloadSnapshot(workspaceDirectory: string): WorkspaceDescriptorPayload["services"] {
+    if (!this.serviceRouteStore) {
+      return [];
+    }
+    return buildWorkspaceServicePayloads(
+      this.serviceRouteStore,
+      workspaceDirectory,
+      this.getDaemonTcpPort?.() ?? null,
+      this.resolveServiceHealth ?? undefined,
+    );
+  }
+
+  private emitWorkspaceServiceStatusUpdate(workspaceDirectory: string): void {
+    this.emit({
+      type: "service_status_update",
+      payload: {
+        workspaceId: workspaceDirectory,
+        services: this.buildWorkspaceServicePayloadSnapshot(workspaceDirectory),
+      },
+    });
+  }
+
+  private async handleStartWorkspaceServiceRequest(
+    request: StartWorkspaceServiceRequest,
+  ): Promise<void> {
+    try {
+      if (!this.terminalManager || !this.serviceRouteStore) {
+        throw new Error("Workspace services are not available on this daemon");
+      }
+
+      const workspace = await this.resolveWorkspaceByIdOrDirectory(request.workspaceId);
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${request.workspaceId}`);
+      }
+
+      await spawnWorkspaceService({
+        repoRoot: workspace.directory,
+        workspaceId: workspace.directory,
+        branchName: readGitCommand(workspace.directory, "git symbolic-ref --short HEAD"),
+        serviceName: request.serviceName,
+        daemonPort: this.getDaemonTcpPort?.() ?? null,
+        routeStore: this.serviceRouteStore,
+        terminalManager: this.terminalManager,
+        logger: this.sessionLogger,
+        onLifecycleChanged: () => {
+          this.emitWorkspaceServiceStatusUpdate(workspace.directory);
+        },
+      });
+
+      this.emitWorkspaceServiceStatusUpdate(workspace.directory);
+      this.emit({
+        type: "start_workspace_service_response",
+        payload: {
+          requestId: request.requestId,
+          workspaceId: request.workspaceId,
+          serviceName: request.serviceName,
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start workspace service";
+      this.sessionLogger.error(
+        {
+          err: error,
+          workspaceId: request.workspaceId,
+          serviceName: request.serviceName,
+        },
+        "Failed to start workspace service",
+      );
+      this.emit({
+        type: "start_workspace_service_response",
+        payload: {
+          requestId: request.requestId,
+          workspaceId: request.workspaceId,
+          serviceName: request.serviceName,
+          error: message,
+        },
+      });
+    }
+  }
+
   private async handleCreatePaseoWorktreeRequest(
     request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
   ): Promise<void> {
@@ -6095,11 +6185,38 @@ export class Session {
       });
       const firstRow = timeline.rows[0];
       const lastRow = timeline.rows[timeline.rows.length - 1];
+      const timelineWindow =
+        timeline.window ??
+        (() => {
+          const minSeq = firstRow?.seq ?? 0;
+          const maxSeq = lastRow?.seq ?? 0;
+          return {
+            minSeq,
+            maxSeq,
+            nextSeq: maxSeq > 0 ? maxSeq + 1 : 0,
+          };
+        })();
+      const epoch = `compat:${msg.agentId}`;
+      const startCursor = firstRow ? { seq: firstRow.seq, epoch } : null;
+      const endCursor = lastRow ? { seq: lastRow.seq, epoch } : null;
+      const window = {
+        minSeq: timelineWindow.minSeq,
+        maxSeq: timelineWindow.maxSeq,
+        nextSeq: timelineWindow.nextSeq,
+        startSeq: firstRow?.seq ?? null,
+        endSeq: lastRow?.seq ?? null,
+        hasOlder: timeline.hasOlder,
+        hasNewer: timeline.hasNewer,
+      };
       const entries = timeline.rows.map((row) => ({
         provider: snapshot.provider,
         item: row.item,
         timestamp: row.timestamp,
         seq: row.seq,
+        seqStart: row.seq,
+        seqEnd: row.seq,
+        sourceSeqRanges: [{ startSeq: row.seq, endSeq: row.seq }],
+        collapsed: [],
       }));
 
       this.emit({
@@ -6115,9 +6232,18 @@ export class Session {
           hasNewer: timeline.hasNewer,
           entries,
           error: null,
+          epoch,
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window,
+          startCursor,
+          endCursor,
+          projection: msg.projection ?? "projected",
         },
       });
     } catch (error) {
+      const epoch = `compat:${msg.agentId}`;
       this.sessionLogger.error(
         { err: error, agentId: msg.agentId },
         "Failed to handle fetch_agent_timeline_request",
@@ -6135,6 +6261,22 @@ export class Session {
           hasNewer: false,
           entries: [],
           error: error instanceof Error ? error.message : String(error),
+          epoch,
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window: {
+            minSeq: 0,
+            maxSeq: 0,
+            nextSeq: 0,
+            startSeq: null,
+            endSeq: null,
+            hasOlder: false,
+            hasNewer: false,
+          },
+          startCursor: null,
+          endCursor: null,
+          projection: msg.projection ?? "projected",
         },
       });
     }

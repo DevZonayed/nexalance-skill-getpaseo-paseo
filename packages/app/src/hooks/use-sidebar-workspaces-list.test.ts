@@ -50,7 +50,8 @@ const runningService: WorkspaceServicePayload = {
   hostname: "main.web.localhost",
   port: 3000,
   url: "http://main.web.localhost:6767",
-  status: "running",
+  lifecycle: "running",
+  health: "healthy",
 };
 
 const stoppedService: WorkspaceServicePayload = {
@@ -58,7 +59,8 @@ const stoppedService: WorkspaceServicePayload = {
   hostname: "main.api.localhost",
   port: 3001,
   url: "http://main.api.localhost:6767",
-  status: "stopped",
+  lifecycle: "stopped",
+  health: null,
 };
 
 describe("applyStoredOrdering", () => {

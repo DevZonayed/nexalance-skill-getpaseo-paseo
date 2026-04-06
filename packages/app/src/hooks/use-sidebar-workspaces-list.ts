@@ -145,7 +145,7 @@ export function buildSidebarProjectsFromWorkspaces(input: {
       statusBucket: workspace.status,
       diffStat: workspace.diffStat,
       services: workspace.services,
-      hasRunningServices: workspace.services.some((service) => service.status === "running"),
+      hasRunningServices: workspace.services.some((service) => service.lifecycle === "running"),
     };
 
     project.workspaces.push(row);

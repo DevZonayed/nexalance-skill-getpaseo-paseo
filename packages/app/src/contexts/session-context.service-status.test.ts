@@ -28,7 +28,8 @@ const runningService: WorkspaceServicePayload = {
   hostname: "main.web.localhost",
   port: 3000,
   url: "http://main.web.localhost:6767",
-  status: "running",
+  lifecycle: "running",
+  health: "healthy",
 };
 
 describe("patchWorkspaceServices", () => {

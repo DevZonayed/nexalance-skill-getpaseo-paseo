@@ -248,7 +248,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly terminalManager: TerminalManager | null;
   private readonly serviceRouteStore: ServiceRouteStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
-  private readonly resolveServiceStatus: ((hostname: string) => "running" | "stopped" | null) | null;
+  private readonly resolveServiceHealth:
+    | ((hostname: string) => "healthy" | "unhealthy" | null)
+    | null;
   private readonly dictation: {
     finalTimeoutMs?: number;
   } | null;
@@ -326,7 +328,7 @@ export class VoiceAssistantWebSocketServer {
       newBranch: string | null,
     ) => void,
     getDaemonTcpPort?: () => number | null,
-    resolveServiceStatus?: (hostname: string) => "running" | "stopped" | null,
+    resolveServiceHealth?: (hostname: string) => "healthy" | "unhealthy" | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -373,7 +375,7 @@ export class VoiceAssistantWebSocketServer {
     this.serviceRouteStore = serviceRouteStore ?? null;
     this.onBranchChanged = onBranchChanged ?? null;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
-    this.resolveServiceStatus = resolveServiceStatus ?? null;
+    this.resolveServiceHealth = resolveServiceHealth ?? null;
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
     });
@@ -693,7 +695,7 @@ export class VoiceAssistantWebSocketServer {
       serviceRouteStore: this.serviceRouteStore ?? undefined,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
-      resolveServiceStatus: this.resolveServiceStatus ?? undefined,
+      resolveServiceHealth: this.resolveServiceHealth ?? undefined,
       voice: {
         ...(this.voice ?? {}),
         turnDetection: () => this.speech?.resolveTurnDetection() ?? null,

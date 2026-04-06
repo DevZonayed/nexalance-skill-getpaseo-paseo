@@ -16,7 +16,6 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import {
   requireWorkspaceExecutionAuthority,
-  requireWorkspaceRecordId,
 } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ImageAttachment, MessagePayload } from "./message-input";
@@ -179,7 +178,7 @@ export function WorkspaceSetupDialog() {
         const agent = await connectedClient.createAgent({
           provider: composerState.selectedProvider,
           cwd: workspaceDirectory,
-          workspaceId: requireWorkspaceRecordId(workspace.id),
+          workspaceId: workspace.id,
           ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
             ? { modeId: composerState.selectedMode }
             : {}),

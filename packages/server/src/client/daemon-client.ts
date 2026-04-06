@@ -197,7 +197,7 @@ export type CreateAgentRequestOptions = {
   config?: AgentSessionConfig;
   provider?: AgentProvider;
   cwd?: string;
-  workspaceId?: number;
+  workspaceId?: string | number;
   initialPrompt?: string;
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
@@ -1322,6 +1322,23 @@ export class DaemonClient {
     });
   }
 
+  async startWorkspaceService(
+    workspaceId: string,
+    serviceName: string,
+    requestId?: string,
+  ): Promise<Extract<SessionOutboundMessage, { type: "start_workspace_service_response" }>["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "start_workspace_service_request",
+        workspaceId,
+        serviceName,
+      },
+      responseType: "start_workspace_service_response",
+      timeout: 10000,
+    });
+  }
+
   async archiveWorkspace(
     workspaceId: number,
     requestId?: string,
@@ -1423,7 +1440,7 @@ export class DaemonClient {
       type: "create_agent_request",
       requestId,
       config,
-      ...(typeof options.workspaceId === "number" ? { workspaceId: options.workspaceId } : {}),
+      ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
       ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
       ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),

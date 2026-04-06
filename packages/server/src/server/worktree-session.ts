@@ -778,6 +778,9 @@ export async function createPaseoWorktreeInBackground(
         routeStore: dependencies.serviceRouteStore,
         terminalManager: dependencies.terminalManager,
         logger: dependencies.sessionLogger,
+        onLifecycleChanged: () => {
+          void dependencies.emitWorkspaceUpdateForCwd(worktree.worktreePath);
+        },
       });
     } catch (error) {
       dependencies.sessionLogger.error(

@@ -74,7 +74,8 @@ describe("workspace message schemas", () => {
               hostname: "web.localhost",
               port: 3000,
               url: "http://web.localhost:6767",
-              status: "running",
+              lifecycle: "running",
+              health: "healthy",
             },
           ],
         },
@@ -91,7 +92,8 @@ describe("workspace message schemas", () => {
         hostname: "web.localhost",
         port: 3000,
         url: "http://web.localhost:6767",
-        status: "running",
+        lifecycle: "running",
+        health: "healthy",
       },
     ]);
   });
@@ -134,9 +136,10 @@ describe("workspace message schemas", () => {
           {
             serviceName: "web",
             hostname: "web.localhost",
-            port: 3000,
+            port: null,
             url: null,
-            status: "stopped",
+            lifecycle: "stopped",
+            health: null,
           },
         ],
       },

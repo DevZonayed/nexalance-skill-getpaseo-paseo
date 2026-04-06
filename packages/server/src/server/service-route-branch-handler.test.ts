@@ -111,7 +111,8 @@ describe("service-route-branch-handler", () => {
         hostname: "feature-billing.api.localhost",
         port: 3001,
         url: null,
-        status: "stopped",
+        lifecycle: "running",
+        health: null,
       },
     ]);
   });

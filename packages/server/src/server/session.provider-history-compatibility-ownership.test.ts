@@ -170,6 +170,65 @@ describe("provider history compatibility ownership", () => {
     });
   });
 
+  test("fetch_agent_timeline_request emits legacy compatibility fields for older clients", async () => {
+    const ensureAgentLoaded = vi.fn(async () => createCompatibilitySnapshot());
+    const { session, emitted } = createSessionForOwnershipTests({
+      storedRecord: createStoredAgentRecord(),
+      timelineRows: [
+        {
+          seq: 7,
+          item: { type: "assistant_message", text: "compat row" },
+          timestamp: new Date("2026-03-24T00:00:07.000Z"),
+        },
+      ],
+      agentLoadingService: {
+        ensureAgentLoaded,
+      },
+    });
+
+    session.buildAgentPayload = vi.fn(async () => ({ id: "agent-1" }));
+
+    await session.handleMessage({
+      type: "fetch_agent_timeline_request",
+      requestId: "req-compat",
+      agentId: "agent-1",
+      direction: "tail",
+    });
+
+    expect(emitted).toContainEqual({
+      type: "fetch_agent_timeline_response",
+      payload: expect.objectContaining({
+        requestId: "req-compat",
+        agentId: "agent-1",
+        epoch: "compat:agent-1",
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        projection: "projected",
+        startCursor: { seq: 7, epoch: "compat:agent-1" },
+        endCursor: { seq: 7, epoch: "compat:agent-1" },
+        window: {
+          minSeq: 7,
+          maxSeq: 7,
+          nextSeq: 8,
+          startSeq: 7,
+          endSeq: 7,
+          hasOlder: false,
+          hasNewer: false,
+        },
+        entries: [
+          expect.objectContaining({
+            seq: 7,
+            seqStart: 7,
+            seqEnd: 7,
+            sourceSeqRanges: [{ startSeq: 7, endSeq: 7 }],
+            collapsed: [],
+          }),
+        ],
+      }),
+    });
+  });
+
   test("send_agent_message_request delegates unloaded bootstrap before recording and streaming", async () => {
     const ensureAgentLoaded = vi.fn(async () => createCompatibilitySnapshot());
     const { session, agentManager, emitted } = createSessionForOwnershipTests({

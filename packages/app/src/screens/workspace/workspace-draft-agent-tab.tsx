@@ -13,10 +13,7 @@ import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-dr
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import { encodeImages } from "@/utils/encode-images";
-import {
-  getWorkspaceExecutionAuthority,
-  requireWorkspaceRecordId,
-} from "@/utils/workspace-execution";
+import { getWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
@@ -173,7 +170,7 @@ export function WorkspaceDraftAgentTab({
       const imagesData = await encodeImages(images);
       const result = await client.createAgent({
         config,
-        workspaceId: requireWorkspaceRecordId(workspaceExecutionAuthority.workspaceId),
+        workspaceId: workspaceExecutionAuthority.workspaceId,
         ...(text ? { initialPrompt: text } : {}),
         clientMessageId: attempt.clientMessageId,
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),

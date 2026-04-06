@@ -99,6 +99,11 @@ export class ServiceRouteStore {
     return null;
   }
 
+  getRouteEntry(hostname: string): ServiceRouteEntry | null {
+    const entry = this.routes.get(hostname);
+    return entry ? { ...entry } : null;
+  }
+
   listRoutes(): ServiceRouteEntry[] {
     return Array.from(this.routes.values()).map((entry) => ({ ...entry }));
   }

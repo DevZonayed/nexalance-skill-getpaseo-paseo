@@ -704,7 +704,7 @@ export async function createPaseoDaemon(
       serviceRouteStore,
       handleBranchChange,
       () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
-      (hostname) => serviceHealthMonitor.getStatusForHostname(hostname),
+      (hostname) => serviceHealthMonitor.getHealthForHostname(hostname),
     );
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");

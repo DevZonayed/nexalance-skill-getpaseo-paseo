@@ -1262,6 +1262,13 @@ export const CreateTerminalRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const StartWorkspaceServiceRequestSchema = z.object({
+  type: z.literal("start_workspace_service_request"),
+  workspaceId: z.string(),
+  serviceName: z.string(),
+  requestId: z.string(),
+});
+
 export const SubscribeTerminalRequestSchema = z.object({
   type: z.literal("subscribe_terminal_request"),
   terminalId: z.string(),
@@ -1373,6 +1380,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SubscribeTerminalsRequestSchema,
   UnsubscribeTerminalsRequestSchema,
   CreateTerminalRequestSchema,
+  StartWorkspaceServiceRequestSchema,
   SubscribeTerminalRequestSchema,
   UnsubscribeTerminalRequestSchema,
   TerminalInputSchema,
@@ -1728,12 +1736,16 @@ export const ProjectPlacementPayloadSchema = z.object({
   checkout: ProjectCheckoutLitePayloadSchema,
 });
 
+export const WorkspaceServiceLifecycleSchema = z.enum(["running", "stopped"]);
+export const WorkspaceServiceHealthSchema = z.enum(["healthy", "unhealthy"]);
+
 export const WorkspaceServicePayloadSchema = z.object({
   serviceName: z.string(),
   hostname: z.string(),
-  port: z.number().int().positive(),
+  port: z.number().int().positive().nullable(),
   url: z.string().nullable(),
-  status: z.enum(["running", "stopped"]),
+  lifecycle: WorkspaceServiceLifecycleSchema,
+  health: WorkspaceServiceHealthSchema.nullable(),
 });
 
 export const WorkspaceDescriptorPayloadSchema = z.object({
@@ -1889,6 +1901,16 @@ export const OpenProjectResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     workspace: WorkspaceDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const StartWorkspaceServiceResponseMessageSchema = z.object({
+  type: z.literal("start_workspace_service_response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    serviceName: z.string(),
     error: z.string().nullable(),
   }),
 });
@@ -2585,6 +2607,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentsResponseMessageSchema,
   FetchWorkspacesResponseMessageSchema,
   OpenProjectResponseMessageSchema,
+  StartWorkspaceServiceResponseMessageSchema,
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
@@ -2682,11 +2705,16 @@ export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePaylo
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
 export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>;
 export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>;
+export type WorkspaceServiceLifecycle = z.infer<typeof WorkspaceServiceLifecycleSchema>;
+export type WorkspaceServiceHealth = z.infer<typeof WorkspaceServiceHealthSchema>;
 export type WorkspaceServicePayload = z.infer<typeof WorkspaceServicePayloadSchema>;
 export type FetchAgentsResponseMessage = z.infer<typeof FetchAgentsResponseMessageSchema>;
 export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>;
 export type ServiceStatusUpdateMessage = z.infer<typeof ServiceStatusUpdateMessageSchema>;
 export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessageSchema>;
+export type StartWorkspaceServiceResponseMessage = z.infer<
+  typeof StartWorkspaceServiceResponseMessageSchema
+>;
 export type ArchiveWorkspaceResponseMessage = z.infer<typeof ArchiveWorkspaceResponseMessageSchema>;
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>;
 export type FetchAgentTimelineResponseMessage = z.infer<
@@ -2860,6 +2888,8 @@ export type UnsubscribeTerminalsRequest = z.infer<typeof UnsubscribeTerminalsReq
 export type TerminalsChanged = z.infer<typeof TerminalsChangedSchema>;
 export type CreateTerminalRequest = z.infer<typeof CreateTerminalRequestSchema>;
 export type CreateTerminalResponse = z.infer<typeof CreateTerminalResponseSchema>;
+export type StartWorkspaceServiceRequest = z.infer<typeof StartWorkspaceServiceRequestSchema>;
+export type StartWorkspaceServiceResponse = z.infer<typeof StartWorkspaceServiceResponseMessageSchema>;
 export type SubscribeTerminalRequest = z.infer<typeof SubscribeTerminalRequestSchema>;
 export type SubscribeTerminalResponse = z.infer<typeof SubscribeTerminalResponseSchema>;
 export type UnsubscribeTerminalRequest = z.infer<typeof UnsubscribeTerminalRequestSchema>;

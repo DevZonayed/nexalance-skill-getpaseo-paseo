@@ -262,7 +262,7 @@ function WorkspaceStatusIndicator({
   }
 
   const KindIcon =
-    workspaceKind === "checkout"
+    workspaceKind === "local_checkout"
       ? Monitor
       : workspaceKind === "worktree"
         ? FolderGit2

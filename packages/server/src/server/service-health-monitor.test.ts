@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { findFreePort, ServiceRouteStore } from "./service-proxy.js";
 import {
   ServiceHealthMonitor,
-  type ServiceStatusEntry,
+  type ServiceHealthEntry,
 } from "./service-health-monitor.js";
 
 type TcpServerHandle = {
@@ -82,7 +82,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -101,7 +101,7 @@ describe("ServiceHealthMonitor", () => {
         serviceName: "api",
         hostname: "api.localhost",
         port: healthy.port,
-        status: "running",
+        health: "healthy",
       },
     ]);
   });
@@ -118,7 +118,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -141,7 +141,7 @@ describe("ServiceHealthMonitor", () => {
         serviceName: "api",
         hostname: "api.localhost",
         port: deadPort,
-        status: "stopped",
+        health: "unhealthy",
       },
     ]);
   });
@@ -160,7 +160,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -190,7 +190,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -212,7 +212,7 @@ describe("ServiceHealthMonitor", () => {
         serviceName: "api",
         hostname: "api.localhost",
         port: healthy.port,
-        status: "running",
+        health: "healthy",
       },
     ]);
   });
@@ -231,7 +231,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -260,7 +260,7 @@ describe("ServiceHealthMonitor", () => {
         serviceName: "api",
         hostname: "api.localhost",
         port: healthy.port,
-        status: "stopped",
+        health: "unhealthy",
       },
     ]);
   });
@@ -279,7 +279,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -325,7 +325,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "web",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -344,18 +344,18 @@ describe("ServiceHealthMonitor", () => {
         serviceName: "api",
         hostname: "api.localhost",
         port: api.port,
-        status: "running",
+        health: "healthy",
       },
       {
         serviceName: "web",
         hostname: "web.localhost",
         port: web.port,
-        status: "running",
+        health: "healthy",
       },
     ]);
   });
 
-  it("getStatusForHostname returns current status after probe", async () => {
+  it("getHealthForHostname returns current health after probe", async () => {
     vi.useFakeTimers();
 
     const healthy = await startTcpServer();
@@ -369,7 +369,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -378,14 +378,14 @@ describe("ServiceHealthMonitor", () => {
       graceMs: 0,
     });
 
-    expect(monitor.getStatusForHostname("api.localhost")).toBeNull();
+    expect(monitor.getHealthForHostname("api.localhost")).toBeNull();
 
     monitor.start();
     await advancePoll(1_000);
     monitor.stop();
 
-    expect(monitor.getStatusForHostname("api.localhost")).toBe("running");
-    expect(monitor.getStatusForHostname("unknown.localhost")).toBeNull();
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
+    expect(monitor.getHealthForHostname("unknown.localhost")).toBeNull();
   });
 
   it("coalesces multiple service changes in same workspace into one onChange call per poll cycle", async () => {
@@ -410,7 +410,7 @@ describe("ServiceHealthMonitor", () => {
       serviceName: "web",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceStatusEntry[]) => void>();
+    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
     const monitor = new ServiceHealthMonitor({
       routeStore,
       onChange,
@@ -442,13 +442,13 @@ describe("ServiceHealthMonitor", () => {
         serviceName: "api",
         hostname: "api.localhost",
         port: api.port,
-        status: "stopped",
+        health: "unhealthy",
       },
       {
         serviceName: "web",
         hostname: "web.localhost",
         port: web.port,
-        status: "stopped",
+        health: "unhealthy",
       },
     ]);
   });

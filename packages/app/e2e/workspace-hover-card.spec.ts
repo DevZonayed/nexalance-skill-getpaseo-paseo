@@ -50,6 +50,28 @@ async function expectServiceRunning(page: Page, serviceName: string): Promise<vo
   ).toHaveAttribute("aria-label", "Running", { timeout: 10_000 });
 }
 
+/** Asserts the service lifecycle is stopped. */
+async function expectServiceStopped(page: Page, serviceName: string): Promise<void> {
+  const card = page.getByTestId("workspace-hover-card");
+  await expect(
+    card.getByTestId(`hover-card-service-status-${serviceName}`),
+  ).toHaveAttribute("aria-label", "Stopped", { timeout: 10_000 });
+}
+
+/** Asserts the service health label shown in the hover card. */
+async function expectServiceHealth(
+  page: Page,
+  serviceName: string,
+  health: "Healthy" | "Unhealthy" | "Unknown",
+): Promise<void> {
+  const card = page.getByTestId("workspace-hover-card");
+  await expect(card.getByTestId(`hover-card-service-health-${serviceName}`)).toHaveAttribute(
+    "aria-label",
+    health,
+    { timeout: 10_000 },
+  );
+}
+
 /** Asserts the hover card contains the workspace name. */
 async function expectWorkspaceNameInCard(page: Page, name: string): Promise<void> {
   const card = page.getByTestId("workspace-hover-card");
@@ -133,6 +155,51 @@ test.describe("Workspace hover card", () => {
 
       // Move mouse away — card should dismiss
       await expectHoverCardDismissed(page);
+    } finally {
+      await client.close();
+      await repo.cleanup();
+    }
+  });
+
+  test("shows stopped services and starts them from the hover card", async ({ page }) => {
+    const client = await connectWorkspaceSetupClient();
+    const repo = await createTempGitRepo("hovercard-start-", {
+      paseoConfig: {
+        services: {
+          web: {
+            command:
+              "node -e \"const http = require('http'); const s = http.createServer((q,r) => r.end('ok')); s.listen(process.env.PORT || 3000, '127.0.0.1', () => console.log('listening on ' + s.address().port))\"",
+          },
+        },
+      },
+    });
+
+    try {
+      await seedProjectForWorkspaceSetup(client, repo.path);
+      const workspace = await client.openProject(repo.path);
+      if (!workspace.workspace || workspace.error) {
+        throw new Error(workspace.error ?? `Failed to open project ${repo.path}`);
+      }
+
+      await openHomeWithProject(page, repo.path);
+      const wsRow = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspace.id}`);
+      await expect(wsRow).toBeVisible({ timeout: 30_000 });
+
+      await expectHoverCard(page, workspace.workspace.name);
+      await expectWorkspaceNameInCard(page, workspace.workspace.name);
+      await expectServiceInCard(page, "web");
+      await expectServiceStopped(page, "web");
+      await expectServiceHealth(page, "web", "Unknown");
+
+      const card = page.getByTestId("workspace-hover-card");
+      const startButton = card.getByTestId("hover-card-service-start-web");
+      await expect(startButton).toBeVisible({ timeout: 10_000 });
+      await startButton.click();
+
+      await expectServiceRunning(page, "web");
+      await expectServiceHealth(page, "web", "Healthy");
+      await expect(card.getByRole("link", { name: "web service" })).toBeVisible({ timeout: 10_000 });
+      await expect(startButton).not.toBeVisible({ timeout: 10_000 });
     } finally {
       await client.close();
       await repo.cleanup();

@@ -57,6 +57,7 @@ function createTerminalManagerStub(options?: {
             grid: [],
           }),
           subscribe: () => () => {},
+          onExit: () => () => {},
           send: (message: { type: string; data: string }) => {
             if (message.type === "input") {
               sent.push(message.data);

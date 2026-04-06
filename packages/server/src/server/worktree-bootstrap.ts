@@ -768,6 +768,115 @@ export interface WorktreeServiceResult {
   terminalId: string;
 }
 
+type SpawnWorkspaceServiceOptions = {
+  repoRoot: string;
+  workspaceId: string;
+  branchName: string | null;
+  serviceName: string;
+  daemonPort?: number | null;
+  routeStore: ServiceRouteStore;
+  terminalManager: TerminalManager;
+  logger?: Logger;
+  onLifecycleChanged?: () => void;
+};
+
+export async function spawnWorkspaceService(
+  options: SpawnWorkspaceServiceOptions,
+): Promise<WorktreeServiceResult> {
+  const {
+    repoRoot,
+    workspaceId,
+    branchName,
+    serviceName,
+    daemonPort,
+    routeStore,
+    terminalManager,
+    logger,
+    onLifecycleChanged,
+  } = options;
+  const serviceConfigs = getServiceConfigs(repoRoot);
+  const config = serviceConfigs.get(serviceName);
+  if (!config) {
+    throw new Error(`Service '${serviceName}' is not configured in paseo.json`);
+  }
+
+  let hostname: string | null = null;
+  let port: number | null = null;
+
+  try {
+    hostname = buildServiceHostname(branchName, serviceName);
+    const resolvedHostname = hostname;
+    if (routeStore.getRouteEntry(resolvedHostname)) {
+      throw new Error(`Service '${serviceName}' is already running`);
+    }
+
+    port = config.port ?? (await findFreePort());
+
+    routeStore.registerRoute({
+      hostname: resolvedHostname,
+      port,
+      workspaceId,
+      serviceName,
+    });
+
+    const env: Record<string, string> = {
+      PORT: String(port),
+      HOST: "127.0.0.1",
+    };
+    if (daemonPort !== null && daemonPort !== undefined) {
+      env.PASEO_SERVICE_URL = `http://${resolvedHostname}:${daemonPort}`;
+    }
+
+    const terminal = await terminalManager.createTerminal({
+      cwd: repoRoot,
+      name: serviceName,
+      env,
+    });
+
+    terminal.onExit(() => {
+      routeStore.removeRoute(resolvedHostname);
+      onLifecycleChanged?.();
+      logger?.info(
+        { serviceName, hostname: resolvedHostname, terminalId: terminal.id },
+        "Stopped worktree service",
+      );
+    });
+
+    await waitForTerminalBootstrapReadiness(terminal);
+    terminal.send({ type: "input", data: `${config.command}\r` });
+
+    logger?.info(
+      { serviceName, hostname: resolvedHostname, port, terminalId: terminal.id },
+      `Registered service proxy: ${resolvedHostname} -> 127.0.0.1:${port}`,
+    );
+
+    onLifecycleChanged?.();
+    return {
+      serviceName,
+      hostname: resolvedHostname,
+      port,
+      terminalId: terminal.id,
+    };
+  } catch (error) {
+    if (hostname && port !== null) {
+      routeStore.removeRoute(hostname);
+    }
+    logger?.error(
+      {
+        err: error,
+        serviceName,
+        repoRoot,
+        branchName,
+        hostname,
+        port,
+        command: config.command,
+      },
+      "Failed to spawn worktree service",
+    );
+    throw error;
+  }
+}
+
 export async function spawnWorktreeServices(options: {
   repoRoot: string;
   workspaceId: string;
@@ -776,77 +885,22 @@ export async function spawnWorktreeServices(options: {
   routeStore: ServiceRouteStore;
   terminalManager: TerminalManager;
   logger?: Logger;
+  onLifecycleChanged?: () => void;
 }): Promise<WorktreeServiceResult[]> {
-  const { repoRoot, workspaceId, branchName, daemonPort, routeStore, terminalManager, logger } =
-    options;
+  const { repoRoot } = options;
   const serviceConfigs = getServiceConfigs(repoRoot);
   if (serviceConfigs.size === 0) {
     return [];
   }
 
   const results: WorktreeServiceResult[] = [];
-
-  for (const [serviceName, config] of serviceConfigs) {
-    let hostname: string | null = null;
-    let port: number | null = null;
-
-    try {
-      port = config.port ?? (await findFreePort());
-      hostname = buildServiceHostname(branchName, serviceName);
-
-      routeStore.registerRoute({
-        hostname,
-        port,
-        workspaceId,
+  for (const serviceName of serviceConfigs.keys()) {
+    results.push(
+      await spawnWorkspaceService({
+        ...options,
         serviceName,
-      });
-
-      const env: Record<string, string> = {
-        PORT: String(port),
-        HOST: "127.0.0.1",
-      };
-      if (daemonPort !== null && daemonPort !== undefined) {
-        env.PASEO_SERVICE_URL = `http://${hostname}:${daemonPort}`;
-      }
-
-      const terminal = await terminalManager.createTerminal({
-        cwd: repoRoot,
-        name: serviceName,
-        env,
-      });
-
-      await waitForTerminalBootstrapReadiness(terminal);
-      terminal.send({ type: "input", data: `${config.command}\r` });
-
-      logger?.info(
-        { serviceName, hostname, port, terminalId: terminal.id },
-        `Registered service proxy: ${hostname} -> 127.0.0.1:${port}`,
-      );
-
-      results.push({
-        serviceName,
-        hostname,
-        port,
-        terminalId: terminal.id,
-      });
-    } catch (error) {
-      if (hostname && port !== null) {
-        routeStore.removeRoute(hostname);
-      }
-      logger?.error(
-        {
-          err: error,
-          serviceName,
-          repoRoot,
-          branchName,
-          hostname,
-          port,
-          command: config.command,
-        },
-        "Failed to spawn worktree service",
-      );
-      throw error;
-    }
+      }),
+    );
   }
 
   return results;
