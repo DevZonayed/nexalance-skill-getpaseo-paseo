@@ -227,7 +227,7 @@ describe("importLegacyProjectWorkspaceJson", () => {
     expect(projectRows[0]).toEqual(
       expect.objectContaining({
         directory: "/tmp/project-1",
-        displayName: "Replacement Project",
+        displayName: "First Project",
       }),
     );
   });

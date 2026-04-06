@@ -11,7 +11,7 @@ export function resolveProviderLabel(
   return providerDefinitions.find((definition) => definition.id === providerId)?.label ?? providerId;
 }
 
-export function buildSelectedTriggerLabel(providerLabel: string, modelLabel: string): string {
+export function buildSelectedTriggerLabel(modelLabel: string): string {
   return modelLabel;
 }
 

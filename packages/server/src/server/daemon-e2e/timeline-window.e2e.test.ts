@@ -30,7 +30,7 @@ describe("daemon E2E - timeline window", () => {
         modeId: "full-access",
       });
 
-      const expected = "1234567890ABCDEFGHIJ";
+      const expected = "READY";
       await ctx.client.sendMessage(agent.id, `Respond with exactly: ${expected}`);
       const finalState = await ctx.client.waitForFinish(agent.id, 5_000);
       expect(finalState.status).toBe("idle");
@@ -61,10 +61,10 @@ describe("daemon E2E - timeline window", () => {
         modeId: "full-access",
       });
 
-      await ctx.client.sendMessage(agent.id, "Respond with exactly: FIRST-RESPONSE");
+      await ctx.client.sendMessage(agent.id, "Respond with exactly: FIRST");
       expect((await ctx.client.waitForFinish(agent.id, 5_000)).status).toBe("idle");
 
-      const expected = "SECOND-RESPONSE";
+      const expected = "SECOND";
       await ctx.client.sendMessage(agent.id, `Respond with exactly: ${expected}`);
       expect((await ctx.client.waitForFinish(agent.id, 5_000)).status).toBe("idle");
 

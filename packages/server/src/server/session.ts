@@ -1304,6 +1304,22 @@ export class Session {
     return workspaces.find((workspace) => workspace.directory === normalizedCwd) ?? null;
   }
 
+  /**
+   * Resolve a workspace ID that may be either a numeric ID (legacy) or a directory path
+   * (sent by clients that received the path-based descriptor format).
+   */
+  private async resolveWorkspaceByIdOrDirectory(
+    workspaceId: string,
+  ): Promise<PersistedWorkspaceRecord | null> {
+    const numericId = Number(workspaceId);
+    if (!Number.isNaN(numericId)) {
+      const record = await this.workspaceRegistry.get(numericId);
+      if (record) return record;
+    }
+    // Fallback: treat as directory path
+    return this.findWorkspaceByDirectory(workspaceId);
+  }
+
   private async resolveWorkspaceDirectory(cwd: string): Promise<string> {
     const normalizedCwd = normalizePersistedWorkspaceId(cwd);
     try {
@@ -1970,6 +1986,10 @@ export class Session {
       );
     }
 
+    // Drain queued persistence from the just-closed agent before removing its
+    // durable snapshot, otherwise an in-flight background write can recreate it.
+    await this.agentManager.flush();
+
     try {
       await this.agentStorage.remove(agentId);
       await this.agentManager.deleteCommittedTimeline(agentId);
@@ -2031,20 +2051,7 @@ export class Session {
     }
 
     const archivedAt = new Date().toISOString();
-    const normalizedStatus =
-      existing.lastStatus === "running" || existing.lastStatus === "initializing"
-        ? "idle"
-        : existing.lastStatus;
-
-    await this.agentStorage.upsert({
-      ...existing,
-      archivedAt,
-      updatedAt: archivedAt,
-      lastStatus: normalizedStatus,
-      requiresAttention: false,
-      attentionReason: null,
-      attentionTimestamp: null,
-    });
+    await this.agentManager.archiveSnapshot(agentId, archivedAt);
 
     return { agentId, archivedAt };
   }
@@ -2743,7 +2750,7 @@ export class Session {
       );
       const resolvedWorkspace =
         msg.workspaceId
-          ? await this.workspaceRegistry.get(Number(msg.workspaceId))
+          ? await this.resolveWorkspaceByIdOrDirectory(msg.workspaceId)
           : (await this.findWorkspaceByDirectory(sessionConfig.cwd)) ??
             (await this.findOrCreateWorkspaceForDirectory(sessionConfig.cwd));
       if (!resolvedWorkspace) {
@@ -5202,8 +5209,8 @@ export class Session {
     }
 
     return {
-      id: String(workspace.id),
-      projectId: String(workspace.projectId),
+      id: workspace.directory,
+      projectId: resolvedProjectRecord?.directory ?? workspace.directory,
       projectDisplayName: resolvedProjectRecord?.displayName ?? String(workspace.projectId),
       projectRootPath: resolvedProjectRecord?.directory ?? workspace.directory,
       workspaceDirectory: workspace.directory,
@@ -5704,7 +5711,7 @@ export class Session {
     const persistedWorkspace = await this.findWorkspaceByDirectory(normalizedCwd);
     const all = await this.listWorkspaceDescriptorsSnapshot();
     const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
-    const workspaceIdsToEmit = persistedWorkspace ? [String(persistedWorkspace.id)] : [];
+    const workspaceIdsToEmit = persistedWorkspace ? [persistedWorkspace.directory] : [];
 
     for (const nextWorkspaceId of workspaceIdsToEmit) {
       const workspace = descriptorsByWorkspaceId.get(nextWorkspaceId);
@@ -5762,7 +5769,7 @@ export class Session {
 
     for (const workspaceCwd of uniqueWorkspaceCwds) {
       const persistedWorkspace = await this.findWorkspaceByDirectory(workspaceCwd);
-      const workspace = persistedWorkspace ? descriptorsByWorkspaceId.get(String(persistedWorkspace.id)) : null;
+      const workspace = persistedWorkspace ? descriptorsByWorkspaceId.get(persistedWorkspace.directory) : null;
       const nextWorkspace =
         workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
           ? workspace
@@ -5773,7 +5780,7 @@ export class Session {
         if (persistedWorkspace) {
           this.bufferOrEmitWorkspaceUpdate(subscription, {
             kind: "remove",
-            id: String(persistedWorkspace.id),
+            id: persistedWorkspace.directory,
           });
         }
         continue;
@@ -5988,6 +5995,7 @@ export class Session {
       {
         emit: (message) => this.emit(message),
         workspaceSetupSnapshots: this.workspaceSetupSnapshots,
+        workspaceRegistry: this.workspaceRegistry,
       },
       request,
     );
@@ -5997,8 +6005,7 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "archive_workspace_request" }>,
   ): Promise<void> {
     try {
-      const numericWorkspaceId = Number(request.workspaceId);
-      const existing = await this.workspaceRegistry.get(numericWorkspaceId);
+      const existing = await this.resolveWorkspaceByIdOrDirectory(request.workspaceId);
       if (!existing) {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
@@ -6006,7 +6013,7 @@ export class Session {
         throw new Error("Use worktree archive for Paseo worktrees");
       }
       const archivedAt = new Date().toISOString();
-      await this.archiveWorkspaceRecord(numericWorkspaceId, archivedAt);
+      await this.archiveWorkspaceRecord(existing.id, archivedAt);
       await this.emitWorkspaceUpdateForCwd(existing.directory);
       this.emit({
         type: "archive_workspace_response",

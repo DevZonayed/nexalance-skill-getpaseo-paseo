@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -17,7 +17,8 @@ export const createTempGitRepo = async (
   },
 ): Promise<TempRepo> => {
   // Keep E2E repo paths short so terminal prompt + typed commands stay visible without zsh clipping.
-  const tempRoot = process.platform === "win32" ? tmpdir() : "/tmp";
+  // Resolve symlinks (macOS: /tmp → /private/tmp) so paths match the daemon's resolved paths.
+  const tempRoot = process.platform === "win32" ? tmpdir() : await realpath("/tmp");
   const repoPath = await mkdtemp(path.join(tempRoot, prefix));
   const withRemote = options?.withRemote ?? false;
 

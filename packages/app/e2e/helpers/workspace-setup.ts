@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -147,8 +148,8 @@ export async function createWorkspaceFromSidebar(page: Page, repoPath: string): 
   await expect(button).toBeVisible({ timeout: 30_000 });
   await expect(button).toBeEnabled({ timeout: 30_000 });
   await button.click();
-  await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
-  await expect(page.getByTestId("workspace-setup-dialog")).toBeVisible({ timeout: 30_000 });
+  await expect(page).toHaveURL(/\/new\?/, { timeout: 30_000 });
+  await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeVisible({ timeout: 30_000 });
 }
 
 export async function getCurrentWorkspaceIdFromRoute(page: Page): Promise<string> {
@@ -176,16 +177,16 @@ export async function createChatAgentFromWorkspaceSetup(
   page: Page,
   input: { message: string },
 ): Promise<void> {
-  const dialog = workspaceSetupDialog(page);
-  await dialog.getByRole("button", { name: /Chat Agent/i }).click();
-
-  const messageInput = dialog.getByRole("textbox", { name: "Message agent..." }).first();
+  const messageInput = page.getByRole("textbox", { name: "Message agent..." }).first();
   await expect(messageInput).toBeVisible({ timeout: 15_000 });
   await messageInput.fill(input.message);
-
-  await dialog.getByRole("button", { name: "Send message" }).click();
+  await messageInput.press("Enter");
 }
 
+/**
+ * @deprecated The new workspace screen no longer has a standalone terminal button.
+ * Use the daemon API to create a workspace, then open a terminal from the launcher.
+ */
 export async function createStandaloneTerminalFromWorkspaceSetup(page: Page): Promise<void> {
   await workspaceSetupDialog(page)
     .getByRole("button", { name: /^Terminal Create the workspace/i })
@@ -209,7 +210,21 @@ export async function waitForWorkspaceSetupDialogToClose(page: Page, timeoutMs =
 }
 
 export async function expectSetupPanel(page: Page): Promise<void> {
-  await expect(page.getByText("Workspace setup", { exact: true })).toBeVisible({ timeout: 30_000 });
+  // If the setup panel is already visible (auto-opened), we're done.
+  const panel = page.getByTestId("workspace-setup-panel");
+  if (await panel.isVisible().catch(() => false)) {
+    return;
+  }
+  // Otherwise open it manually via workspace header actions menu.
+  // Use the specific testID to avoid matching the sidebar kebab which shares
+  // the same "Workspace actions" accessibility label.
+  const actionsButton = page.getByTestId("workspace-header-menu-trigger");
+  await expect(actionsButton).toBeVisible({ timeout: 10_000 });
+  await actionsButton.click();
+  const showSetup = page.getByTestId("workspace-header-show-setup");
+  await expect(showSetup).toBeVisible({ timeout: 5_000 });
+  await showSetup.click();
+  await expect(panel).toBeVisible({ timeout: 30_000 });
 }
 
 export async function expectSetupStatus(
@@ -257,10 +272,11 @@ export async function findWorktreeWorkspaceForProject(
   workspaceDirectory: string;
 }> {
   const payload = await client.fetchWorkspaces();
+  const normalizedRepoPath = realpathSync(repoPath);
   const workspace =
     payload.entries.find(
       (entry) =>
-        entry.projectRootPath === repoPath && entry.workspaceDirectory !== repoPath,
+        entry.projectRootPath === normalizedRepoPath && entry.workspaceDirectory !== normalizedRepoPath,
     ) ?? null;
   if (!workspace) {
     throw new Error(`Failed to find created worktree workspace for ${repoPath}`);

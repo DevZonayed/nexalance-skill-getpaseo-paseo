@@ -464,13 +464,11 @@ describe("daemon E2E terminal", () => {
 
   test("propagates debounced terminal titles through list responses and snapshots", async () => {
     const cwd = tmpCwd();
-    const created = await ctx.client.createTerminal(cwd);
-    const terminalId = created.terminal!.id;
-
-    ctx.client.sendTerminalInput(terminalId, {
-      type: "input",
-      data: "printf '\\033]0;Build Output\\007'\r",
+    const created = await ctx.client.createTerminal(cwd, undefined, undefined, {
+      command: "/bin/sh",
+      args: ["-lc", "printf '\\033]0;Build Output\\007'; sleep 2"],
     });
+    const terminalId = created.terminal!.id;
 
     let listedTitle: string | undefined;
     const start = Date.now();

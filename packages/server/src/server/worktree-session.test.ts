@@ -682,6 +682,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         emit: (message) => emitted.push(message),
         workspaceSetupSnapshots: snapshots,
+        workspaceRegistry: { list: async () => [] } as any,
       },
       {
         type: "workspace_setup_status_request",
@@ -717,6 +718,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         emit: (message) => emitted.push(message),
         workspaceSetupSnapshots: new Map(),
+        workspaceRegistry: { list: async () => [] } as any,
       },
       {
         type: "workspace_setup_status_request",

@@ -96,6 +96,35 @@ describe("workspace message schemas", () => {
     ]);
   });
 
+  test("parses legacy workspace descriptor enum values", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "workspace_update",
+      payload: {
+        kind: "upsert",
+        workspace: {
+          id: "legacy-workspace",
+          projectId: "legacy-project",
+          projectDisplayName: "repo",
+          projectRootPath: "/repo",
+          workspaceDirectory: "/repo",
+          projectKind: "non_git",
+          workspaceKind: "directory",
+          name: "repo",
+          status: "done",
+          activityAt: null,
+          services: [],
+        },
+      },
+    });
+
+    expect(parsed.type).toBe("workspace_update");
+    if (parsed.type !== "workspace_update" || parsed.payload.kind !== "upsert") {
+      throw new Error("Expected workspace_update upsert payload");
+    }
+    expect(parsed.payload.workspace.projectKind).toBe("non_git");
+    expect(parsed.payload.workspace.workspaceKind).toBe("directory");
+  });
+
   test("parses service_status_update payload", () => {
     const parsed = SessionOutboundMessageSchema.parse({
       type: "service_status_update",

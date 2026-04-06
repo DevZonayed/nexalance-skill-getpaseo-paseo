@@ -528,10 +528,6 @@ export function CombinedModelSelector({
   );
 
   const ProviderIcon = getProviderIcon(selectedProvider);
-  const selectedProviderLabel = useMemo(
-    () => resolveProviderLabel(providerDefinitions, selectedProvider),
-    [providerDefinitions, selectedProvider],
-  );
 
   const selectedModelLabel = useMemo(() => {
     if (!selectedModel) {
@@ -559,8 +555,8 @@ export function CombinedModelSelector({
       return selectedModelLabel;
     }
 
-    return buildSelectedTriggerLabel(selectedProviderLabel, selectedModelLabel);
-  }, [selectedModelLabel, selectedProviderLabel]);
+    return buildSelectedTriggerLabel(selectedModelLabel);
+  }, [selectedModelLabel]);
 
   useEffect(() => {
     if (isWeb) {

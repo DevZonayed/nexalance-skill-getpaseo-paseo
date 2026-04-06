@@ -3,13 +3,20 @@ import { createTempGitRepo } from "./helpers/workspace";
 import { waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
 import {
   connectWorkspaceSetupClient,
-  createWorkspaceFromSidebar,
-  expectSetupPanel,
-  expectSetupStatus,
+  createWorkspaceThroughDaemon,
   openHomeWithProject,
   seedProjectForWorkspaceSetup,
+  waitForWorkspaceSetupProgress,
 } from "./helpers/workspace-setup";
 import type { Page } from "@playwright/test";
+
+function getServerId(): string {
+  const serverId = process.env.E2E_SERVER_ID;
+  if (!serverId) {
+    throw new Error("E2E_SERVER_ID is not set.");
+  }
+  return serverId;
+}
 
 // ---------------------------------------------------------------------------
 // Composable helpers
@@ -84,34 +91,34 @@ test.describe("Workspace hover card", () => {
 
     try {
       await seedProjectForWorkspaceSetup(client, repo.path);
-      await openHomeWithProject(page, repo.path);
-      await createWorkspaceFromSidebar(page, repo.path);
 
-      // Wait for setup to complete and workspace to be usable
-      await expectSetupPanel(page);
-      await expectSetupStatus(page, "Completed");
+      // Wait for setup completion via daemon (setup snapshots are per-session)
+      const completed = waitForWorkspaceSetupProgress(
+        client,
+        (payload) => payload.status === "completed" && payload.detail.log.includes("setup complete"),
+      );
+      const workspace = await createWorkspaceThroughDaemon(client, {
+        cwd: repo.path,
+        worktreeSlug: `hovercard-${Date.now()}`,
+      });
+      await completed;
+
+      await openHomeWithProject(page, repo.path);
+      const wsRow = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.id}`);
+      await expect(wsRow).toBeVisible({ timeout: 30_000 });
+      await wsRow.click();
+      await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
+
       await waitForWorkspaceTabsVisible(page);
 
       // Wait for the globe icon — proves services are running and client has the data
       await expectGlobeIcon(page);
 
-      // Read the workspace name from the page header (the mnemonic name, e.g. "upbeat-crab")
-      const workspaceHeader = page.getByTestId("workspace-tabs-row");
-      await expect(workspaceHeader).toBeVisible({ timeout: 10_000 });
-      // The workspace name is the second workspace row button in the sidebar under the worktree project
-      // We can find it by looking for the workspace row that has the globe icon next to it
-      const globeIcon = page.getByTestId("workspace-globe-icon");
-      const workspaceRow = page.locator('[data-testid^="sidebar-workspace-row-"]', {
-        has: globeIcon,
-      });
-      const workspaceName =
-        (await workspaceRow.locator("button").first().innerText()).trim() || "workspace";
-
       // Hover the workspace row — hover card should appear
-      await expectHoverCard(page, workspaceName);
+      await expectHoverCard(page, workspace.name);
 
       // Assert the card shows the workspace name
-      await expectWorkspaceNameInCard(page, workspaceName);
+      await expectWorkspaceNameInCard(page, workspace.name);
 
       // Assert the "web" service entry exists in the card
       await expectServiceInCard(page, "web");

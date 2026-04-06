@@ -2,8 +2,6 @@ import { expect, type Page } from "@playwright/test";
 import {
   clickNewChat,
   clickTerminal,
-  countTabsOfKind,
-  getTabTestIds,
 } from "./launcher";
 import { setupDeterministicPrompt, waitForTerminalContent } from "./terminal-perf";
 
@@ -25,12 +23,8 @@ export async function expectTerminalCwd(page: Page, expectedPath: string): Promi
 }
 
 export async function createStandaloneTerminalFromLauncher(page: Page): Promise<void> {
-  const tabIdsBefore = await getTabTestIds(page);
-  const launcherCountBefore = await countTabsOfKind(page, "launcher");
   await clickTerminal(page);
   await expect(terminalSurface(page)).toBeVisible({ timeout: 20_000 });
-  await expect.poll(() => countTabsOfKind(page, "launcher")).toBe(launcherCountBefore - 1);
-  await expect.poll(async () => (await getTabTestIds(page)).length).toBe(tabIdsBefore.length);
 }
 
 export async function createAgentChatFromLauncher(page: Page): Promise<void> {
@@ -38,5 +32,4 @@ export async function createAgentChatFromLauncher(page: Page): Promise<void> {
   await expect(composerInput(page)).toBeVisible({ timeout: 15_000 });
   await expect(composerInput(page)).toBeEditable({ timeout: 15_000 });
   await expect(page.getByTestId("agent-loading")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "New Chat" })).toHaveCount(0);
 }

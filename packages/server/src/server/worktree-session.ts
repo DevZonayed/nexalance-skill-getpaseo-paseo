@@ -117,6 +117,7 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
 type HandleWorkspaceSetupStatusRequestDependencies = {
   emit: EmitSessionMessage;
   workspaceSetupSnapshots: ReadonlyMap<string, WorkspaceSetupSnapshot>;
+  workspaceRegistry: WorkspaceRegistry;
 };
 
 type HandleCreatePaseoWorktreeRequestDependencies = {
@@ -645,12 +646,23 @@ export async function handleWorkspaceSetupStatusRequest(
   request: Extract<SessionInboundMessage, { type: "workspace_setup_status_request" }>,
 ): Promise<void> {
   const workspaceId = request.workspaceId;
+  let snapshot = dependencies.workspaceSetupSnapshots.get(workspaceId) ?? null;
+
+  // Fallback: if workspaceId is a directory path, resolve to numeric ID and retry lookup
+  if (!snapshot && Number.isNaN(Number(workspaceId))) {
+    const workspaces = await dependencies.workspaceRegistry.list();
+    const match = workspaces.find((w) => w.directory === workspaceId && !w.archivedAt);
+    if (match) {
+      snapshot = dependencies.workspaceSetupSnapshots.get(String(match.id)) ?? null;
+    }
+  }
+
   dependencies.emit({
     type: "workspace_setup_status_response",
     payload: {
       requestId: request.requestId,
       workspaceId,
-      snapshot: dependencies.workspaceSetupSnapshots.get(workspaceId) ?? null,
+      snapshot,
     },
   });
 }

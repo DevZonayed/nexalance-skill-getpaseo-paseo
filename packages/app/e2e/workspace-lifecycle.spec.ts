@@ -1,18 +1,39 @@
 import { execSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import path from "node:path";
-import { test } from "./fixtures";
-import {
-  clickNewTabButton,
-  gotoWorkspace,
-  waitForLauncherPanel,
-} from "./helpers/launcher";
+import { expect, test } from "./fixtures";
+import { waitForTabBar } from "./helpers/launcher";
 import { createTempGitRepo } from "./helpers/workspace";
 import {
   createAgentChatFromLauncher,
   createStandaloneTerminalFromLauncher,
   expectTerminalCwd,
 } from "./helpers/workspace-lifecycle";
-import { connectWorkspaceSetupClient, seedProjectForWorkspaceSetup } from "./helpers/workspace-setup";
+import {
+  connectWorkspaceSetupClient,
+  openHomeWithProject,
+  seedProjectForWorkspaceSetup,
+} from "./helpers/workspace-setup";
+
+function getServerId(): string {
+  const serverId = process.env.E2E_SERVER_ID;
+  if (!serverId) {
+    throw new Error("E2E_SERVER_ID is not set.");
+  }
+  return serverId;
+}
+
+/** Navigate to a workspace via sidebar row testID and wait for the tab bar. */
+async function navigateToWorkspaceViaSidebar(
+  page: import("@playwright/test").Page,
+  workspaceId: string,
+): Promise<void> {
+  const testId = `sidebar-workspace-row-${getServerId()}:${workspaceId}`;
+  const row = page.getByTestId(testId);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.click();
+  await waitForTabBar(page);
+}
 
 test.describe("Workspace lifecycle", () => {
   // The first test after a spec-file switch can intermittently fail because
@@ -35,9 +56,8 @@ test.describe("Workspace lifecycle", () => {
         }
         const workspaceId = String(workspaceResult.workspace.id);
 
-        await gotoWorkspace(page, workspaceId);
-        await clickNewTabButton(page);
-        await waitForLauncherPanel(page);
+        await openHomeWithProject(page, repo.path);
+        await navigateToWorkspaceViaSidebar(page, workspaceId);
         await createAgentChatFromLauncher(page);
       } finally {
         await client.close();
@@ -59,9 +79,8 @@ test.describe("Workspace lifecycle", () => {
         }
         const workspaceId = String(workspaceResult.workspace.id);
 
-        await gotoWorkspace(page, workspaceId);
-        await clickNewTabButton(page);
-        await waitForLauncherPanel(page);
+        await openHomeWithProject(page, repo.path);
+        await navigateToWorkspaceViaSidebar(page, workspaceId);
         await createStandaloneTerminalFromLauncher(page);
         await expectTerminalCwd(page, repo.path);
       } finally {
@@ -77,8 +96,9 @@ test.describe("Workspace lifecycle", () => {
 
       const client = await connectWorkspaceSetupClient();
       const repo = await createTempGitRepo("lifecycle-wt-chat-");
+      const resolvedTmp = realpathSync("/tmp");
       const worktreePath = path.join(
-        "/tmp",
+        resolvedTmp,
         `paseo-wt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       const branchName = `lifecycle-wt-chat-${Date.now()}`;
@@ -99,9 +119,8 @@ test.describe("Workspace lifecycle", () => {
         }
         const workspaceId = String(workspaceResult.workspace.id);
 
-        await gotoWorkspace(page, workspaceId);
-        await clickNewTabButton(page);
-        await waitForLauncherPanel(page);
+        await openHomeWithProject(page, repo.path);
+        await navigateToWorkspaceViaSidebar(page, workspaceId);
         await createAgentChatFromLauncher(page);
       } finally {
         if (worktreeCreated) {
@@ -124,8 +143,9 @@ test.describe("Workspace lifecycle", () => {
 
       const client = await connectWorkspaceSetupClient();
       const repo = await createTempGitRepo("lifecycle-wt-shell-");
+      const resolvedTmp = realpathSync("/tmp");
       const worktreePath = path.join(
-        "/tmp",
+        resolvedTmp,
         `paseo-wt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       const branchName = `lifecycle-wt-shell-${Date.now()}`;
@@ -146,9 +166,8 @@ test.describe("Workspace lifecycle", () => {
         }
         const workspaceId = String(workspaceResult.workspace.id);
 
-        await gotoWorkspace(page, workspaceId);
-        await clickNewTabButton(page);
-        await waitForLauncherPanel(page);
+        await openHomeWithProject(page, repo.path);
+        await navigateToWorkspaceViaSidebar(page, workspaceId);
         await createStandaloneTerminalFromLauncher(page);
         await expectTerminalCwd(page, worktreePath);
       } finally {

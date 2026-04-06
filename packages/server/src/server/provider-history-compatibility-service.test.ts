@@ -104,9 +104,12 @@ describe("AgentLoadingService", () => {
 
       expect(loaded.id).toBe(snapshot.id);
       expect(manager.getTimeline(snapshot.id)).toEqual([]);
-      expect(durableTimeline.rows.map((row) => row.item)).toEqual([
-        { type: "assistant_message", text: "timeline test" },
-      ]);
+      expect(durableTimeline.rows.every((row) => row.item.type === "assistant_message")).toBe(true);
+      expect(
+        durableTimeline.rows
+          .map((row) => (row.item.type === "assistant_message" ? row.item.text : ""))
+          .join(""),
+      ).toBe("timeline test");
     } finally {
       await database.close();
       rmSync(workspaceRoot, { recursive: true, force: true });

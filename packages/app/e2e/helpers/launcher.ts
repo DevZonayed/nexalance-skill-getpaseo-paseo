@@ -65,9 +65,16 @@ export async function getActiveTabTestId(page: Page): Promise<string | null> {
 
 // ─── Tab actions ───────────────────────────────────────────────────────────
 
-/** Click the '+' button in the tab bar to open a new launcher tab. */
+/** Click the new agent tab button in the tab bar. Creates a draft/chat tab directly. */
 export async function clickNewTabButton(page: Page): Promise<void> {
-  const button = page.getByTestId("workspace-new-tab");
+  const button = page.getByTestId("workspace-new-agent-tab");
+  await expect(button).toBeVisible({ timeout: 10_000 });
+  await button.click();
+}
+
+/** Click the new terminal button in the workspace tab bar. Creates a terminal tab directly. */
+export async function clickNewTerminalButton(page: Page): Promise<void> {
+  const button = page.getByTestId("workspace-new-terminal");
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
@@ -77,41 +84,35 @@ export async function pressNewTabShortcut(page: Page): Promise<void> {
   await page.keyboard.press("Meta+t");
 }
 
-// ─── Launcher panel assertions ─────────────────────────────────────────────
+// ─── Tab bar assertions ───────────────────────────────────────────────────
 
-/** Wait for the launcher panel to render with its primary tiles. */
+/** @deprecated The launcher panel was removed. Actions go directly to their target. */
 export async function waitForLauncherPanel(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "New Chat" }).first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByRole("button", { name: "Terminal" }).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  // No-op: the launcher panel no longer exists.
 }
 
-
-/** Assert the launcher panel has a "New Chat" tile. */
+/** Assert the new agent tab button is visible in the tab bar. */
 export async function assertNewChatTileVisible(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "New Chat" }).first()).toBeVisible();
+  await expect(page.getByTestId("workspace-new-agent-tab").first()).toBeVisible();
 }
 
-/** Assert the launcher panel has a "Terminal" tile. */
+/** Assert the new terminal button is visible in the tab bar. */
 export async function assertTerminalTileVisible(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Terminal" }).first()).toBeVisible();
+  await expect(page.getByTestId("workspace-new-terminal").first()).toBeVisible();
 }
 
-// ─── Launcher tile clicks ──────────────────────────────────────────────────
+// ─── Tab creation actions ─────────────────────────────────────────────────
 
-/** Click the "New Chat" tile on the launcher panel. */
+/** Click the new agent tab button to create a draft/chat tab. */
 export async function clickNewChat(page: Page): Promise<void> {
-  const button = page.getByRole("button", { name: "New Chat" }).first();
+  const button = page.getByTestId("workspace-new-agent-tab");
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
 
-/** Click the "Terminal" tile on the launcher panel. */
+/** Click the new terminal button to create a terminal tab. */
 export async function clickTerminal(page: Page): Promise<void> {
-  const button = page.getByRole("button", { name: "Terminal", exact: true }).first();
+  const button = page.getByTestId("workspace-new-terminal");
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
@@ -134,11 +135,9 @@ export async function waitForTabWithTitle(
   ).toBeVisible({ timeout });
 }
 
-/** Assert the new-tab '+' button is visible and there is only one. */
+/** Assert the new agent tab button is visible in the tab bar. */
 export async function assertSingleNewTabButton(page: Page): Promise<void> {
-  const buttons = page.getByTestId("workspace-new-tab");
-  // There might be multiple panes, each with a "+" button
-  // But within a single pane there should only be one
+  const buttons = page.getByTestId("workspace-new-agent-tab");
   const count = await buttons.count();
   expect(count).toBeGreaterThanOrEqual(1);
 }

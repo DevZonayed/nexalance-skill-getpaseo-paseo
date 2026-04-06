@@ -612,6 +612,12 @@ describe("workspace aggregation", () => {
       displayName: "repo",
     });
 
+    const archiveSnapshot = vi.fn(async (_agentId: string, archivedAt: string) => {
+      storedRecord.archivedAt = archivedAt;
+      storedRecord.updatedAt = archivedAt;
+      return { ...storedRecord, archivedAt, updatedAt: archivedAt };
+    });
+
     const session = new Session({
       clientId: "test-client",
       onMessage: (message) => emitted.push(message as any),
@@ -631,6 +637,7 @@ describe("workspace aggregation", () => {
           liveRecord.updatedAt = liveArchivedAt;
           return { archivedAt: liveArchivedAt };
         },
+        archiveSnapshot,
         clearAgentAttention: async () => {},
       } as any,
       agentStorage: {
@@ -704,7 +711,8 @@ describe("workspace aggregation", () => {
       requestId: "req-close-stored",
     });
 
-    expect(upsertStoredRecord).toHaveBeenCalledTimes(1);
+    expect(archiveSnapshot).toHaveBeenCalledTimes(1);
+    expect(archiveSnapshot).toHaveBeenCalledWith(storedAgentId, expect.any(String));
     expect(storedRecord.archivedAt).toEqual(expect.any(String));
     expect(emitted.find((message) => message.type === "close_items_response")?.payload).toEqual({
       agents: [
@@ -907,11 +915,11 @@ describe("workspace aggregation", () => {
 
     expect(result.entries).toEqual([
       expect.objectContaining({
-        id: 10,
-        projectId: 1,
+        id: "/tmp/repo",
+        projectId: "/tmp/repo",
         name: "repo",
-        projectKind: "directory",
-        workspaceKind: "checkout",
+        projectKind: "non_git",
+        workspaceKind: "local_checkout",
         status: "needs_input",
       }),
     ]);
@@ -951,7 +959,7 @@ describe("workspace aggregation", () => {
     });
 
     expect(result.entries[0]).toMatchObject({
-      id: 20,
+      id: "/tmp/repo/.paseo/worktrees/feature-name",
       name: "feature-name",
       projectKind: "git",
       workspaceKind: "worktree",
@@ -982,30 +990,34 @@ describe("workspace aggregation", () => {
     };
     (session as any).listWorkspaceDescriptorsSnapshot = async () => [
       {
-        id: 30,
-        projectId: 3,
+        id: "/tmp/repo",
+        projectId: "/tmp/repo",
         projectDisplayName: "repo",
         projectRootPath: "/tmp/repo",
-        projectKind: "directory",
-        workspaceKind: "checkout",
+        workspaceDirectory: "/tmp/repo",
+        projectKind: "non_git",
+        workspaceKind: "local_checkout",
         name: "repo",
         status: "running",
         activityAt: "2026-03-01T12:00:00.000Z",
+        services: [],
       },
     ];
     await (session as any).emitWorkspaceUpdateForCwd("/tmp/repo");
 
     (session as any).listWorkspaceDescriptorsSnapshot = async () => [
       {
-        id: 30,
-        projectId: 3,
+        id: "/tmp/repo",
+        projectId: "/tmp/repo",
         projectDisplayName: "repo",
         projectRootPath: "/tmp/repo",
-        projectKind: "directory",
-        workspaceKind: "checkout",
+        workspaceDirectory: "/tmp/repo",
+        projectKind: "non_git",
+        workspaceKind: "local_checkout",
         name: "repo",
         status: "done",
         activityAt: null,
+        services: [],
       },
     ];
     await (session as any).emitWorkspaceUpdateForCwd("/tmp/repo");
@@ -1015,15 +1027,17 @@ describe("workspace aggregation", () => {
     expect((workspaceUpdates[1] as any).payload).toEqual({
       kind: "upsert",
       workspace: {
-        id: 30,
-        projectId: 3,
+        id: "/tmp/repo",
+        projectId: "/tmp/repo",
         projectDisplayName: "repo",
         projectRootPath: "/tmp/repo",
-        projectKind: "directory",
-        workspaceKind: "checkout",
+        workspaceDirectory: "/tmp/repo",
+        projectKind: "non_git",
+        workspaceKind: "local_checkout",
         name: "repo",
         status: "done",
         activityAt: null,
+        services: [],
       },
     });
   });
@@ -1081,13 +1095,16 @@ describe("workspace aggregation", () => {
         name: "worktree-123",
         status: "done",
       });
-      expect(response?.payload.workspace?.id).toEqual(expect.any(Number));
-      const persistedWorkspace = workspaces.get(response!.payload.workspace.id);
-      expect(persistedWorkspace?.directory).toContain(path.join("worktree-123"));
+      expect(response?.payload.workspace?.id).toEqual(expect.any(String));
+      expect(response?.payload.workspace?.id).toContain("worktree-123");
       // The worktree directory is created asynchronously in the background after
       // the response is sent, so we only verify the DB record here.
-      expect(workspaces.has(response!.payload.workspace.id)).toBe(true);
-      expect(projects.has(response?.payload.workspace?.projectId)).toBe(true);
+      const persistedWorkspace = Array.from(workspaces.values()).find(
+        (ws) => ws.directory === response!.payload.workspace.id,
+      );
+      expect(persistedWorkspace).toBeTruthy();
+      expect(persistedWorkspace?.directory).toContain(path.join("worktree-123"));
+      expect(response?.payload.workspace?.projectId).toEqual(repoDir);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -1209,7 +1226,7 @@ describe("workspace aggregation", () => {
     await (session as any).handleCreateAgentRequest({
       type: "create_agent_request",
       requestId: "req-create-agent-fail",
-      workspaceId: 999,
+      workspaceId: "999",
       config: {
         provider: "codex",
         cwd: "/tmp/repo",
@@ -1264,7 +1281,7 @@ describe("workspace aggregation", () => {
           projectDisplayName: "acme/repo",
           projectKind: "git",
           name: "feature/test-branch",
-          workspaceKind: "checkout",
+          workspaceKind: "local_checkout",
         },
       });
     } finally {
@@ -1307,11 +1324,228 @@ describe("workspace aggregation", () => {
         error: null,
         workspace: {
           projectDisplayName: "plain-dir",
-          projectKind: "directory",
+          projectKind: "non_git",
           name: "plain-dir",
-          workspaceKind: "checkout",
+          workspaceKind: "local_checkout",
         },
       });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("backward compatibility", () => {
+  test("workspace descriptor uses directory path as id, not numeric database id", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 1,
+      directory: "/tmp/myproject",
+      displayName: "myproject",
+      kind: "git",
+      gitRemote: "https://github.com/acme/myproject.git",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 10,
+      projectId: 1,
+      directory: "/tmp/myproject",
+      displayName: "main",
+    });
+
+    await (session as any).handleMessage({
+      type: "fetch_workspaces_request",
+      payload: { requestId: "compat-id" },
+      requestId: "compat-id",
+    });
+
+    const response = emitted.find((m) => m.type === "fetch_workspaces_response") as any;
+    expect(response).toBeTruthy();
+    const entries = response.payload.entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe("/tmp/myproject");
+    expect(entries[0].id).not.toBe("10");
+  });
+
+  test("workspace descriptor maps projectKind 'directory' to 'non_git'", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 1,
+      directory: "/tmp/dirproject",
+      displayName: "dirproject",
+      kind: "directory",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 10,
+      projectId: 1,
+      directory: "/tmp/dirproject",
+      displayName: "dirproject",
+    });
+
+    await (session as any).handleMessage({
+      type: "fetch_workspaces_request",
+      payload: { requestId: "compat-dir-kind" },
+      requestId: "compat-dir-kind",
+    });
+
+    const response = emitted.find((m) => m.type === "fetch_workspaces_response") as any;
+    expect(response).toBeTruthy();
+    expect(response.payload.entries[0].projectKind).toBe("non_git");
+  });
+
+  test("workspace descriptor maps projectKind 'git' unchanged", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 1,
+      directory: "/tmp/gitproject",
+      displayName: "gitproject",
+      kind: "git",
+      gitRemote: "https://github.com/acme/gitproject.git",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 10,
+      projectId: 1,
+      directory: "/tmp/gitproject",
+      displayName: "main",
+    });
+
+    await (session as any).handleMessage({
+      type: "fetch_workspaces_request",
+      payload: { requestId: "compat-git-kind" },
+      requestId: "compat-git-kind",
+    });
+
+    const response = emitted.find((m) => m.type === "fetch_workspaces_response") as any;
+    expect(response).toBeTruthy();
+    expect(response.payload.entries[0].projectKind).toBe("git");
+  });
+
+  test("workspace descriptor maps workspaceKind 'checkout' to 'local_checkout'", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 1,
+      directory: "/tmp/checkout-project",
+      displayName: "checkout-project",
+      kind: "git",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 10,
+      projectId: 1,
+      directory: "/tmp/checkout-project",
+      displayName: "main",
+      kind: "checkout",
+    });
+
+    await (session as any).handleMessage({
+      type: "fetch_workspaces_request",
+      payload: { requestId: "compat-checkout" },
+      requestId: "compat-checkout",
+    });
+
+    const response = emitted.find((m) => m.type === "fetch_workspaces_response") as any;
+    expect(response).toBeTruthy();
+    expect(response.payload.entries[0].workspaceKind).toBe("local_checkout");
+  });
+
+  test("workspace descriptor maps workspaceKind 'worktree' unchanged", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 1,
+      directory: "/tmp/worktree-project",
+      displayName: "worktree-project",
+      kind: "git",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 10,
+      projectId: 1,
+      directory: "/tmp/worktree-project/.paseo/worktrees/feature",
+      displayName: "feature",
+      kind: "worktree",
+    });
+
+    await (session as any).handleMessage({
+      type: "fetch_workspaces_request",
+      payload: { requestId: "compat-worktree" },
+      requestId: "compat-worktree",
+    });
+
+    const response = emitted.find((m) => m.type === "fetch_workspaces_response") as any;
+    expect(response).toBeTruthy();
+    expect(response.payload.entries[0].workspaceKind).toBe("worktree");
+  });
+
+  test("workspace descriptor uses project directory as projectId", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 1,
+      directory: "/tmp/myproject",
+      displayName: "myproject",
+      kind: "git",
+      gitRemote: "https://github.com/acme/myproject.git",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 10,
+      projectId: 1,
+      directory: "/tmp/myproject",
+      displayName: "main",
+    });
+
+    await (session as any).handleMessage({
+      type: "fetch_workspaces_request",
+      payload: { requestId: "compat-project-id" },
+      requestId: "compat-project-id",
+    });
+
+    const response = emitted.find((m) => m.type === "fetch_workspaces_response") as any;
+    expect(response).toBeTruthy();
+    expect(response.payload.entries[0].projectId).toBe("/tmp/myproject");
+    expect(response.payload.entries[0].projectId).not.toBe("1");
+  });
+
+  test("open_project_response returns backward-compatible descriptor", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    const { tempDir, repoDir } = createTempGitRepo({
+      remoteUrl: "https://github.com/acme/compat-repo.git",
+      branchName: "main",
+    });
+
+    try {
+      await (session as any).handleOpenProjectRequest({
+        type: "open_project_request",
+        cwd: repoDir,
+        requestId: "req-open-compat",
+      });
+
+      const response = emitted.find((m) => m.type === "open_project_response") as any;
+      expect(response).toBeTruthy();
+      const workspace = response.payload.workspace;
+
+      // id should be the directory path, not a numeric id
+      expect(workspace.id).toBe(repoDir);
+
+      // projectId should be the project directory path, not a numeric id
+      expect(workspace.projectId).toBe(repoDir);
+
+      // projectKind should map "git" to "git"
+      expect(workspace.projectKind).toBe("git");
+
+      // workspaceKind should map "checkout" to "local_checkout"
+      expect(workspace.workspaceKind).toBe("local_checkout");
+
+      // projectRootPath and workspaceDirectory should be the actual directory
+      expect(workspace.projectRootPath).toBe(repoDir);
+      expect(workspace.workspaceDirectory).toBe(repoDir);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

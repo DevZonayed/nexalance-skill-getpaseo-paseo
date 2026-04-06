@@ -68,22 +68,31 @@ describe("snapshot mutation ownership boundary", () => {
 
   test("session runtime flows delegate snapshot mutations to agent manager without direct storage writes", async () => {
     const onMessage = vi.fn();
-    const archiveSnapshot = vi.fn(async (_agentId: string, archivedAt: string) => ({
+    const storedRecord = {
       id: "agent-1",
       provider: "codex",
       cwd: "/tmp/project",
       createdAt: "2026-03-24T00:00:00.000Z",
-      updatedAt: archivedAt,
+      updatedAt: "2026-03-24T00:00:00.000Z",
       title: null,
       labels: {},
       lastStatus: "idle" as const,
       config: null,
       persistence: null,
-      archivedAt,
+      archivedAt: null as string | null,
       requiresAttention: false,
       attentionReason: null,
       attentionTimestamp: null,
-    }));
+    };
+    const archiveSnapshot = vi.fn(async (_agentId: string, archivedAt: string) => {
+      storedRecord.archivedAt = archivedAt;
+      storedRecord.updatedAt = archivedAt;
+      return {
+        ...storedRecord,
+        archivedAt,
+        updatedAt: archivedAt,
+      };
+    });
     const unarchiveSnapshot = vi.fn(async () => true);
     const unarchiveSnapshotByHandle = vi.fn(async () => undefined);
     const updateAgentMetadata = vi.fn(async () => undefined);
@@ -118,7 +127,7 @@ describe("snapshot mutation ownership boundary", () => {
       } as any,
       agentStorage: {
         list: async () => [],
-        get: async () => null,
+        get: async () => storedRecord,
         applySnapshot: directStorageWrite,
         upsert: directStorageWrite,
       } as any,
@@ -148,7 +157,7 @@ describe("snapshot mutation ownership boundary", () => {
       terminalManager: null,
     }) as any;
 
-    const archiveResult = await session.archiveAgentState("agent-1");
+    const archiveResult = await session.archiveAgentForClose("agent-1");
     expect(archiveSnapshot).toHaveBeenCalledTimes(1);
     expect(archiveResult.archivedAt).toBeTruthy();
 

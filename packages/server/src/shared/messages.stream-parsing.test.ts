@@ -38,8 +38,8 @@ describe("shared messages stream parsing", () => {
     expect(parsed.payload.entries[0]?.item.type).toBe("assistant_message");
   });
 
-  it("rejects removed fetch timeline request baggage at the parser boundary", () => {
-    const parsed = FetchAgentTimelineRequestMessageSchema.safeParse({
+  it("parses legacy fetch timeline request baggage at the parser boundary", () => {
+    const parsed = FetchAgentTimelineRequestMessageSchema.parse({
       type: "fetch_agent_timeline_request",
       agentId: "agent_live",
       requestId: "req-legacy",
@@ -51,36 +51,41 @@ describe("shared messages stream parsing", () => {
       projection: "canonical",
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.cursor?.epoch).toBe("legacy-epoch");
+    expect(parsed.projection).toBe("canonical");
   });
 
-  it("rejects removed fetch timeline response baggage at the parser boundary", () => {
-    const parsed = FetchAgentTimelineResponseMessageSchema.safeParse({
+  it("parses legacy fetch timeline response baggage at the parser boundary", () => {
+    const parsed = FetchAgentTimelineResponseMessageSchema.parse({
       type: "fetch_agent_timeline_response",
       payload: {
         requestId: "req-1",
         agentId: "agent_live",
         agent: null,
         direction: "tail",
-        startSeq: 1,
-        endSeq: 2,
-        hasOlder: false,
-        hasNewer: false,
         reset: false,
-        startCursor: { seq: 1 },
+        startCursor: { seq: 1, epoch: "legacy-epoch" },
+        endCursor: { seq: 2, epoch: "legacy-epoch" },
+        projection: "canonical",
         entries: [
           {
             provider: "codex",
             item: { type: "assistant_message", text: "hello" },
             timestamp: "2026-02-08T20:10:00.000Z",
-            seq: 2,
+            seqStart: 1,
+            seqEnd: 2,
+            sourceSeqRanges: [{ startSeq: 1, endSeq: 2 }],
+            collapsed: ["assistant_merge"],
           },
         ],
         error: null,
       },
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.payload.startSeq).toBe(1);
+    expect(parsed.payload.endSeq).toBe(2);
+    expect(parsed.payload.projection).toBe("canonical");
+    expect(parsed.payload.entries[0]?.seq).toBe(2);
   });
 
   it("parses explicit shutdown and restart lifecycle request payloads as distinct message types", () => {
@@ -135,8 +140,8 @@ describe("shared messages stream parsing", () => {
     }
   });
 
-  it("rejects removed agent_stream baggage at the parser boundary", () => {
-    const parsed = AgentStreamMessageSchema.safeParse({
+  it("parses legacy agent_stream baggage at the parser boundary", () => {
+    const parsed = AgentStreamMessageSchema.parse({
       type: "agent_stream",
       payload: {
         agentId: "agent_live",
@@ -153,7 +158,7 @@ describe("shared messages stream parsing", () => {
       },
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.payload.epoch).toBe("legacy-epoch");
   });
 
   it("parses representative sub_agent tool_call event", () => {

@@ -121,7 +121,8 @@ describe("daemon E2E - persistence", () => {
         (item): item is Extract<(typeof timelineItems)[number], { type: "assistant_message" }> =>
           item.type === "assistant_message",
       );
-      expect(assistantMessages).toEqual([{ type: "assistant_message", text: "timeline test" }]);
+      expect(assistantMessages.length).toBeGreaterThan(0);
+      expect(assistantMessages.map((item) => item.text).join("")).toBe("timeline test");
     } finally {
       await ctx.cleanup();
       cleaned = true;

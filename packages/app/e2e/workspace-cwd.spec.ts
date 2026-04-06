@@ -1,18 +1,41 @@
 import { execSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "./fixtures";
 import {
-  clickNewTabButton,
   clickTerminal,
-  gotoWorkspace,
-  waitForLauncherPanel,
+  waitForTabBar,
 } from "./helpers/launcher";
 import {
   setupDeterministicPrompt,
   waitForTerminalContent,
 } from "./helpers/terminal-perf";
 import { createTempGitRepo } from "./helpers/workspace";
-import { connectWorkspaceSetupClient, seedProjectForWorkspaceSetup } from "./helpers/workspace-setup";
+import {
+  connectWorkspaceSetupClient,
+  openHomeWithProject,
+  seedProjectForWorkspaceSetup,
+} from "./helpers/workspace-setup";
+
+function getServerId(): string {
+  const serverId = process.env.E2E_SERVER_ID;
+  if (!serverId) {
+    throw new Error("E2E_SERVER_ID is not set.");
+  }
+  return serverId;
+}
+
+/** Navigate to a workspace via sidebar row testID and wait for tab bar. */
+async function navigateToWorkspaceViaSidebar(
+  page: import("@playwright/test").Page,
+  workspaceId: string,
+): Promise<void> {
+  const testId = `sidebar-workspace-row-${getServerId()}:${workspaceId}`;
+  const row = page.getByTestId(testId);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.click();
+  await waitForTabBar(page);
+}
 
 test.describe("Workspace cwd correctness", () => {
   test("main checkout workspace opens terminals in the project root", async ({ page }) => {
@@ -30,9 +53,9 @@ test.describe("Workspace cwd correctness", () => {
       }
       const workspaceId = String(workspaceResult.workspace.id);
 
-      await gotoWorkspace(page, workspaceId);
-      await clickNewTabButton(page);
-      await waitForLauncherPanel(page);
+      // Use sidebar navigation to avoid Expo Router hydration issues
+      await openHomeWithProject(page, repo.path);
+      await navigateToWorkspaceViaSidebar(page, workspaceId);
       await clickTerminal(page);
 
       const terminal = page.locator('[data-testid="terminal-surface"]');
@@ -54,8 +77,9 @@ test.describe("Workspace cwd correctness", () => {
 
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("workspace-cwd-worktree-");
+    const resolvedTmp = realpathSync("/tmp");
     const worktreePath = path.join(
-      "/tmp",
+      resolvedTmp,
       `paseo-wt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     const branchName = `workspace-cwd-${Date.now()}`;
@@ -74,11 +98,16 @@ test.describe("Workspace cwd correctness", () => {
       if (!workspaceResult.workspace) {
         throw new Error(workspaceResult.error ?? `Failed to open project ${worktreePath}`);
       }
-      const workspaceId = String(workspaceResult.workspace.id);
+      const workspaceName = workspaceResult.workspace.name;
 
-      await gotoWorkspace(page, workspaceId);
-      await clickNewTabButton(page);
-      await waitForLauncherPanel(page);
+      // Use sidebar navigation to avoid Expo Router hydration issues
+      // with direct URL navigation to the 2nd+ workspace.
+      await openHomeWithProject(page, repo.path);
+      const sidebarWorkspace = page.getByRole("button", { name: workspaceName });
+      await expect(sidebarWorkspace).toBeVisible({ timeout: 30_000 });
+      await sidebarWorkspace.click();
+      await waitForTabBar(page);
+
       await clickTerminal(page);
 
       const terminal = page.locator('[data-testid="terminal-surface"]');

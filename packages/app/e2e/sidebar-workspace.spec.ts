@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect } from "./fixtures";
@@ -32,7 +32,8 @@ function setGitHubRemote(repoPath: string): void {
 }
 
 async function createTempDirectory(prefix = "paseo-e2e-dir-") {
-  const dirPath = await mkdtemp(path.join(process.platform === "win32" ? tmpdir() : "/tmp", prefix));
+  const tempRoot = process.platform === "win32" ? tmpdir() : await realpath("/tmp");
+  const dirPath = await mkdtemp(path.join(tempRoot, prefix));
   await writeFile(path.join(dirPath, "README.md"), "# Temp Directory\n");
   return {
     path: dirPath,

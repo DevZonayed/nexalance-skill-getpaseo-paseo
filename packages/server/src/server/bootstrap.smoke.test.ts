@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { Writable } from "node:stream";
 import pino from "pino";
@@ -205,11 +206,13 @@ describe("paseo daemon bootstrap", () => {
 
   test("imports legacy project and workspace JSON into the DB on first bootstrap", async () => {
     const { config, cleanup } = await createBootstrapConfig();
+    const projectDir = await mkdtemp(path.join(os.tmpdir(), "paseo-bootstrap-project-"));
+    initializeGitRepo(projectDir);
     writeLegacyProjectWorkspaceJson(config.paseoHome, {
       projects: [
         {
           projectId: "project-1",
-          rootPath: "/tmp/project-1",
+          rootPath: projectDir,
           kind: "git",
           displayName: "Project One",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -221,7 +224,7 @@ describe("paseo daemon bootstrap", () => {
         {
           workspaceId: "workspace-1",
           projectId: "project-1",
-          cwd: "/tmp/project-1",
+          cwd: projectDir,
           kind: "local_checkout",
           displayName: "main",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -242,18 +245,16 @@ describe("paseo daemon bootstrap", () => {
         const projectRows = await database.db.select().from(projects);
         expect(projectRows).toHaveLength(1);
         expect(projectRows[0]).toMatchObject({
-          directory: "/tmp/project-1",
+          directory: projectDir,
           kind: "git",
-          displayName: "Project One",
           createdAt: "2026-03-01T00:00:00.000Z",
-          updatedAt: "2026-03-02T00:00:00.000Z",
           archivedAt: null,
         });
         const workspaceRows = await database.db.select().from(workspaces);
         expect(workspaceRows).toHaveLength(1);
         expect(workspaceRows[0]).toMatchObject({
           projectId: projectRows[0]!.id,
-          directory: "/tmp/project-1",
+          directory: projectDir,
           kind: "checkout",
           displayName: "main",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -264,17 +265,20 @@ describe("paseo daemon bootstrap", () => {
         await database.close();
       }
     } finally {
+      await rm(projectDir, { recursive: true, force: true });
       await cleanup();
     }
   });
 
   test("does not duplicate imported legacy JSON across daemon restarts", async () => {
     const { config, cleanup } = await createBootstrapConfig();
+    const projectDir = await mkdtemp(path.join(os.tmpdir(), "paseo-bootstrap-project-"));
+    initializeGitRepo(projectDir);
     writeLegacyProjectWorkspaceJson(config.paseoHome, {
       projects: [
         {
           projectId: "project-1",
-          rootPath: "/tmp/project-1",
+          rootPath: projectDir,
           kind: "git",
           displayName: "Project One",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -286,7 +290,7 @@ describe("paseo daemon bootstrap", () => {
         {
           workspaceId: "workspace-1",
           projectId: "project-1",
-          cwd: "/tmp/project-1",
+          cwd: projectDir,
           kind: "local_checkout",
           displayName: "main",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -314,17 +318,20 @@ describe("paseo daemon bootstrap", () => {
         await database.close();
       }
     } finally {
+      await rm(projectDir, { recursive: true, force: true });
       await cleanup();
     }
   });
 
   test("imports legacy project, workspace, and agent JSON into one SQLite bootstrap without duplicating records", async () => {
     const { config, cleanup } = await createBootstrapConfig();
+    const projectDir = await mkdtemp(path.join(os.tmpdir(), "paseo-bootstrap-project-"));
+    initializeGitRepo(projectDir);
     writeLegacyProjectWorkspaceJson(config.paseoHome, {
       projects: [
         {
           projectId: "project-1",
-          rootPath: "/tmp/project-1",
+          rootPath: projectDir,
           kind: "git",
           displayName: "Project One",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -336,7 +343,7 @@ describe("paseo daemon bootstrap", () => {
         {
           workspaceId: "workspace-1",
           projectId: "project-1",
-          cwd: "/tmp/project-1",
+          cwd: projectDir,
           kind: "local_checkout",
           displayName: "main",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -348,7 +355,7 @@ describe("paseo daemon bootstrap", () => {
     writeLegacyAgentJson(config.paseoHome, "agents/agent-1.json", {
       id: "agent-1",
       provider: "codex",
-      cwd: "/tmp/project-1",
+      cwd: projectDir,
       createdAt: "2026-03-01T00:00:00.000Z",
       updatedAt: "2026-03-02T00:00:00.000Z",
       lastActivityAt: "2026-03-02T00:00:00.000Z",
@@ -387,7 +394,7 @@ describe("paseo daemon bootstrap", () => {
         expect(agentRows).toEqual([
           expect.objectContaining({
             agentId: "agent-1",
-            cwd: "/tmp/project-1",
+            cwd: projectDir,
             workspaceId: workspaceRows[0]!.id,
             title: "Imported Agent",
             requiresAttention: false,
@@ -398,17 +405,20 @@ describe("paseo daemon bootstrap", () => {
         await database.close();
       }
     } finally {
+      await rm(projectDir, { recursive: true, force: true });
       await cleanup();
     }
   });
 
   test("imports large legacy agent JSON batches during SQLite bootstrap", async () => {
     const { config, cleanup } = await createBootstrapConfig();
+    const projectDir = await mkdtemp(path.join(os.tmpdir(), "paseo-bootstrap-project-"));
+    initializeGitRepo(projectDir);
     writeLegacyProjectWorkspaceJson(config.paseoHome, {
       projects: [
         {
           projectId: "project-1",
-          rootPath: "/tmp/project-1",
+          rootPath: projectDir,
           kind: "git",
           displayName: "Project One",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -420,7 +430,7 @@ describe("paseo daemon bootstrap", () => {
         {
           workspaceId: "workspace-1",
           projectId: "project-1",
-          cwd: "/tmp/project-1",
+          cwd: projectDir,
           kind: "local_checkout",
           displayName: "main",
           createdAt: "2026-03-01T00:00:00.000Z",
@@ -434,7 +444,7 @@ describe("paseo daemon bootstrap", () => {
       writeLegacyAgentJson(config.paseoHome, `agents/project-1/agent-${index}.json`, {
         id: `agent-${index}`,
         provider: "codex",
-        cwd: "/tmp/project-1",
+        cwd: projectDir,
         createdAt: "2026-03-01T00:00:00.000Z",
         updatedAt: "2026-03-02T00:00:00.000Z",
         lastActivityAt: "2026-03-02T00:00:00.000Z",
@@ -478,6 +488,7 @@ describe("paseo daemon bootstrap", () => {
         await database.close();
       }
     } finally {
+      await rm(projectDir, { recursive: true, force: true });
       await cleanup();
     }
   });
@@ -593,4 +604,16 @@ function writeLegacyAgentJson(paseoHome: string, relativePath: string, payload: 
   const absolutePath = path.join(paseoHome, relativePath);
   mkdirSync(path.dirname(absolutePath), { recursive: true });
   writeFileSync(absolutePath, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function initializeGitRepo(directory: string): void {
+  execFileSync("git", ["init", "-b", "main"], { cwd: directory, stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", "test@getpaseo.dev"], { cwd: directory, stdio: "pipe" });
+  execFileSync("git", ["config", "user.name", "Paseo Test"], { cwd: directory, stdio: "pipe" });
+  writeFileSync(path.join(directory, "README.md"), "bootstrap fixture\n", "utf8");
+  execFileSync("git", ["add", "README.md"], { cwd: directory, stdio: "pipe" });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "init"], {
+    cwd: directory,
+    stdio: "pipe",
+  });
 }

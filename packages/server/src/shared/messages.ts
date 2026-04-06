@@ -844,8 +844,10 @@ export const ShutdownServerRequestMessageSchema = z.object({
 export const AgentTimelineCursorSchema = z
   .object({
     seq: z.number().int().nonnegative(),
+    // COMPAT(timeline): retain legacy cursor epoch for older clients.
+    epoch: z.string().optional(),
   })
-  .strict();
+  ;
 
 export const FetchAgentTimelineRequestMessageSchema = z
   .object({
@@ -856,8 +858,10 @@ export const FetchAgentTimelineRequestMessageSchema = z
     cursor: AgentTimelineCursorSchema.optional(),
     // 0 means "all matching rows for this query window".
     limit: z.number().int().nonnegative().optional(),
+    // COMPAT(timeline): retain removed projection so older clients can still send it.
+    projection: z.enum(["canonical", "projected"]).optional(),
   })
-  .strict();
+  ;
 
 export const SetAgentModeRequestMessageSchema = z.object({
   type: z.literal("set_agent_mode_request"),
@@ -1739,7 +1743,8 @@ export const WorkspaceDescriptorPayloadSchema = z.object({
   projectRootPath: z.string(),
   workspaceDirectory: z.string(),
   projectKind: z.enum(["git", "non_git", "directory"]),
-  workspaceKind: z.enum(["local_checkout", "checkout", "worktree"]),
+  // COMPAT(workspaces): keep legacy directory workspace kind parseable.
+  workspaceKind: z.enum(["directory", "local_checkout", "checkout", "worktree"]),
   name: z.string(),
   status: WorkspaceStateBucketSchema,
   activityAt: z.string().nullable(),
@@ -1771,17 +1776,17 @@ export const AgentUpdateMessageSchema = z.object({
 export const AgentStreamMessageSchema = z
   .object({
     type: z.literal("agent_stream"),
-    payload: z
-      .object({
-        agentId: z.string(),
-        event: AgentStreamEventPayloadSchema,
-        timestamp: z.string(),
-        // Present only for committed timeline events.
-        seq: z.number().int().nonnegative().optional(),
-      })
-      .strict(),
+    payload: z.object({
+      agentId: z.string(),
+      event: AgentStreamEventPayloadSchema,
+      timestamp: z.string(),
+      // Present only for committed timeline events.
+      seq: z.number().int().nonnegative().optional(),
+      // COMPAT(timeline): retain removed epoch for older clients.
+      epoch: z.string().optional(),
+    }),
   })
-  .strict();
+  ;
 
 export const AgentStatusMessageSchema = z.object({
   type: z.literal("agent_status"),
@@ -1908,14 +1913,40 @@ export const FetchAgentResponseMessageSchema = z.object({
   }),
 });
 
+const TimelineProjectionKindSchema = z.enum(["assistant_merge", "tool_lifecycle"]);
+
+const TimelineSeqRangeSchema = z.object({
+  startSeq: z.number().int().nonnegative(),
+  endSeq: z.number().int().nonnegative(),
+});
+
 export const AgentTimelineEntryPayloadSchema = z
   .object({
     provider: AgentProviderSchema,
     item: AgentTimelineItemPayloadSchema,
     timestamp: z.string(),
-    seq: z.number().int().nonnegative(),
+    seq: z.number().int().nonnegative().optional(),
+    // COMPAT(timeline): retain legacy projected timeline fields.
+    seqStart: z.number().int().nonnegative().optional(),
+    seqEnd: z.number().int().nonnegative().optional(),
+    sourceSeqRanges: z.array(TimelineSeqRangeSchema).optional(),
+    collapsed: z.array(TimelineProjectionKindSchema).optional(),
   })
-  .strict();
+  .transform((entry, ctx) => {
+    const seq = entry.seq ?? entry.seqEnd ?? entry.seqStart;
+    if (typeof seq !== "number") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Agent timeline entry must include seq or legacy seqStart/seqEnd",
+      });
+      return z.NEVER;
+    }
+
+    return {
+      ...entry,
+      seq,
+    };
+  });
 
 export const FetchAgentTimelineResponseMessageSchema = z
   .object({
@@ -1926,16 +1957,31 @@ export const FetchAgentTimelineResponseMessageSchema = z
         agentId: z.string(),
         agent: AgentSnapshotPayloadSchema.nullable(),
         direction: z.enum(["tail", "before", "after"]),
-        startSeq: z.number().int().nonnegative().nullable(),
-        endSeq: z.number().int().nonnegative().nullable(),
-        hasOlder: z.boolean(),
-        hasNewer: z.boolean(),
+        startSeq: z.number().int().nonnegative().nullable().optional(),
+        endSeq: z.number().int().nonnegative().nullable().optional(),
+        hasOlder: z.boolean().optional(),
+        hasNewer: z.boolean().optional(),
         entries: z.array(AgentTimelineEntryPayloadSchema),
         error: z.string().nullable(),
+        // COMPAT(timeline): retain legacy response baggage for older clients.
+        epoch: z.string().optional(),
+        reset: z.boolean().optional(),
+        staleCursor: z.boolean().optional(),
+        gap: z.unknown().optional(),
+        window: z.unknown().optional(),
+        startCursor: AgentTimelineCursorSchema.nullable().optional(),
+        endCursor: AgentTimelineCursorSchema.nullable().optional(),
+        projection: z.enum(["canonical", "projected"]).optional(),
       })
-      .strict(),
+      .transform((payload) => ({
+        ...payload,
+        startSeq: payload.startSeq ?? payload.startCursor?.seq ?? null,
+        endSeq: payload.endSeq ?? payload.endCursor?.seq ?? null,
+        hasOlder: payload.hasOlder ?? false,
+        hasNewer: payload.hasNewer ?? false,
+      })),
   })
-  .strict();
+  ;
 
 export const SendAgentMessageResponseMessageSchema = z.object({
   type: z.literal("send_agent_message_response"),
