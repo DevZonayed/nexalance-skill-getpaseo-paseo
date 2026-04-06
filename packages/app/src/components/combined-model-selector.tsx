@@ -23,7 +23,6 @@ import type { AgentProviderDefinition } from "@server/server/agent/provider-mani
 const IS_WEB = Platform.OS === "web";
 
 import { Combobox, ComboboxItem, SearchInput } from "@/components/ui/combobox";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { getProviderIcon } from "@/components/provider-icons";
 import type { FavoriteModelRow } from "@/hooks/use-form-preferences";
 import {
@@ -33,6 +32,9 @@ import {
   resolveProviderLabel,
   type SelectorModelRow,
 } from "./combined-model-selector.utils";
+
+// TODO: this should be configured per provider in the provider manifest
+const PROVIDERS_WITH_MODEL_DESCRIPTIONS = new Set(["opencode", "pi"]);
 
 type SelectorView =
   | { kind: "all" }
@@ -159,7 +161,6 @@ function ModelRow({
 }) {
   const { theme } = useUnistyles();
   const ProviderIcon = getProviderIcon(row.provider);
-  const isWeb = Platform.OS === "web";
 
   const handleToggleFavorite = useCallback(
     (event: GestureResponderEvent) => {
@@ -169,9 +170,13 @@ function ModelRow({
     [onToggleFavorite, row.modelId, row.provider],
   );
 
-  const item = (
+  const showDescription =
+    row.description && PROVIDERS_WITH_MODEL_DESCRIPTIONS.has(row.provider);
+
+  return (
     <ComboboxItem
       label={row.modelLabel}
+      description={showDescription ? row.description : undefined}
       selected={isSelected}
       disabled={disabled}
       elevated={elevated}
@@ -208,21 +213,6 @@ function ModelRow({
         ) : null
       }
     />
-  );
-
-  if (!isWeb || !row.description) {
-    return item;
-  }
-
-  return (
-    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-      <TooltipTrigger asChild triggerRefProp="ref">
-        <View>{item}</View>
-      </TooltipTrigger>
-      <TooltipContent side="right" align="center" offset={4}>
-        <Text style={styles.tooltipText}>{row.description}</Text>
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -795,10 +785,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   favoriteButtonPressed: {
     backgroundColor: theme.colors.surface1,
-  },
-  tooltipText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
   },
   sheetLoadingState: {
     minHeight: 160,
