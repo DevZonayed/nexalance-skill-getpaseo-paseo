@@ -1831,12 +1831,44 @@ export interface PullRequestStatus {
   baseRefName: string;
   headRefName: string;
   isMerged: boolean;
+  checks?: PullRequestCheck[];
+  checksStatus?: ChecksStatus;
+  reviewDecision?: ReviewDecision;
 }
 
 export interface PullRequestStatusResult {
   status: PullRequestStatus | null;
   githubFeaturesEnabled: boolean;
 }
+
+export type PullRequestCheck = {
+  name: string;
+  status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+  url: string | null;
+};
+
+export type ChecksStatus = "none" | "pending" | "success" | "failure";
+
+export type ReviewDecision = "approved" | "changes_requested" | "pending" | null;
+
+type StatusCheckRollupContext = {
+  __typename?: unknown;
+  name?: unknown;
+  conclusion?: unknown;
+  status?: unknown;
+  detailsUrl?: unknown;
+  startedAt?: unknown;
+  completedAt?: unknown;
+  checkSuite?: {
+    workflowRun?: {
+      databaseId?: unknown;
+    } | null;
+  } | null;
+  context?: unknown;
+  state?: unknown;
+  targetUrl?: unknown;
+  createdAt?: unknown;
+};
 
 function resolveGhPath(): string {
   if (cachedGhPath === undefined) {
@@ -1867,6 +1899,155 @@ function isGhAuthError(error: unknown): boolean {
     text.includes("bad credentials") ||
     text.includes("http 401")
   );
+}
+
+function mapCheckRunStatus(
+  status: unknown,
+  conclusion: unknown,
+): PullRequestCheck["status"] {
+  if (status !== "COMPLETED") {
+    return "pending";
+  }
+
+  switch (conclusion) {
+    case "SUCCESS":
+      return "success";
+    case "FAILURE":
+    case "TIMED_OUT":
+    case "ACTION_REQUIRED":
+      return "failure";
+    case "CANCELLED":
+      return "cancelled";
+    case "SKIPPED":
+    case "NEUTRAL":
+      return "skipped";
+    default:
+      return "pending";
+  }
+}
+
+function mapStatusContextState(state: unknown): PullRequestCheck["status"] {
+  switch (state) {
+    case "SUCCESS":
+      return "success";
+    case "FAILURE":
+    case "ERROR":
+      return "failure";
+    case "EXPECTED":
+    case "PENDING":
+      return "pending";
+    default:
+      return "pending";
+  }
+}
+
+function getCheckRunRecency(context: StatusCheckRollupContext): number {
+  const workflowRunId = context.checkSuite?.workflowRun?.databaseId;
+  if (typeof workflowRunId === "number") {
+    return workflowRunId;
+  }
+
+  const timestamp =
+    typeof context.completedAt === "string"
+      ? context.completedAt
+      : typeof context.startedAt === "string"
+        ? context.startedAt
+        : null;
+  if (!timestamp) {
+    return 0;
+  }
+
+  const time = Date.parse(timestamp);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getStatusContextRecency(context: StatusCheckRollupContext): number {
+  if (typeof context.createdAt !== "string" || context.createdAt.length === 0) {
+    return 0;
+  }
+
+  const time = Date.parse(context.createdAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const contexts = (value as { contexts?: unknown }).contexts;
+  if (!Array.isArray(contexts)) {
+    return [];
+  }
+
+  const dedupedChecks = new Map<
+    string,
+    PullRequestCheck & {
+      recency: number;
+    }
+  >();
+
+  for (const entry of contexts) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const context = entry as StatusCheckRollupContext;
+    let check: (PullRequestCheck & { recency: number }) | null = null;
+
+    if (context.__typename === "CheckRun" && typeof context.name === "string") {
+      check = {
+        name: context.name,
+        status: mapCheckRunStatus(context.status, context.conclusion),
+        url: typeof context.detailsUrl === "string" ? context.detailsUrl : null,
+        recency: getCheckRunRecency(context),
+      };
+    } else if (context.__typename === "StatusContext" && typeof context.context === "string") {
+      check = {
+        name: context.context,
+        status: mapStatusContextState(context.state),
+        url: typeof context.targetUrl === "string" ? context.targetUrl : null,
+        recency: getStatusContextRecency(context),
+      };
+    }
+
+    if (!check) {
+      continue;
+    }
+
+    const existing = dedupedChecks.get(check.name);
+    if (!existing || check.recency > existing.recency) {
+      dedupedChecks.set(check.name, check);
+    }
+  }
+
+  return Array.from(dedupedChecks.values(), ({ recency: _recency, ...check }) => check);
+}
+
+function computeChecksStatus(checks: PullRequestCheck[]): ChecksStatus {
+  if (checks.length === 0) {
+    return "none";
+  }
+  if (checks.some((check) => check.status === "failure")) {
+    return "failure";
+  }
+  if (checks.some((check) => check.status === "pending")) {
+    return "pending";
+  }
+  return "success";
+}
+
+function mapReviewDecision(value: unknown): ReviewDecision {
+  if (value === "APPROVED") {
+    return "approved";
+  }
+  if (value === "CHANGES_REQUESTED") {
+    return "changes_requested";
+  }
+  if (value === "REVIEW_REQUIRED") {
+    return "pending";
+  }
+  return null;
 }
 
 async function resolveGitHubRepo(cwd: string): Promise<string | null> {
@@ -2001,7 +2182,7 @@ async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestSta
         "pr",
         "view",
         "--json",
-        "url,title,state,baseRefName,headRefName,mergedAt",
+        "url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision",
       ],
       { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
     );
@@ -2019,6 +2200,8 @@ async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestSta
         : typeof pr.state === "string" && pr.state.trim().length > 0
           ? pr.state.toLowerCase()
           : "";
+    const checks = parseStatusCheckRollup(pr.statusCheckRollup);
+    const reviewDecision = mapReviewDecision(pr.reviewDecision);
     return {
       status: {
         url: pr.url,
@@ -2027,6 +2210,9 @@ async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestSta
         baseRefName: pr.baseRefName ?? "",
         headRefName: pr.headRefName ?? head,
         isMerged: mergedAt !== null,
+        checks,
+        checksStatus: computeChecksStatus(checks),
+        reviewDecision,
       },
       githubFeaturesEnabled: true,
     };

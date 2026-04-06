@@ -27,6 +27,7 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
   Archive,
+  Check,
   CircleAlert,
   ChevronDown,
   ChevronRight,
@@ -40,6 +41,7 @@ import {
   MoreVertical,
   Plus,
   Trash2,
+  X,
 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -221,6 +223,29 @@ function WorkspacePrBadge({ hint }: { hint: PrHint }) {
       </Text>
       {isHovered && <ExternalLink size={10} color={activeColor} />}
     </Pressable>
+  );
+}
+
+function ChecksStatusIcon({ checksStatus }: { checksStatus?: PrHint["checksStatus"] }) {
+  const { theme } = useUnistyles();
+  if (!checksStatus || checksStatus === "none") return null;
+
+  if (checksStatus === "success") {
+    return <Check size={11} color={theme.colors.palette.green[500]} strokeWidth={3} />;
+  }
+  if (checksStatus === "failure") {
+    return <X size={11} color={theme.colors.palette.red[500]} strokeWidth={3} />;
+  }
+  // pending
+  return (
+    <View
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: theme.colors.palette.amber[500],
+      }}
+    />
   );
 }
 
@@ -1042,6 +1067,7 @@ function WorkspaceRowInner({
           {prHint ? (
             <View style={styles.workspacePrBadgeRow}>
               <WorkspacePrBadge hint={prHint} />
+              <ChecksStatusIcon checksStatus={prHint.checksStatus} />
             </View>
           ) : null}
         </Pressable>
@@ -2410,6 +2436,9 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 1,
   },
   workspacePrBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
     paddingLeft: WORKSPACE_STATUS_DOT_WIDTH + theme.spacing[2],
   },
   workspacePrBadge: {

@@ -2151,6 +2151,17 @@ const CheckoutPrStatusSchema = z.object({
   baseRefName: z.string(),
   headRefName: z.string(),
   isMerged: z.boolean(),
+  checks: z
+    .array(
+      z.object({
+        name: z.string(),
+        status: z.string(),
+        url: z.string().nullable(),
+      }),
+    )
+    .optional(),
+  checksStatus: z.string().optional(),
+  reviewDecision: z.string().nullable().optional(),
 });
 
 export const CheckoutPrStatusResponseSchema = z.object({

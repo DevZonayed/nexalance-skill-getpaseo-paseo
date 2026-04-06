@@ -337,6 +337,46 @@ function WorkspaceHoverCardContent({
               </Text>
             </Pressable>
           ) : null}
+          {prHint?.checks && prHint.checks.length > 0 ? (
+            <View style={styles.checksList}>
+              {prHint.checks.map((check) => (
+                <Pressable
+                  key={check.name}
+                  style={({ hovered }) => [
+                    styles.serviceRow,
+                    hovered && check.url && styles.serviceRowHovered,
+                  ]}
+                  onPress={check.url ? () => void openExternalUrl(check.url!) : undefined}
+                  disabled={!check.url}
+                >
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor:
+                          check.status === "success"
+                            ? theme.colors.palette.green[500]
+                            : check.status === "failure" || check.status === "cancelled"
+                              ? theme.colors.palette.red[500]
+                              : check.status === "pending"
+                                ? theme.colors.palette.amber[500]
+                                : theme.colors.foregroundMuted,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={styles.checkName}
+                    numberOfLines={1}
+                  >
+                    {check.name}
+                  </Text>
+                  {check.url ? (
+                    <ExternalLink size={11} color={theme.colors.foregroundMuted} />
+                  ) : null}
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           <View style={styles.separator} />
           <View style={styles.serviceList} testID="hover-card-service-list">
             {workspace.services.map((service) => (
@@ -499,6 +539,15 @@ const styles = StyleSheet.create((theme) => ({
   serviceUrl: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+    flex: 1,
+    minWidth: 0,
+  },
+  checksList: {
+    paddingBottom: theme.spacing[1],
+  },
+  checkName: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
     flex: 1,
     minWidth: 0,
   },
