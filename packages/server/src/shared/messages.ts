@@ -658,7 +658,7 @@ export const FetchWorkspacesRequestMessageSchema = z.object({
   filter: z
     .object({
       query: z.string().optional(),
-      projectId: z.number().int().optional(),
+      projectId: z.union([z.string(), z.number()]).transform(String).optional(),
       idPrefix: z.string().optional(),
     })
     .optional(),
@@ -757,7 +757,7 @@ export type GitSetupOptions = z.infer<typeof GitSetupOptionsSchema>;
 export const CreateAgentRequestMessageSchema = z.object({
   type: z.literal("create_agent_request"),
   config: AgentSessionConfigSchema,
-  workspaceId: z.number().int().optional(),
+  workspaceId: z.union([z.string(), z.number()]).transform(String).optional(),
   worktreeName: z.string().optional(),
   initialPrompt: z.string().optional(),
   clientMessageId: z.string().optional(),
@@ -1102,7 +1102,7 @@ export const OpenProjectRequestSchema = z.object({
 
 export const ArchiveWorkspaceRequestSchema = z.object({
   type: z.literal("archive_workspace_request"),
-  workspaceId: z.number().int(),
+  workspaceId: z.union([z.string(), z.number()]).transform(String),
   requestId: z.string(),
 });
 
@@ -1733,13 +1733,13 @@ export const WorkspaceServicePayloadSchema = z.object({
 });
 
 export const WorkspaceDescriptorPayloadSchema = z.object({
-  id: z.number().int(),
-  projectId: z.number().int(),
+  id: z.union([z.string(), z.number()]).transform(String),
+  projectId: z.union([z.string(), z.number()]).transform(String),
   projectDisplayName: z.string(),
   projectRootPath: z.string(),
   workspaceDirectory: z.string(),
-  projectKind: z.enum(["git", "directory"]),
-  workspaceKind: z.enum(["checkout", "worktree"]),
+  projectKind: z.enum(["git", "non_git", "directory"]),
+  workspaceKind: z.enum(["local_checkout", "checkout", "worktree"]),
   name: z.string(),
   status: WorkspaceStateBucketSchema,
   activityAt: z.string().nullable(),
@@ -1841,7 +1841,7 @@ export const WorkspaceUpdateMessageSchema = z.object({
     }),
     z.object({
       kind: z.literal("remove"),
-      id: z.number().int(),
+      id: z.union([z.string(), z.number()]).transform(String),
     }),
   ]),
 });
@@ -1892,7 +1892,7 @@ export const ArchiveWorkspaceResponseMessageSchema = z.object({
   type: z.literal("archive_workspace_response"),
   payload: z.object({
     requestId: z.string(),
-    workspaceId: z.number().int(),
+    workspaceId: z.union([z.string(), z.number()]).transform(String),
     archivedAt: z.string().nullable(),
     error: z.string().nullable(),
   }),

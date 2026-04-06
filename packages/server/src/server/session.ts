@@ -317,12 +317,12 @@ type WorkspaceUpdatesSubscriptionState = {
   subscriptionId: string;
   filter?: WorkspaceUpdatesFilter;
   isBootstrapping: boolean;
-  pendingUpdatesByWorkspaceId: Map<number, WorkspaceUpdatePayload>;
+  pendingUpdatesByWorkspaceId: Map<string, WorkspaceUpdatePayload>;
 };
 type FetchWorkspacesCursor = {
   sort: FetchWorkspacesRequestSort[];
   values: Record<string, string | number | null>;
-  id: number;
+  id: string;
 };
 
 class SessionRequestError extends Error {
@@ -2729,8 +2729,8 @@ export class Session {
         labels,
       );
       const resolvedWorkspace =
-        typeof msg.workspaceId === "number"
-          ? await this.workspaceRegistry.get(msg.workspaceId)
+        msg.workspaceId
+          ? await this.workspaceRegistry.get(Number(msg.workspaceId))
           : (await this.findWorkspaceByDirectory(sessionConfig.cwd)) ??
             (await this.findOrCreateWorkspaceForDirectory(sessionConfig.cwd));
       if (!resolvedWorkspace) {
@@ -4093,7 +4093,7 @@ export class Session {
     workspaces: Iterable<WorkspaceDescriptorPayload>,
   ): Promise<void> {
     for (const workspace of workspaces) {
-      const persistedWorkspace = await this.workspaceRegistry.get(workspace.id);
+      const persistedWorkspace = await this.workspaceRegistry.get(Number(workspace.id));
       if (!persistedWorkspace) {
         continue;
       }
@@ -5181,17 +5181,19 @@ export class Session {
     if (cachedShortstat !== undefined) {
       diffStat = cachedShortstat;
     } else {
-      warmCheckoutShortstatInBackground(workspace.directory);
+      warmCheckoutShortstatInBackground(workspace.directory, undefined, () => {
+        void this.emitWorkspaceUpdateForCwd(workspace.directory);
+      });
     }
 
     return {
-      id: workspace.id,
-      projectId: workspace.projectId,
+      id: String(workspace.id),
+      projectId: String(workspace.projectId),
       projectDisplayName: resolvedProjectRecord?.displayName ?? String(workspace.projectId),
       projectRootPath: resolvedProjectRecord?.directory ?? workspace.directory,
       workspaceDirectory: workspace.directory,
-      projectKind: resolvedProjectRecord?.kind ?? "directory",
-      workspaceKind: workspace.kind,
+      projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
+      workspaceKind: workspace.kind === "checkout" ? "local_checkout" : workspace.kind,
       name: workspace.displayName,
       status: "done",
       activityAt: null,
@@ -5313,7 +5315,7 @@ export class Session {
       }
       return spec.direction === "asc" ? base : -base;
     }
-    return left.id - right.id;
+    return Number(left.id) - Number(right.id);
   }
 
   private encodeFetchWorkspacesCursor(
@@ -5355,7 +5357,7 @@ export class Session {
       id?: unknown;
     };
 
-    if (!Array.isArray(payload.sort) || typeof payload.id !== "number") {
+    if (!Array.isArray(payload.sort) || (typeof payload.id !== "number" && typeof payload.id !== "string")) {
       throw new SessionRequestError("invalid_cursor", "Invalid fetch_workspaces cursor");
     }
     if (!payload.values || typeof payload.values !== "object") {
@@ -5403,7 +5405,7 @@ export class Session {
     return {
       sort: cursorSort,
       values: payload.values as Record<string, string | number | null>,
-      id: payload.id,
+      id: String(payload.id),
     };
   }
 
@@ -5422,7 +5424,7 @@ export class Session {
       }
       return spec.direction === "asc" ? base : -base;
     }
-    return workspace.id - cursor.id;
+    return Number(workspace.id) - Number(cursor.id);
   }
 
   private matchesWorkspaceFilter(input: {
@@ -5511,7 +5513,7 @@ export class Session {
   }
 
   private flushBootstrappedWorkspaceUpdates(options?: {
-    snapshotLatestActivityByWorkspaceId?: Map<number, number>;
+    snapshotLatestActivityByWorkspaceId?: Map<string, number>;
   }): void {
     const subscription = this.workspaceUpdatesSubscription;
     if (!subscription || !subscription.isBootstrapping) {
@@ -5687,7 +5689,7 @@ export class Session {
     const persistedWorkspace = await this.findWorkspaceByDirectory(normalizedCwd);
     const all = await this.listWorkspaceDescriptorsSnapshot();
     const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
-    const workspaceIdsToEmit = persistedWorkspace ? [persistedWorkspace.id] : [];
+    const workspaceIdsToEmit = persistedWorkspace ? [String(persistedWorkspace.id)] : [];
 
     for (const nextWorkspaceId of workspaceIdsToEmit) {
       const workspace = descriptorsByWorkspaceId.get(nextWorkspaceId);
@@ -5738,7 +5740,7 @@ export class Session {
 
     for (const workspaceCwd of uniqueWorkspaceCwds) {
       const persistedWorkspace = await this.findWorkspaceByDirectory(workspaceCwd);
-      const workspace = persistedWorkspace ? descriptorsByWorkspaceId.get(persistedWorkspace.id) : null;
+      const workspace = persistedWorkspace ? descriptorsByWorkspaceId.get(String(persistedWorkspace.id)) : null;
       const nextWorkspace =
         workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
           ? workspace
@@ -5749,7 +5751,7 @@ export class Session {
         if (persistedWorkspace) {
           this.bufferOrEmitWorkspaceUpdate(subscription, {
             kind: "remove",
-            id: persistedWorkspace.id,
+            id: String(persistedWorkspace.id),
           });
         }
         continue;
@@ -5844,7 +5846,7 @@ export class Session {
 
       const payload = await this.listFetchWorkspacesEntries(request);
       await this.primeWorkspaceGitWatchFingerprints(payload.entries);
-      const snapshotLatestActivityByWorkspaceId = new Map<number, number>();
+      const snapshotLatestActivityByWorkspaceId = new Map<string, number>();
       for (const entry of payload.entries) {
         const parsedLatestActivity = entry.activityAt
           ? Date.parse(entry.activityAt)
@@ -5973,7 +5975,8 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "archive_workspace_request" }>,
   ): Promise<void> {
     try {
-      const existing = await this.workspaceRegistry.get(request.workspaceId);
+      const numericWorkspaceId = Number(request.workspaceId);
+      const existing = await this.workspaceRegistry.get(numericWorkspaceId);
       if (!existing) {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
@@ -5981,7 +5984,7 @@ export class Session {
         throw new Error("Use worktree archive for Paseo worktrees");
       }
       const archivedAt = new Date().toISOString();
-      await this.archiveWorkspaceRecord(request.workspaceId, archivedAt);
+      await this.archiveWorkspaceRecord(numericWorkspaceId, archivedAt);
       await this.emitWorkspaceUpdateForCwd(existing.directory);
       this.emit({
         type: "archive_workspace_response",

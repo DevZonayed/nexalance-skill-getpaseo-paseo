@@ -70,8 +70,8 @@ describe("openProjectDirectly", () => {
           requestId: "request-1",
           error: null,
           workspace: {
-            id: 1,
-            projectId: 1,
+            id: "1",
+            projectId: "1",
             projectDisplayName: "project",
             projectRootPath: WORKSPACE_ID,
             workspaceDirectory: WORKSPACE_ID,

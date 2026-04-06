@@ -127,7 +127,7 @@ export type DaemonEvent =
     }
     | {
       type: "workspace_update";
-      workspaceId: number;
+      workspaceId: string;
       payload: Extract<SessionOutboundMessage, { type: "workspace_update" }>["payload"];
     }
   | {
