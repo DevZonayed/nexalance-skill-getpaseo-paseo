@@ -17,6 +17,7 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { useQuery } from "@tanstack/react-query";
 import { useSessionStore } from "@/stores/session-store";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import {
   buildFavoriteModelKey,
   mergeProviderPreferences,
@@ -266,7 +267,7 @@ function ControlledStatusBar({
     return null;
   }
 
-  const modelDisabled = disabled || isModelLoading || !modelOptions || modelOptions.length === 0;
+  const modelDisabled = disabled;
 
   const SEARCH_THRESHOLD = 6;
 
@@ -673,6 +674,7 @@ function ControlledStatusBar({
                       pointerEvents="none"
                       testID="agent-preferences-model"
                     >
+                      <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                       <Text style={styles.sheetSelectText}>{selectedModelLabel}</Text>
                       <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                     </View>
@@ -698,6 +700,7 @@ function ControlledStatusBar({
                     accessibilityLabel="Select thinking option"
                     testID="agent-preferences-thinking"
                   >
+                    <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                     <Text style={styles.sheetSelectText}>{displayThinking}</Text>
                     <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                   </DropdownMenuTrigger>
@@ -869,9 +872,17 @@ export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStat
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
-  const modelsQuery = useQuery({
+  const {
+    entries: snapshotEntries,
+    isLoading: snapshotIsLoading,
+    isFetching: snapshotIsFetching,
+    supportsSnapshot,
+  } = useProvidersSnapshot(serverId);
+
+  // COMPAT(providersSnapshot): legacy fallback for daemons without snapshot support
+  const legacyModelsQuery = useQuery({
     queryKey: ["providerModels", serverId, agent?.provider ?? "__missing_provider__"],
-    enabled: Boolean(client && agent?.provider),
+    enabled: Boolean(!supportsSnapshot && client && agent?.provider),
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       if (!client || !agent) {
@@ -884,37 +895,40 @@ export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStat
       return payload.models ?? [];
     },
   });
+
+  const snapshotModels = useMemo(() => {
+    if (!supportsSnapshot || !snapshotEntries || !agent?.provider) {
+      return null;
+    }
+    const entry = snapshotEntries.find((e) => e.provider === agent.provider);
+    return entry?.models ?? null;
+  }, [supportsSnapshot, snapshotEntries, agent?.provider]);
+
+  const models = supportsSnapshot ? snapshotModels : (legacyModelsQuery.data ?? null);
 
   const agentProviderDefinitions = useMemo(() => {
+    if (supportsSnapshot && snapshotEntries) {
+      return AGENT_PROVIDER_DEFINITIONS.filter((d) =>
+        snapshotEntries.some((e) => e.provider === d.id),
+      );
+    }
     const definition = AGENT_PROVIDER_DEFINITIONS.find((d) => d.id === agent?.provider);
     return definition ? [definition] : [];
-  }, [agent?.provider]);
-
-  const agentProviderModelQuery = useQuery({
-    queryKey: ["providerModels", serverId, agent?.provider, agent?.cwd ?? ""],
-    enabled: Boolean(client && agent?.cwd && agent?.provider),
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      if (!client || !agent) {
-        throw new Error("Daemon client unavailable");
-      }
-      const payload = await client.listProviderModels(agent.provider, { cwd: agent.cwd });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.models ?? [];
-    },
-  });
+  }, [agent?.provider, supportsSnapshot, snapshotEntries]);
 
   const agentProviderModels = useMemo(() => {
     const map = new Map<string, AgentModelDefinition[]>();
-    if (agent?.provider && agentProviderModelQuery.data) {
-      map.set(agent.provider, agentProviderModelQuery.data);
+    if (supportsSnapshot && snapshotEntries) {
+      for (const entry of snapshotEntries) {
+        if (entry.models) {
+          map.set(entry.provider, entry.models);
+        }
+      }
+    } else if (agent?.provider && legacyModelsQuery.data) {
+      map.set(agent.provider, legacyModelsQuery.data);
     }
     return map;
-  }, [agent?.provider, agentProviderModelQuery.data]);
-
-  const models = modelsQuery.data ?? null;
+  }, [supportsSnapshot, snapshotEntries, agent?.provider, legacyModelsQuery.data]);
 
   const displayMode =
     availableModes.find((mode) => mode.id === agent?.currentModeId)?.label ||
@@ -1034,7 +1048,7 @@ export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStat
           console.warn("[AgentStatusBar] setAgentFeature failed", error);
         });
       }}
-      isModelLoading={isProviderModelsQueryLoading(modelsQuery)}
+      isModelLoading={supportsSnapshot ? (snapshotIsLoading || snapshotIsFetching) : isProviderModelsQueryLoading(legacyModelsQuery)}
       onDropdownClose={onDropdownClose}
       disabled={!client}
     />

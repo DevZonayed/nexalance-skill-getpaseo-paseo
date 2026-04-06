@@ -70,6 +70,7 @@ import {
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
   checkoutStatusQueryKey,
@@ -607,6 +608,16 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
+
+  useEffect(() => {
+    if (!client || !isConnected || !normalizedServerId) {
+      return;
+    }
+    const session = useSessionStore.getState().sessions[normalizedServerId];
+    if (session?.serverInfo?.features?.providersSnapshot) {
+      prefetchProvidersSnapshot(normalizedServerId, client);
+    }
+  }, [client, isConnected, normalizedServerId]);
 
   const workspaceAgentVisibility = useStoreWithEqualityFn(
     useSessionStore,
