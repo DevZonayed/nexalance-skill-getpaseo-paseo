@@ -42,8 +42,8 @@ describe("normalizeWorkspaceDescriptor", () => {
       },
     ];
     const workspace = normalizeWorkspaceDescriptor({
-      id: 1,
-      projectId: 1,
+      id: "1",
+      projectId: "1",
       projectDisplayName: "Project 1",
       projectRootPath: "/repo",
       workspaceDirectory: "/repo",
@@ -71,8 +71,8 @@ describe("normalizeWorkspaceDescriptor", () => {
 
   it("defaults missing services to an empty array", () => {
     const payload = {
-      id: 1,
-      projectId: 1,
+      id: "1",
+      projectId: "1",
       projectDisplayName: "Project 1",
       projectRootPath: "/repo",
       workspaceDirectory: "/repo",
@@ -82,6 +82,7 @@ describe("normalizeWorkspaceDescriptor", () => {
       status: "done",
       activityAt: null,
       diffStat: null,
+      services: [],
     } as WorkspaceDescriptorPayload;
 
     const workspace = normalizeWorkspaceDescriptor(payload);

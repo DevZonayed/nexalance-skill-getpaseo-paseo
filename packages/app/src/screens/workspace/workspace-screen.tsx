@@ -63,7 +63,6 @@ import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-s
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import { decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import {
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
@@ -79,7 +78,7 @@ import {
 import type { ListTerminalsResponse } from "@server/shared/messages";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { applyArchivedAgentCloseResults, useArchiveAgent } from "@/hooks/use-archive-agent";
+import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -607,7 +606,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
 
   const normalizedWorkspaceId =
     resolveWorkspaceRouteId({
-      routeWorkspaceId: decodeWorkspaceIdFromPathSegment(workspaceId),
+      routeWorkspaceId: workspaceId,
     }) ?? "";
   const sessionWorkspaces = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.workspaces,
@@ -1198,6 +1197,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       if (!workspaceDirectory) {
         return;
       }
+
       createTerminalMutation.mutate(input);
     },
     [createTerminalMutation, workspaceDirectory],
@@ -1243,10 +1243,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           return;
         }
 
-        await killTerminalAsync(terminalId);
-        setHoveredTabKey((current) => (current === tabId ? null : current));
-        setHoveredCloseTabKey((current) => (current === tabId ? null : current));
-
         queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
           if (!current) {
             return current;
@@ -1256,13 +1252,18 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
             terminals: current.terminals.filter((terminal) => terminal.id !== terminalId),
           };
         });
-
+        setHoveredTabKey((current) => (current === tabId ? null : current));
+        setHoveredCloseTabKey((current) => (current === tabId ? null : current));
         if (persistenceKey) {
           closeWorkspaceTabWithCleanup({
             tabId,
             target: { kind: "terminal", terminalId },
           });
         }
+
+        void killTerminalAsync(terminalId).catch(() => {
+          void queryClient.invalidateQueries({ queryKey: terminalsQueryKey });
+        });
       });
     },
     [
@@ -1294,7 +1295,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           return;
         }
 
-        await archiveAgent({ serverId: normalizedServerId, agentId });
         setHoveredTabKey((current) => (current === tabId ? null : current));
         setHoveredCloseTabKey((current) => (current === tabId ? null : current));
         if (persistenceKey) {
@@ -1303,6 +1303,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
             target: { kind: "agent", agentId },
           });
         }
+
+        void archiveAgent({ serverId: normalizedServerId, agentId });
       });
     },
     [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey],
@@ -1464,7 +1466,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         return;
       }
 
-      const closeItemsPayload = await closeBulkWorkspaceTabs({
+      await closeBulkWorkspaceTabs({
         client,
         groups,
         closeTab,
@@ -1480,31 +1482,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         },
       });
 
-      if (closeItemsPayload) {
-        for (const terminal of closeItemsPayload.terminals) {
-          if (!terminal.success) {
-            continue;
-          }
-          queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
-            if (!current) {
-              return current;
-            }
-            return {
-              ...current,
-              terminals: current.terminals.filter((entry) => entry.id !== terminal.terminalId),
-            };
-          });
-        }
-
-        if (normalizedServerId) {
-          applyArchivedAgentCloseResults({
-            queryClient,
-            serverId: normalizedServerId,
-            results: closeItemsPayload.agents,
-          });
-        }
-      }
-
       const closedKeys = new Set(tabsToClose.map((tab) => tab.key));
       setHoveredTabKey((current) => (current && closedKeys.has(current) ? null : current));
       setHoveredCloseTabKey((current) => (current && closedKeys.has(current) ? null : current));
@@ -1513,10 +1490,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       client,
       closeTab,
       closeWorkspaceTabWithCleanup,
-      normalizedServerId,
       persistenceKey,
-      queryClient,
-      terminalsQueryKey,
     ],
   );
 

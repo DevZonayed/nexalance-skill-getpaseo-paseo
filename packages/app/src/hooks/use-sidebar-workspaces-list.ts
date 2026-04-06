@@ -259,8 +259,8 @@ function getWorkspaceOrderScopeKey(serverId: string, projectKey: string): string
 }
 
 function toWorkspaceDescriptor(payload: {
-  id: number;
-  projectId: number;
+  id: string;
+  projectId: string;
   projectDisplayName: string;
   projectRootPath: string;
   workspaceDirectory: string;
