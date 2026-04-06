@@ -33,6 +33,7 @@ import {
   pushCurrentBranch,
   resolveRepositoryDefaultBranch,
   parseWorktreeList,
+  parseStatusCheckRollup,
   isPaseoWorktreePath,
   isDescendantPath,
   warmCheckoutShortstatInBackground,
@@ -622,6 +623,101 @@ const x = 1;
     }
   });
 
+  it("parses real gh status check rollup output and dedupes by latest check run", () => {
+    expect(
+      parseStatusCheckRollup([
+        {
+          __typename: "CheckRun",
+          completedAt: "2026-04-02T13:53:59Z",
+          conclusion: "SUCCESS",
+          detailsUrl: "https://github.com/org/repo/actions/runs/123",
+          name: "review_app",
+          startedAt: "2026-04-02T13:49:31Z",
+          status: "COMPLETED",
+          workflowName: "Deploy PR Preview",
+        },
+        {
+          __typename: "CheckRun",
+          completedAt: "2026-04-02T13:58:59Z",
+          conclusion: "FAILURE",
+          detailsUrl: "https://github.com/org/repo/actions/runs/124",
+          name: "review_app",
+          startedAt: "2026-04-02T13:55:31Z",
+          status: "COMPLETED",
+        },
+      ]),
+    ).toEqual([
+      {
+        name: "review_app",
+        status: "failure",
+        url: "https://github.com/org/repo/actions/runs/124",
+      },
+    ]);
+  });
+
+  it("parses mixed check run and status context entries", () => {
+    expect(
+      parseStatusCheckRollup([
+        {
+          __typename: "CheckRun",
+          name: "unit-tests",
+          status: "IN_PROGRESS",
+          conclusion: null,
+          detailsUrl: "https://github.com/org/repo/actions/runs/200",
+          startedAt: "2026-04-02T13:49:31Z",
+        },
+        {
+          __typename: "StatusContext",
+          context: "lint",
+          state: "SUCCESS",
+          targetUrl: "https://github.com/org/repo/status/300",
+          createdAt: "2026-04-02T13:48:00Z",
+        },
+      ]),
+    ).toEqual([
+      {
+        name: "unit-tests",
+        status: "pending",
+        url: "https://github.com/org/repo/actions/runs/200",
+      },
+      {
+        name: "lint",
+        status: "success",
+        url: "https://github.com/org/repo/status/300",
+      },
+    ]);
+  });
+
+  it("returns an empty list for nullish or empty status check rollups", () => {
+    expect(parseStatusCheckRollup(undefined)).toEqual([]);
+    expect(parseStatusCheckRollup(null)).toEqual([]);
+    expect(parseStatusCheckRollup([])).toEqual([]);
+  });
+
+  it("ignores unknown status check rollup node types", () => {
+    expect(
+      parseStatusCheckRollup([
+        {
+          __typename: "Commit",
+          oid: "abc123",
+        },
+        {
+          __typename: "CheckRun",
+          name: "build",
+          status: "COMPLETED",
+          conclusion: "SUCCESS",
+          detailsUrl: "https://github.com/org/repo/actions/runs/500",
+        },
+      ]),
+    ).toEqual([
+      {
+        name: "build",
+        status: "success",
+        url: "https://github.com/org/repo/actions/runs/500",
+      },
+    ]);
+  });
+
   it("returns merged PR status when no open PR exists for the current branch", async () => {
     execSync("git checkout -b feature", { cwd: repoDir });
     execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
@@ -640,8 +736,8 @@ const x = 1;
         "  exit 0",
         "fi",
         'args="$*"',
-        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
-        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"closed","baseRefName":"main","headRefName":"feature","mergedAt":"2026-02-18T00:00:00Z"}\'',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision" ]]; then',
+        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"closed","baseRefName":"main","headRefName":"feature","mergedAt":"2026-02-18T00:00:00Z","statusCheckRollup":[],"reviewDecision":""}\'',
         "  exit 0",
         "fi",
         'echo "unexpected gh args: $args" >&2',
@@ -686,8 +782,8 @@ const x = 1;
         "  exit 0",
         "fi",
         'args="$*"',
-        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
-        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/999","title":"Closed without merge","state":"closed","baseRefName":"main","headRefName":"feature","mergedAt":null}\'',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision" ]]; then',
+        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/999","title":"Closed without merge","state":"closed","baseRefName":"main","headRefName":"feature","mergedAt":null,"statusCheckRollup":[],"reviewDecision":""}\'',
         "  exit 0",
         "fi",
         'echo "unexpected gh args: $args" >&2',
@@ -735,10 +831,10 @@ const x = 1;
         "  exit 0",
         "fi",
         'args="$*"',
-        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision" ]]; then',
         '  count="$(cat "$count_file")"',
         '  printf "%s\\n" "$((count + 1))" > "$count_file"',
-        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null}\'',
+        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null,"statusCheckRollup":[],"reviewDecision":""}\'',
         "  exit 0",
         "fi",
         'echo "unexpected gh args: $args" >&2',
@@ -783,11 +879,11 @@ const x = 1;
         "  exit 0",
         "fi",
         'args="$*"',
-        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision" ]]; then',
         '  count="$(cat "$count_file")"',
         '  next="$((count + 1))"',
         '  printf "%s\\n" "$next" > "$count_file"',
-        '  printf \'{"url":"https://github.com/getpaseo/paseo/pull/%s","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null}\\n\' "$next"',
+        '  printf \'{"url":"https://github.com/getpaseo/paseo/pull/%s","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null,"statusCheckRollup":[],"reviewDecision":""}\\n\' "$next"',
         "  exit 0",
         "fi",
         'echo "unexpected gh args: $args" >&2',
@@ -834,11 +930,11 @@ const x = 1;
         "  exit 0",
         "fi",
         'args="$*"',
-        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision" ]]; then',
         '  count="$(cat "$count_file")"',
         '  printf "%s\\n" "$((count + 1))" > "$count_file"',
         "  sleep 0.2",
-        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null}\'',
+        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null,"statusCheckRollup":[],"reviewDecision":""}\'',
         "  exit 0",
         "fi",
         'echo "unexpected gh args: $args" >&2',

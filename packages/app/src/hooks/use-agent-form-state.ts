@@ -138,7 +138,7 @@ function resolveEffectiveModel(
   }
   const normalizedModelId = modelId.trim();
   if (!normalizedModelId) {
-    return resolveDefaultModel(availableModels);
+    return null;
   }
   return (
     availableModels.find((model) => model.id === normalizedModelId) ??
@@ -243,8 +243,6 @@ function resolveFormState(
       } else {
         result.model = defaultModelId;
       }
-    } else if (defaultModelId) {
-      result.model = defaultModelId;
     } else {
       result.model = "";
     }

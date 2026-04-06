@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Logger } from "pino";
+import { createBranchChangeRouteHandler } from "./service-route-branch-handler.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -243,6 +244,20 @@ export async function createPaseoDaemon(
         routeStore: serviceRouteStore,
         daemonPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
       }),
+    });
+    const handleBranchChange = createBranchChangeRouteHandler({
+      routeStore: serviceRouteStore,
+      emitServiceStatusUpdate: (workspaceId, services) => {
+        const message = {
+          type: "service_status_update" as const,
+          payload: { workspaceId, services },
+        };
+        const activeSessions = wsServer?.listActiveSessions() ?? [];
+        for (const session of activeSessions) {
+          session.emitServerMessage(message);
+        }
+      },
+      logger,
     });
 
     // Host allowlist / DNS rebinding protection (vite-like semantics).
@@ -687,6 +702,7 @@ export async function createPaseoDaemon(
       scheduleService,
       checkoutDiffManager,
       serviceRouteStore,
+      handleBranchChange,
       () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
       (hostname) => serviceHealthMonitor.getStatusForHostname(hostname),
     );

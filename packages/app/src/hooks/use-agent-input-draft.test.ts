@@ -112,13 +112,13 @@ describe("useAgentInputDraft", () => {
       ).toBe("gpt-5.4-mini");
     });
 
-    it("falls back to the provider default model", () => {
+    it("returns empty string when no model selected", () => {
       expect(
         __private__.resolveEffectiveComposerModelId({
           selectedModel: "",
           availableModels: models,
         }),
-      ).toBe("gpt-5.4");
+      ).toBe("");
     });
   });
 

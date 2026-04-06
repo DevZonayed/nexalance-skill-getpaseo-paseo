@@ -27,7 +27,6 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
   Archive,
-  Check,
   CircleAlert,
   ChevronDown,
   ChevronRight,
@@ -41,7 +40,6 @@ import {
   MoreVertical,
   Plus,
   Trash2,
-  X,
 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -95,7 +93,7 @@ import {
   requireWorkspaceExecutionDirectory,
   resolveWorkspaceExecutionDirectory,
 } from "@/utils/workspace-execution";
-import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
+import { CheckStatusIndicator, WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { createNameId } from "mnemonic-id";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
@@ -226,28 +224,6 @@ function WorkspacePrBadge({ hint }: { hint: PrHint }) {
   );
 }
 
-function ChecksStatusIcon({ checksStatus }: { checksStatus?: PrHint["checksStatus"] }) {
-  const { theme } = useUnistyles();
-  if (!checksStatus || checksStatus === "none") return null;
-
-  if (checksStatus === "success") {
-    return <Check size={11} color={theme.colors.palette.green[500]} strokeWidth={3} />;
-  }
-  if (checksStatus === "failure") {
-    return <X size={11} color={theme.colors.palette.red[500]} strokeWidth={3} />;
-  }
-  // pending
-  return (
-    <View
-      style={{
-        width: 7,
-        height: 7,
-        borderRadius: 3.5,
-        backgroundColor: theme.colors.palette.amber[500],
-      }}
-    />
-  );
-}
 
 function WorkspaceStatusIndicator({
   bucket,
@@ -950,7 +926,7 @@ function WorkspaceRowInner({
   const showGlobe = isDesktop && workspace.hasRunningServices;
 
   return (
-    <WorkspaceHoverCard workspace={workspace} isDragging={isDragging}>
+    <WorkspaceHoverCard workspace={workspace} prHint={prHint} isDragging={isDragging}>
       <View
         style={styles.workspaceRowContainer}
         onPointerEnter={() => setIsHovered(true)}
@@ -1067,7 +1043,7 @@ function WorkspaceRowInner({
           {prHint ? (
             <View style={styles.workspacePrBadgeRow}>
               <WorkspacePrBadge hint={prHint} />
-              <ChecksStatusIcon checksStatus={prHint.checksStatus} />
+              <CheckStatusIndicator status={prHint.checksStatus ?? "none"} size={11} />
             </View>
           ) : null}
         </Pressable>

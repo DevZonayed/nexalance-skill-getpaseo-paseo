@@ -9,16 +9,13 @@ import {
 import { Dimensions, Platform, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ExternalLink, FolderGit2, GitPullRequest, Monitor } from "lucide-react-native";
+import { Check, ExternalLink, GitPullRequest, Minus, X } from "lucide-react-native";
 import { Pressable } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
-import { type PrHint, useWorkspacePrHint } from "@/hooks/use-checkout-pr-status-query";
+import type { PrHint } from "@/hooks/use-checkout-pr-status-query";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { getStatusDotColor } from "@/utils/status-dot-color";
-import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
-import { SyncedLoader } from "@/components/synced-loader";
 
 interface Rect {
   x: number;
@@ -70,11 +67,13 @@ const HOVER_CARD_WIDTH = 260;
 
 interface WorkspaceHoverCardProps {
   workspace: SidebarWorkspaceEntry;
+  prHint: PrHint | null;
   isDragging: boolean;
 }
 
 export function WorkspaceHoverCard({
   workspace,
+  prHint,
   isDragging,
   children,
 }: PropsWithChildren<WorkspaceHoverCardProps>): ReactElement {
@@ -84,7 +83,7 @@ export function WorkspaceHoverCard({
   }
 
   return (
-    <WorkspaceHoverCardDesktop workspace={workspace} isDragging={isDragging}>
+    <WorkspaceHoverCardDesktop workspace={workspace} prHint={prHint} isDragging={isDragging}>
       {children}
     </WorkspaceHoverCardDesktop>
   );
@@ -92,6 +91,7 @@ export function WorkspaceHoverCard({
 
 function WorkspaceHoverCardDesktop({
   workspace,
+  prHint,
   isDragging,
   children,
 }: PropsWithChildren<WorkspaceHoverCardProps>): ReactElement {
@@ -102,6 +102,7 @@ function WorkspaceHoverCardDesktop({
   const contentHoveredRef = useRef(false);
 
   const hasServices = workspace.services.length > 0;
+  const hasContent = hasServices || prHint !== null;
 
   const clearGraceTimer = useCallback(() => {
     if (graceTimerRef.current) {
@@ -123,10 +124,10 @@ function WorkspaceHoverCardDesktop({
   const handleTriggerEnter = useCallback(() => {
     triggerHoveredRef.current = true;
     clearGraceTimer();
-    if (!isDragging && hasServices) {
+    if (!isDragging && hasContent) {
       setOpen(true);
     }
-  }, [clearGraceTimer, isDragging, hasServices]);
+  }, [clearGraceTimer, isDragging, hasContent]);
 
   const handleTriggerLeave = useCallback(() => {
     triggerHoveredRef.current = false;
@@ -151,13 +152,13 @@ function WorkspaceHoverCardDesktop({
     }
   }, [isDragging, clearGraceTimer]);
 
-  // When hasServices becomes true while trigger is already hovered, open the card.
+  // When content becomes available while trigger is already hovered, open the card.
   useEffect(() => {
-    if (!hasServices || isDragging) return;
+    if (!hasContent || isDragging) return;
     if (triggerHoveredRef.current) {
       setOpen(true);
     }
-  }, [hasServices, isDragging]);
+  }, [hasContent, isDragging]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -174,9 +175,10 @@ function WorkspaceHoverCardDesktop({
       onPointerLeave={handleTriggerLeave}
     >
       {children}
-      {open && hasServices ? (
+      {open && hasContent ? (
         <WorkspaceHoverCardContent
           workspace={workspace}
+          prHint={prHint}
           triggerRef={triggerRef}
           onContentEnter={handleContentEnter}
           onContentLeave={handleContentLeave}
@@ -192,53 +194,94 @@ const GITHUB_PR_STATE_LABELS: Record<PrHint["state"], string> = {
   closed: "Closed",
 };
 
-function HoverCardStatusIndicator({
-  workspace,
+
+export function CheckStatusIndicator({
+  status,
+  size = 14,
 }: {
-  workspace: SidebarWorkspaceEntry;
+  status: string;
+  size?: number;
 }): ReactElement | null {
   const { theme } = useUnistyles();
-  const showSyncedLoader = shouldRenderSyncedStatusLoader({ bucket: workspace.statusBucket });
+  const iconSize = Math.round(size * 0.6);
 
-  if (showSyncedLoader) {
-    return <SyncedLoader size={11} color={theme.colors.palette.amber[500]} />;
+  if (!status || status === "none") return null;
+
+  if (status === "pending") {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 2,
+          borderColor: theme.colors.palette.amber[500],
+          backgroundColor: "transparent",
+        }}
+      />
+    );
   }
 
-  const KindIcon =
-    workspace.workspaceKind === "checkout"
-      ? Monitor
-      : workspace.workspaceKind === "worktree"
-        ? FolderGit2
-        : null;
-  if (!KindIcon) return null;
+  if (status === "success") {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: "rgba(34,197,94,0.15)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Check size={iconSize} color={theme.colors.palette.green[500]} strokeWidth={3} />
+      </View>
+    );
+  }
 
-  const dotColor = getStatusDotColor({ theme, bucket: workspace.statusBucket, showDoneAsInactive: false });
+  if (status === "failure") {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: "rgba(239,68,68,0.15)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <X size={iconSize} color={theme.colors.palette.red[500]} strokeWidth={3} />
+      </View>
+    );
+  }
 
+  // skipped / cancelled / unknown
   return (
-    <View style={styles.hoverStatusIcon}>
-      <KindIcon size={14} color={theme.colors.foregroundMuted} />
-      {dotColor ? (
-        <View
-          style={[
-            styles.hoverStatusDotOverlay,
-            {
-              backgroundColor: dotColor,
-              borderColor: theme.colors.surface1,
-            },
-          ]}
-        />
-      ) : null}
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: "rgba(128,128,128,0.15)",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Minus size={iconSize} color={theme.colors.foregroundMuted} strokeWidth={3} />
     </View>
   );
 }
 
 function WorkspaceHoverCardContent({
   workspace,
+  prHint,
   triggerRef,
   onContentEnter,
   onContentLeave,
 }: {
   workspace: SidebarWorkspaceEntry;
+  prHint: PrHint | null;
   triggerRef: React.RefObject<View | null>;
   onContentEnter: () => void;
   onContentLeave: () => void;
@@ -248,11 +291,6 @@ function WorkspaceHoverCardContent({
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const prHint = useWorkspacePrHint({
-    serverId: workspace.serverId,
-    cwd: workspace.workspaceId,
-    enabled: workspace.projectKind !== "directory",
-  });
 
   // Measure trigger — same pattern as tooltip.tsx
   useEffect(() => {
@@ -315,29 +353,37 @@ function WorkspaceHoverCardContent({
           ]}
         >
           <View style={styles.cardHeader}>
-            <HoverCardStatusIndicator workspace={workspace} />
             <Text style={styles.cardTitle} numberOfLines={1} testID="hover-card-workspace-name">
               {workspace.name}
             </Text>
           </View>
-          {workspace.diffStat ? (
-            <View style={styles.cardMetaRow}>
-              <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
-              <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-            </View>
-          ) : null}
-          {prHint ? (
+          {prHint || workspace.diffStat ? (
             <Pressable
               style={styles.cardMetaRow}
-              onPress={() => void openExternalUrl(prHint.url)}
+              onPress={prHint ? () => void openExternalUrl(prHint.url) : undefined}
+              disabled={!prHint}
             >
-              <GitPullRequest size={12} color={theme.colors.foregroundMuted} />
-              <Text style={styles.prBadgeText} numberOfLines={1}>
-                #{prHint.number} · {GITHUB_PR_STATE_LABELS[prHint.state]}
-              </Text>
+              {prHint ? (
+                <>
+                  <GitPullRequest size={12} color={theme.colors.foregroundMuted} />
+                  <Text style={styles.prBadgeText} numberOfLines={1}>
+                    #{prHint.number} · {GITHUB_PR_STATE_LABELS[prHint.state]}
+                  </Text>
+                </>
+              ) : null}
+
+              {workspace.diffStat ? (
+                <>
+                  <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
+                  <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
+                </>
+              ) : null}
             </Pressable>
           ) : null}
           {prHint?.checks && prHint.checks.length > 0 ? (
+            <>
+            <View style={styles.separator} />
+            <Text style={styles.sectionLabel}>Checks</Text>
             <View style={styles.checksList}>
               {prHint.checks.map((check) => (
                 <Pressable
@@ -349,21 +395,7 @@ function WorkspaceHoverCardContent({
                   onPress={check.url ? () => void openExternalUrl(check.url!) : undefined}
                   disabled={!check.url}
                 >
-                  <View
-                    style={[
-                      styles.statusDot,
-                      {
-                        backgroundColor:
-                          check.status === "success"
-                            ? theme.colors.palette.green[500]
-                            : check.status === "failure" || check.status === "cancelled"
-                              ? theme.colors.palette.red[500]
-                              : check.status === "pending"
-                                ? theme.colors.palette.amber[500]
-                                : theme.colors.foregroundMuted,
-                      },
-                    ]}
-                  />
+                  <CheckStatusIndicator status={check.status} size={14} />
                   <Text
                     style={styles.checkName}
                     numberOfLines={1}
@@ -376,59 +408,65 @@ function WorkspaceHoverCardContent({
                 </Pressable>
               ))}
             </View>
+            </>
           ) : null}
-          <View style={styles.separator} />
-          <View style={styles.serviceList} testID="hover-card-service-list">
-            {workspace.services.map((service) => (
-              <Pressable
-                key={service.hostname}
-                accessibilityRole="link"
-                accessibilityLabel={`${service.serviceName} service`}
-                testID={`hover-card-service-${service.serviceName}`}
-                style={({ hovered }) => [
-                  styles.serviceRow,
-                  hovered && styles.serviceRowHovered,
-                ]}
-                onPress={() => {
-                  if (service.url) {
-                    void openExternalUrl(service.url);
-                  }
-                }}
-                disabled={!service.url}
-              >
-                <View
-                  testID={`hover-card-service-status-${service.serviceName}`}
-                  accessibilityLabel={service.status === "running" ? "Running" : "Stopped"}
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor:
-                        service.status === "running"
-                          ? theme.colors.palette.green[500]
-                          : theme.colors.foregroundMuted,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.serviceName,
-                    { color: service.status === "running" ? theme.colors.foreground : theme.colors.foregroundMuted },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {service.serviceName}
-                </Text>
-                {service.url ? (
-                  <Text style={styles.serviceUrl} numberOfLines={1}>
-                    {service.url.replace(/^https?:\/\//, "")}
-                  </Text>
-                ) : null}
-                {service.url ? (
-                  <ExternalLink size={11} color={theme.colors.foregroundMuted} />
-                ) : null}
-              </Pressable>
-            ))}
-          </View>
+          {workspace.services.length > 0 ? (
+            <>
+              <View style={styles.separator} />
+              <Text style={styles.sectionLabel}>Services</Text>
+              <View style={styles.serviceList} testID="hover-card-service-list">
+                {workspace.services.map((service) => (
+                  <Pressable
+                    key={service.hostname}
+                    accessibilityRole="link"
+                    accessibilityLabel={`${service.serviceName} service`}
+                    testID={`hover-card-service-${service.serviceName}`}
+                    style={({ hovered }) => [
+                      styles.serviceRow,
+                      hovered && styles.serviceRowHovered,
+                    ]}
+                    onPress={() => {
+                      if (service.url) {
+                        void openExternalUrl(service.url);
+                      }
+                    }}
+                    disabled={!service.url}
+                  >
+                    <View
+                      testID={`hover-card-service-status-${service.serviceName}`}
+                      accessibilityLabel={service.status === "running" ? "Running" : "Stopped"}
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor:
+                            service.status === "running"
+                              ? theme.colors.palette.green[500]
+                              : theme.colors.foregroundMuted,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.serviceName,
+                        { color: service.status === "running" ? theme.colors.foreground : theme.colors.foregroundMuted },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {service.serviceName}
+                    </Text>
+                    {service.url ? (
+                      <Text style={styles.serviceUrl} numberOfLines={1}>
+                        {service.url.replace(/^https?:\/\//, "")}
+                      </Text>
+                    ) : null}
+                    {service.url ? (
+                      <ExternalLink size={11} color={theme.colors.foregroundMuted} />
+                    ) : null}
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : null}
         </Animated.View>
       </View>
     </Portal>
@@ -467,7 +505,7 @@ const styles = StyleSheet.create((theme) => ({
   cardTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: theme.fontWeight.normal,
     flex: 1,
     minWidth: 0,
   },
@@ -491,22 +529,6 @@ const styles = StyleSheet.create((theme) => ({
   prBadgeText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
-  },
-  hoverStatusIcon: {
-    width: 14,
-    height: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  hoverStatusDotOverlay: {
-    position: "absolute",
-    bottom: -1,
-    right: -1,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    borderWidth: 1,
   },
   separator: {
     height: 1,
@@ -541,6 +563,14 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     flex: 1,
     minWidth: 0,
+  },
+  sectionLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+    paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[1],
   },
   checksList: {
     paddingBottom: theme.spacing[1],

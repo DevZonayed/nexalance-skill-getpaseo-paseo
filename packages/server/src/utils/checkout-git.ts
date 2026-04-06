@@ -4,6 +4,7 @@ import { resolve, dirname, basename } from "path";
 import { realpathSync } from "fs";
 import { open as openFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
+import { z } from "zod";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { findExecutable } from "./executable.js";
@@ -1851,24 +1852,52 @@ export type ChecksStatus = "none" | "pending" | "success" | "failure";
 
 export type ReviewDecision = "approved" | "changes_requested" | "pending" | null;
 
-type StatusCheckRollupContext = {
-  __typename?: unknown;
-  name?: unknown;
-  conclusion?: unknown;
-  status?: unknown;
-  detailsUrl?: unknown;
-  startedAt?: unknown;
-  completedAt?: unknown;
-  checkSuite?: {
-    workflowRun?: {
-      databaseId?: unknown;
-    } | null;
-  } | null;
-  context?: unknown;
-  state?: unknown;
-  targetUrl?: unknown;
-  createdAt?: unknown;
-};
+const CheckRunNodeSchema = z.object({
+  __typename: z.literal("CheckRun"),
+  name: z.string(),
+  conclusion: z.string().nullable().optional(),
+  status: z.string().nullable().optional(),
+  detailsUrl: z.string().nullable().optional(),
+  startedAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  checkSuite: z
+    .object({
+      workflowRun: z
+        .object({
+          databaseId: z.number().nullable().optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
+const StatusContextNodeSchema = z.object({
+  __typename: z.literal("StatusContext"),
+  context: z.string(),
+  state: z.string().nullable().optional(),
+  targetUrl: z.string().nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+});
+
+const StatusCheckRollupNodeSchema = z.discriminatedUnion("__typename", [
+  CheckRunNodeSchema,
+  StatusContextNodeSchema,
+]);
+
+const StatusCheckRollupArraySchema = z.array(z.unknown());
+const LegacyStatusCheckRollupSchema = z.object({
+  contexts: z.array(z.unknown()),
+});
+
+const ReviewDecisionSchema = z
+  .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+  .nullable()
+  .catch(null);
+
+type CheckRunNode = z.infer<typeof CheckRunNodeSchema>;
+type StatusContextNode = z.infer<typeof StatusContextNodeSchema>;
 
 function resolveGhPath(): string {
   if (cachedGhPath === undefined) {
@@ -1941,7 +1970,7 @@ function mapStatusContextState(state: unknown): PullRequestCheck["status"] {
   }
 }
 
-function getCheckRunRecency(context: StatusCheckRollupContext): number {
+function getCheckRunRecency(context: CheckRunNode): number {
   const workflowRunId = context.checkSuite?.workflowRun?.databaseId;
   if (typeof workflowRunId === "number") {
     return workflowRunId;
@@ -1961,7 +1990,7 @@ function getCheckRunRecency(context: StatusCheckRollupContext): number {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function getStatusContextRecency(context: StatusCheckRollupContext): number {
+function getStatusContextRecency(context: StatusContextNode): number {
   if (typeof context.createdAt !== "string" || context.createdAt.length === 0) {
     return 0;
   }
@@ -1970,15 +1999,17 @@ function getStatusContextRecency(context: StatusCheckRollupContext): number {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
-  if (!value || typeof value !== "object") {
-    return [];
-  }
+export function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
+  const directContexts = StatusCheckRollupArraySchema.safeParse(value);
+  if (!directContexts.success) {
+    const legacyContexts = LegacyStatusCheckRollupSchema.safeParse(value);
+    if (!legacyContexts.success) {
+      return [];
+    }
 
-  const contexts = (value as { contexts?: unknown }).contexts;
-  if (!Array.isArray(contexts)) {
-    return [];
+    return parseStatusCheckRollup(legacyContexts.data.contexts);
   }
+  const contexts = directContexts.data;
 
   const dedupedChecks = new Map<
     string,
@@ -1988,21 +2019,22 @@ function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
   >();
 
   for (const entry of contexts) {
-    if (!entry || typeof entry !== "object") {
+    const parsed = StatusCheckRollupNodeSchema.safeParse(entry);
+    if (!parsed.success) {
       continue;
     }
 
-    const context = entry as StatusCheckRollupContext;
+    const context = parsed.data;
     let check: (PullRequestCheck & { recency: number }) | null = null;
 
-    if (context.__typename === "CheckRun" && typeof context.name === "string") {
+    if (context.__typename === "CheckRun") {
       check = {
         name: context.name,
         status: mapCheckRunStatus(context.status, context.conclusion),
         url: typeof context.detailsUrl === "string" ? context.detailsUrl : null,
         recency: getCheckRunRecency(context),
       };
-    } else if (context.__typename === "StatusContext" && typeof context.context === "string") {
+    } else if (context.__typename === "StatusContext") {
       check = {
         name: context.context,
         status: mapStatusContextState(context.state),
@@ -2038,13 +2070,14 @@ function computeChecksStatus(checks: PullRequestCheck[]): ChecksStatus {
 }
 
 function mapReviewDecision(value: unknown): ReviewDecision {
-  if (value === "APPROVED") {
+  const reviewDecision = ReviewDecisionSchema.parse(value);
+  if (reviewDecision === "APPROVED") {
     return "approved";
   }
-  if (value === "CHANGES_REQUESTED") {
+  if (reviewDecision === "CHANGES_REQUESTED") {
     return "changes_requested";
   }
-  if (value === "REVIEW_REQUIRED") {
+  if (reviewDecision === "REVIEW_REQUIRED") {
     return "pending";
   }
   return null;

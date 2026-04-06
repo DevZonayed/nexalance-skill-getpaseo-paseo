@@ -494,26 +494,37 @@ export function CombinedModelSelector({
     return { kind: "provider", providerId, providerLabel: label };
   }, [allProviderModels, providerDefinitions]);
 
+  const computeInitialView = useCallback((): SelectorView => {
+    if (singleProviderView) return singleProviderView;
+
+    const selectedFavoriteKey = `${selectedProvider}:${selectedModel}`;
+    if (selectedProvider && selectedModel && !favoriteKeys.has(selectedFavoriteKey)) {
+      const label = resolveProviderLabel(providerDefinitions, selectedProvider);
+      return { kind: "provider", providerId: selectedProvider, providerLabel: label };
+    }
+
+    return { kind: "all" };
+  }, [singleProviderView, selectedProvider, selectedModel, favoriteKeys, providerDefinitions]);
+
   const handleOpenChange = useCallback(
     (open: boolean) => {
       setIsOpen(open);
-      setView(singleProviderView ?? { kind: "all" });
+      setView(computeInitialView());
       if (!open) {
         setSearchQuery("");
         onClose?.();
       }
     },
-    [onClose, singleProviderView],
+    [onClose, computeInitialView],
   );
 
   const handleSelect = useCallback(
     (provider: string, modelId: string) => {
       onSelect(provider as AgentProvider, modelId);
       setIsOpen(false);
-      setView(singleProviderView ?? { kind: "all" });
       setSearchQuery("");
     },
-    [onSelect, singleProviderView],
+    [onSelect],
   );
 
   const ProviderIcon = getProviderIcon(selectedProvider);
@@ -523,6 +534,9 @@ export function CombinedModelSelector({
   );
 
   const selectedModelLabel = useMemo(() => {
+    if (!selectedModel) {
+      return isLoading ? "Loading..." : "Select model";
+    }
     const models = allProviderModels.get(selectedProvider);
     if (!models) {
       return isLoading ? "Loading..." : "Select model";

@@ -88,12 +88,7 @@ function resolveEffectiveComposerModelId(input: {
   selectedModel: string;
   availableModels: AgentModelDefinition[];
 }): string {
-  const selectedModel = input.selectedModel.trim();
-  if (selectedModel) {
-    return selectedModel;
-  }
-
-  return input.availableModels.find((model) => model.isDefault)?.id ?? input.availableModels[0]?.id ?? "";
+  return input.selectedModel.trim();
 }
 
 function resolveEffectiveComposerThinkingOptionId(input: {

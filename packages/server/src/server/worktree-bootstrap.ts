@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { sep } from "node:path";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
+import { buildServiceHostname } from "../utils/service-hostname.js";
 import {
   createWorktree,
   getServiceConfigs,
@@ -13,7 +14,6 @@ import {
   processCarriageReturns,
   resolveWorktreeRuntimeEnv,
   runWorktreeSetupCommands,
-  slugify,
   WorktreeSetupError,
   type WorktreeConfig,
   type WorktreeSetupCommandResult,
@@ -792,13 +792,7 @@ export async function spawnWorktreeServices(options: {
 
     try {
       port = config.port ?? (await findFreePort());
-      const branchHostnameLabel = branchName ? slugify(branchName) : null;
-
-      const isDefaultBranch =
-        branchName === null || branchName === "main" || branchName === "master";
-      hostname = isDefaultBranch
-        ? `${serviceName}.localhost`
-        : `${branchHostnameLabel}.${serviceName}.localhost`;
+      hostname = buildServiceHostname(branchName, serviceName);
 
       routeStore.registerRoute({
         hostname,

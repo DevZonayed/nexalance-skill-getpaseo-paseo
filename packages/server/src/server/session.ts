@@ -257,6 +257,7 @@ type WorkspaceGitWatchTarget = {
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
   latestFingerprint: string | null;
+  lastBranchName: string | null;
 };
 
 type ActiveTerminalStream = {
@@ -397,6 +398,11 @@ export type SessionOptions = {
   terminalManager: TerminalManager | null;
   providerSnapshotManager?: ProviderSnapshotManager;
   serviceRouteStore?: ServiceRouteStore;
+  onBranchChanged?: (
+    workspaceId: string,
+    oldBranch: string | null,
+    newBranch: string | null,
+  ) => void;
   getDaemonTcpPort?: () => number | null;
   resolveServiceStatus?: (hostname: string) => "running" | "stopped" | null;
   voice?: {
@@ -575,6 +581,11 @@ export class Session {
   private readonly providerSnapshotManager: ProviderSnapshotManager | null;
   private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
   private readonly serviceRouteStore: ServiceRouteStore | null;
+  private readonly onBranchChanged?: (
+    workspaceId: string,
+    oldBranch: string | null,
+    newBranch: string | null,
+  ) => void;
   private readonly getDaemonTcpPort: (() => number | null) | null;
   private readonly resolveServiceStatus: ((hostname: string) => "running" | "stopped" | null) | null;
   private readonly subscribedTerminalDirectories = new Set<string>();
@@ -633,6 +644,7 @@ export class Session {
       terminalManager,
       providerSnapshotManager,
       serviceRouteStore,
+      onBranchChanged,
       getDaemonTcpPort,
       resolveServiceStatus,
       voice,
@@ -674,6 +686,7 @@ export class Session {
     this.terminalManager = terminalManager;
     this.providerSnapshotManager = providerSnapshotManager ?? null;
     this.serviceRouteStore = serviceRouteStore ?? null;
+    this.onBranchChanged = onBranchChanged;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.resolveServiceStatus = resolveServiceStatus ?? null;
     if (this.terminalManager) {
@@ -4087,6 +4100,7 @@ export class Session {
       return;
     }
     target.latestFingerprint = this.workspaceGitDescriptorFingerprint(workspace);
+    target.lastBranchName = workspace?.name ?? null;
   }
 
   private async primeWorkspaceGitWatchFingerprints(
@@ -4155,6 +4169,7 @@ export class Session {
       refreshPromise: null,
       refreshQueued: false,
       latestFingerprint: null,
+      lastBranchName: null,
     };
 
     for (const watchPath of new Set([join(gitDir, "HEAD"), join(refsRoot, "refs", "heads")])) {
@@ -5702,6 +5717,13 @@ export class Session {
         this.shouldSkipWorkspaceGitWatchUpdate(normalizedCwd, nextWorkspace)
       ) {
         continue;
+      }
+      const watchTarget = this.workspaceGitWatchTargets.get(normalizedCwd);
+      if (watchTarget && this.onBranchChanged) {
+        const newBranchName = nextWorkspace?.name ?? null;
+        if (newBranchName !== watchTarget.lastBranchName) {
+          this.onBranchChanged(normalizedCwd, watchTarget.lastBranchName, newBranchName);
+        }
       }
       this.rememberWorkspaceGitWatchFingerprint(normalizedCwd, nextWorkspace);
 

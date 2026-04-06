@@ -262,6 +262,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
+  private readonly onBranchChanged:
+    | ((workspaceId: string, oldBranch: string | null, newBranch: string | null) => void)
+    | null;
   private serverCapabilities: ServerCapabilities | undefined;
   private runtimeWindowStartedAt = Date.now();
   private readonly runtimeCounters: WebSocketRuntimeCounters = {
@@ -317,6 +320,11 @@ export class VoiceAssistantWebSocketServer {
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
     serviceRouteStore?: ServiceRouteStore | null,
+    onBranchChanged?: (
+      workspaceId: string,
+      oldBranch: string | null,
+      newBranch: string | null,
+    ) => void,
     getDaemonTcpPort?: () => number | null,
     resolveServiceStatus?: (hostname: string) => "running" | "stopped" | null,
   ) {
@@ -363,6 +371,7 @@ export class VoiceAssistantWebSocketServer {
     );
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.serviceRouteStore = serviceRouteStore ?? null;
+    this.onBranchChanged = onBranchChanged ?? null;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.resolveServiceStatus = resolveServiceStatus ?? null;
     this.serverCapabilities = buildServerCapabilities({
@@ -682,6 +691,7 @@ export class VoiceAssistantWebSocketServer {
       terminalManager: this.terminalManager,
       providerSnapshotManager: this.providerSnapshotManager,
       serviceRouteStore: this.serviceRouteStore ?? undefined,
+      onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
       resolveServiceStatus: this.resolveServiceStatus ?? undefined,
       voice: {
