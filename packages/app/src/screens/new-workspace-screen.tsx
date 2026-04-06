@@ -230,7 +230,9 @@ export function NewWorkspaceScreen({
             onChangeText={chatDraft.setText}
             images={chatDraft.images}
             onChangeImages={chatDraft.setImages}
-            clearDraft={chatDraft.clear}
+            clearDraft={() => {
+              // No-op: screen navigates away on success, text should stay for retry on error
+            }}
             autoFocus
             commandDraftConfig={composerState?.commandDraftConfig}
             statusControls={
