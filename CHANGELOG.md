@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.49 - 2026-04-07
+
+### Fixed
+- Provider/model selector hydration on app connect — session state now seeds daemon feature flags immediately, so provider snapshots and model lists load reliably on first open instead of waiting for a later status refresh.
+- Running agent model picker now stays scoped to the agent's current provider instead of exposing all providers from the shared snapshot cache.
+- Provider snapshot warm-up now happens at the session layer instead of per workspace screen, so model data is prefetched consistently across entry points.
+- Removed the remaining legacy provider/model fetch fallbacks in the app so draft and running-agent flows both use the same real-time provider snapshot path.
+
 ## 0.1.48 - 2026-04-05
 
 ### Added
