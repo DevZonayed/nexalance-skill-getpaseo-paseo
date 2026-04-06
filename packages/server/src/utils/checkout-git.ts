@@ -1345,15 +1345,23 @@ export function getCachedCheckoutShortstat(cwd: string): CheckoutShortstat | nul
   return shortstatCache.get(getShortstatCacheKey(cwd));
 }
 
-export function warmCheckoutShortstatInBackground(cwd: string, context?: CheckoutContext): void {
+export function warmCheckoutShortstatInBackground(
+  cwd: string,
+  context?: CheckoutContext,
+  onComplete?: () => void,
+): void {
   const cacheKey = getShortstatCacheKey(cwd);
   if (shortstatCache.get(cacheKey) !== undefined || shortstatInFlight.has(cacheKey)) {
     return;
   }
 
-  void getOrLoadCheckoutShortstat(cwd, context).catch(() => {
-    // Non-critical: keep listing path resilient even if git commands fail.
-  });
+  void getOrLoadCheckoutShortstat(cwd, context)
+    .then(() => {
+      onComplete?.();
+    })
+    .catch(() => {
+      // Non-critical: keep listing path resilient even if git commands fail.
+    });
 }
 
 export async function getCheckoutDiff(
