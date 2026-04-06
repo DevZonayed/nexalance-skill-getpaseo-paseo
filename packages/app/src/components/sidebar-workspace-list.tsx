@@ -27,6 +27,7 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
   Archive,
+  ArrowUpRight,
   CircleAlert,
   ChevronDown,
   ChevronRight,
@@ -112,11 +113,6 @@ const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
-const GITHUB_PR_STATE_LABELS: Record<PrHint["state"], string> = {
-  open: "Open",
-  merged: "Merged",
-  closed: "Closed",
-};
 
 interface SidebarWorkspaceListProps {
   projects: SidebarProjectEntry[];
@@ -178,7 +174,7 @@ interface WorkspaceRowInnerProps {
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }
 
-function WorkspacePrBadge({ hint }: { hint: PrHint }) {
+export function PrBadge({ hint }: { hint: PrHint }) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const activeColor = isHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
@@ -198,31 +194,44 @@ function WorkspacePrBadge({ hint }: { hint: PrHint }) {
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`${hint.state} pull request #${hint.number}`}
+      accessibilityLabel={`Pull request #${hint.number}`}
       hitSlop={4}
       onPressIn={handlePressIn}
       onPress={handlePress}
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
       style={({ pressed }) => [
-        styles.workspacePrBadge,
-        pressed && styles.workspacePrBadgePressed,
+        prBadgeStyles.badge,
+        pressed && prBadgeStyles.badgePressed,
       ]}
     >
       <GitPullRequest size={12} color={activeColor} />
       <Text
-        style={[
-          styles.workspacePrBadgeText,
-          { color: activeColor },
-        ]}
+        style={[prBadgeStyles.text, { color: activeColor }]}
         numberOfLines={1}
       >
-        #{hint.number} · {GITHUB_PR_STATE_LABELS[hint.state]}
+        #{hint.number}
       </Text>
-      {isHovered && <ExternalLink size={10} color={activeColor} />}
+      <ArrowUpRight size={10} color={activeColor} style={{ opacity: isHovered ? 1 : 0 }} />
     </Pressable>
   );
 }
+
+const prBadgeStyles = StyleSheet.create((theme) => ({
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  badgePressed: {
+    opacity: 0.82,
+  },
+  text: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    lineHeight: 14,
+  },
+}));
 
 
 function WorkspaceStatusIndicator({
@@ -1042,8 +1051,8 @@ function WorkspaceRowInner({
           </View>
           {prHint ? (
             <View style={styles.workspacePrBadgeRow}>
-              <WorkspacePrBadge hint={prHint} />
-              <CheckStatusIndicator status={prHint.checksStatus ?? "none"} size={11} />
+              <CheckStatusIndicator status={prHint.checksStatus ?? "none"} size={12} />
+              <PrBadge hint={prHint} />
             </View>
           ) : null}
         </Pressable>
@@ -2414,22 +2423,8 @@ const styles = StyleSheet.create((theme) => ({
   workspacePrBadgeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
+    gap: theme.spacing[2],
     paddingLeft: WORKSPACE_STATUS_DOT_WIDTH + theme.spacing[2],
-  },
-  workspacePrBadge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  workspacePrBadgePressed: {
-    opacity: 0.82,
-  },
-  workspacePrBadgeText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    lineHeight: 14,
   },
   workspaceCreatingText: {
     color: theme.colors.foregroundMuted,

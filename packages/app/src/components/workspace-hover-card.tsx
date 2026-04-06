@@ -10,7 +10,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Dimensions, Platform, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Check, ExternalLink, GitPullRequest, LoaderCircle, Minus, Play, X } from "lucide-react-native";
+import { Check, ExternalLink, LoaderCircle, Minus, Play, X } from "lucide-react-native";
 import { Pressable } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
@@ -19,6 +19,7 @@ import type { PrHint } from "@/hooks/use-checkout-pr-status-query";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { PrBadge } from "@/components/sidebar-workspace-list";
 
 interface Rect {
   x: number;
@@ -191,12 +192,6 @@ function WorkspaceHoverCardDesktop({
   );
 }
 
-const GITHUB_PR_STATE_LABELS: Record<PrHint["state"], string> = {
-  open: "Open",
-  merged: "Merged",
-  closed: "Closed",
-};
-
 function getServiceHealthColor(input: {
   health: SidebarWorkspaceEntry["services"][number]["health"];
   theme: ReturnType<typeof useUnistyles>["theme"];
@@ -223,83 +218,92 @@ function getServiceHealthLabel(
 }
 
 
+function getCheckStatusColor(input: {
+  status: string;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}): string {
+  if (input.status === "success") return input.theme.colors.palette.green[500];
+  if (input.status === "failure") return input.theme.colors.palette.red[500];
+  if (input.status === "pending") return input.theme.colors.palette.amber[500];
+  return input.theme.colors.foregroundMuted;
+}
+
+function getCheckStatusIcon(status: string): typeof Check {
+  if (status === "success") return Check;
+  if (status === "failure") return X;
+  return Minus;
+}
+
 export function CheckStatusIndicator({
   status,
-  size = 14,
+  size = 12,
 }: {
   status: string;
   size?: number;
 }): ReactElement | null {
   const { theme } = useUnistyles();
-  const iconSize = Math.round(size * 0.6);
 
   if (!status || status === "none") return null;
 
-  if (status === "pending") {
-    return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: 2,
-          borderColor: theme.colors.palette.amber[500],
-          backgroundColor: "transparent",
-        }}
-      />
-    );
-  }
+  const color = getCheckStatusColor({ status, theme });
+  const IconComponent = getCheckStatusIcon(status);
 
-  if (status === "success") {
-    return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: "rgba(34,197,94,0.15)",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Check size={iconSize} color={theme.colors.palette.green[500]} strokeWidth={3} />
-      </View>
-    );
-  }
-
-  if (status === "failure") {
-    return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: "rgba(239,68,68,0.15)",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <X size={iconSize} color={theme.colors.palette.red[500]} strokeWidth={3} />
-      </View>
-    );
-  }
-
-  // skipped / cancelled / unknown
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: "rgba(128,128,128,0.15)",
+        borderWidth: 1,
+        borderColor: color,
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <Minus size={iconSize} color={theme.colors.foregroundMuted} strokeWidth={3} />
+      <IconComponent size={Math.round(size * 0.5)} color={color} strokeWidth={3} />
     </View>
   );
 }
+
+function ChecksSummary({ checks }: { checks: Array<{ status: string }> }): ReactElement {
+  const { theme } = useUnistyles();
+  const counts: Record<string, number> = {};
+  for (const check of checks) {
+    const bucket = check.status === "success" ? "success" : check.status === "failure" ? "failure" : "pending";
+    counts[bucket] = (counts[bucket] ?? 0) + 1;
+  }
+
+  const buckets: Array<{ status: string; count: number }> = [];
+  if (counts.failure) buckets.push({ status: "failure", count: counts.failure });
+  if (counts.success) buckets.push({ status: "success", count: counts.success });
+  if (counts.pending) buckets.push({ status: "pending", count: counts.pending });
+
+  return (
+    <>
+      {buckets.map((bucket) => {
+        const color = getCheckStatusColor({ status: bucket.status, theme });
+        return (
+          <View key={bucket.status} style={checksSummaryStyles.item}>
+            <Text style={[checksSummaryStyles.count, { color }]}>{bucket.count}</Text>
+            <CheckStatusIndicator status={bucket.status} size={12} />
+          </View>
+        );
+      })}
+    </>
+  );
+}
+
+const checksSummaryStyles = StyleSheet.create((theme) => ({
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  count: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+}));
 
 function WorkspaceHoverCardContent({
   workspace,
@@ -406,158 +410,134 @@ function WorkspaceHoverCardContent({
             </Text>
           </View>
           {prHint || workspace.diffStat ? (
-            <Pressable
-              style={styles.cardMetaRow}
-              onPress={prHint ? () => void openExternalUrl(prHint.url) : undefined}
-              disabled={!prHint}
-            >
-              {prHint ? (
-                <>
-                  <GitPullRequest size={12} color={theme.colors.foregroundMuted} />
-                  <Text style={styles.prBadgeText} numberOfLines={1}>
-                    #{prHint.number} · {GITHUB_PR_STATE_LABELS[prHint.state]}
-                  </Text>
-                </>
-              ) : null}
-
+            <View style={styles.cardMetaRow}>
               {workspace.diffStat ? (
-                <>
+                <View style={styles.diffStatRow}>
                   <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
                   <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-                </>
+                </View>
               ) : null}
-            </Pressable>
-          ) : null}
-          {prHint?.checks && prHint.checks.length > 0 ? (
-            <>
-            <View style={styles.separator} />
-            <Text style={styles.sectionLabel}>Checks</Text>
-            <View style={styles.checksList}>
-              {prHint.checks.map((check) => (
-                <Pressable
-                  key={check.name}
-                  style={({ hovered }) => [
-                    styles.serviceRow,
-                    hovered && check.url && styles.serviceRowHovered,
-                  ]}
-                  onPress={check.url ? () => void openExternalUrl(check.url!) : undefined}
-                  disabled={!check.url}
-                >
-                  <CheckStatusIndicator status={check.status} size={14} />
-                  <Text
-                    style={styles.checkName}
-                    numberOfLines={1}
-                  >
-                    {check.name}
-                  </Text>
-                  {check.url ? (
-                    <ExternalLink size={11} color={theme.colors.foregroundMuted} />
-                  ) : null}
-                </Pressable>
-              ))}
+              {prHint ? <PrBadge hint={prHint} /> : null}
             </View>
-            </>
           ) : null}
           {workspace.services.length > 0 ? (
             <>
               <View style={styles.separator} />
               <Text style={styles.sectionLabel}>Services</Text>
-              <View style={styles.serviceList} testID="hover-card-service-list">
-                {workspace.services.map((service) => (
-                  <Pressable
-                    key={service.hostname}
-                    accessibilityRole={service.lifecycle === "running" && service.url ? "link" : undefined}
-                    accessibilityLabel={`${service.serviceName} service`}
-                    testID={`hover-card-service-${service.serviceName}`}
-                    style={({ hovered }) => [
-                      styles.serviceRow,
-                      hovered &&
-                        service.lifecycle === "running" &&
-                        service.url &&
-                        styles.serviceRowHovered,
-                    ]}
-                    onPress={() => {
-                      if (service.lifecycle === "running" && service.url) {
-                        void openExternalUrl(service.url);
-                      }
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.serviceName,
-                        {
-                          color:
-                            service.lifecycle === "running"
-                              ? theme.colors.foreground
-                              : theme.colors.foregroundMuted,
-                        },
+              <View style={styles.sectionList} testID="hover-card-service-list">
+                {workspace.services.map((service) => {
+                  const isRunning = service.lifecycle === "running";
+                  const isLinkable = isRunning && !!service.url;
+                  return (
+                    <Pressable
+                      key={service.hostname}
+                      accessibilityRole={isLinkable ? "link" : undefined}
+                      accessibilityLabel={`${service.serviceName} service — ${isRunning ? getServiceHealthLabel(service.health) : "Stopped"}`}
+                      testID={`hover-card-service-${service.serviceName}`}
+                      style={({ hovered }) => [
+                        styles.listRow,
+                        hovered && isLinkable && styles.listRowHovered,
                       ]}
-                      numberOfLines={1}
+                      onPress={isLinkable ? () => void openExternalUrl(service.url!) : undefined}
+                      disabled={!isLinkable}
                     >
-                      {service.serviceName}
-                    </Text>
-                    <View style={styles.serviceMeta}>
-                      <Text
-                        testID={`hover-card-service-status-${service.serviceName}`}
-                        accessibilityLabel={service.lifecycle === "running" ? "Running" : "Stopped"}
-                        style={styles.serviceLifecycleText}
-                      >
-                        {service.lifecycle === "running" ? "Running" : "Stopped"}
-                      </Text>
-                      <View
-                        testID={`hover-card-service-health-${service.serviceName}`}
-                        accessibilityLabel={getServiceHealthLabel(service.health)}
-                        style={[
-                          styles.statusDot,
-                          {
-                            backgroundColor: getServiceHealthColor({
-                              health: service.health,
-                              theme,
-                            }),
-                          },
-                        ]}
-                      />
-                      <Text style={styles.serviceHealthText}>{getServiceHealthLabel(service.health)}</Text>
-                    </View>
-                    {service.lifecycle === "running" && service.url ? (
-                      <Text style={styles.serviceUrl} numberOfLines={1}>
-                        {service.url.replace(/^https?:\/\//, "")}
-                      </Text>
-                    ) : (
-                      <View style={styles.serviceUrlSpacer} />
-                    )}
-                    {service.lifecycle === "running" && service.url ? (
-                      <ExternalLink size={11} color={theme.colors.foregroundMuted} />
-                    ) : (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Start ${service.serviceName} service`}
-                        testID={`hover-card-service-start-${service.serviceName}`}
-                        style={({ hovered, pressed }) => [
-                          styles.startServiceButton,
-                          (hovered || pressed) && styles.startServiceButtonHovered,
-                        ]}
-                        disabled={startServiceMutation.isPending}
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          startServiceMutation.mutate(service.serviceName);
-                        }}
-                      >
-                        {startServiceMutation.isPending &&
-                        startServiceMutation.variables === service.serviceName ? (
-                          <LoaderCircle
-                            size={12}
-                            color={theme.colors.foregroundMuted}
-                            style={styles.startServiceSpinner}
+                      {({ hovered }) => (
+                        <>
+                          <View
+                            testID={`hover-card-service-health-${service.serviceName}`}
+                            style={[
+                              styles.statusDot,
+                              {
+                                backgroundColor: isRunning
+                                  ? getServiceHealthColor({ health: service.health, theme })
+                                  : theme.colors.foregroundMuted,
+                              },
+                            ]}
                           />
-                        ) : (
-                          <Play size={12} color={theme.colors.foregroundMuted} fill="transparent" />
-                        )}
-                      </Pressable>
-                    )}
-                  </Pressable>
-                ))}
+                          <Text
+                            style={[
+                              styles.listRowLabel,
+                              {
+                                color: isRunning
+                                  ? theme.colors.foreground
+                                  : theme.colors.foregroundMuted,
+                              },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {service.serviceName}
+                          </Text>
+                          {isRunning && service.url ? (
+                            <Text style={styles.listRowSecondary} numberOfLines={1}>
+                              {service.url.replace(/^https?:\/\//, "")}
+                            </Text>
+                          ) : (
+                            <View style={styles.listRowSpacer} />
+                          )}
+                          {isRunning ? (
+                            service.url ? (
+                              <ExternalLink
+                                size={12}
+                                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                              />
+                            ) : null
+                          ) : (
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={`Start ${service.serviceName} service`}
+                              testID={`hover-card-service-start-${service.serviceName}`}
+                              hitSlop={4}
+                              disabled={startServiceMutation.isPending}
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                startServiceMutation.mutate(service.serviceName);
+                              }}
+                            >
+                              {({ hovered: actionHovered }) =>
+                                startServiceMutation.isPending &&
+                                startServiceMutation.variables === service.serviceName ? (
+                                  <LoaderCircle size={12} color={theme.colors.foregroundMuted} />
+                                ) : (
+                                  <Play
+                                    size={12}
+                                    color={actionHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                                    fill="transparent"
+                                  />
+                                )
+                              }
+                            </Pressable>
+                          )}
+                        </>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
+            </>
+          ) : null}
+          {prHint?.checks && prHint.checks.length > 0 ? (
+            <>
+              <View style={styles.separator} />
+              <Pressable
+                style={({ hovered }) => [
+                  styles.checksSummaryRow,
+                  hovered && styles.listRowHovered,
+                ]}
+                onPress={() => void openExternalUrl(`${prHint.url}/checks`)}
+              >
+                {({ hovered }) => (
+                  <>
+                    <Text style={styles.checksSummaryLabel}>Checks</Text>
+                    <View style={styles.checksSummaryCounts}>
+                      <ChecksSummary checks={prHint.checks!} />
+                    </View>
+                    <ExternalLink
+                      size={12}
+                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                    />
+                  </>
+                )}
+              </Pressable>
             </>
           ) : null}
         </Animated.View>
@@ -609,6 +589,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingBottom: theme.spacing[2],
   },
+  diffStatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   diffStatAdditions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
@@ -619,75 +604,9 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.palette.red[500],
   },
-  prBadgeText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
   separator: {
     height: 1,
     backgroundColor: theme.colors.border,
-  },
-  serviceList: {
-    paddingTop: theme.spacing[1],
-  },
-  serviceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    minHeight: 32,
-  },
-  serviceRowHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    flexShrink: 0,
-  },
-  serviceName: {
-    fontSize: theme.fontSize.sm,
-    flexShrink: 0,
-  },
-  serviceMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    flexShrink: 0,
-  },
-  serviceLifecycleText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  serviceHealthText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  serviceUrl: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    flex: 1,
-    minWidth: 0,
-  },
-  serviceUrlSpacer: {
-    flex: 1,
-    minWidth: 0,
-  },
-  startServiceButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.surface2,
-  },
-  startServiceButtonHovered: {
-    backgroundColor: theme.colors.surface3,
-  },
-  startServiceSpinner: {
-    transform: [{ rotate: "0deg" }],
   },
   sectionLabel: {
     fontSize: theme.fontSize.xs,
@@ -697,13 +616,59 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[1],
   },
-  checksList: {
+  sectionList: {
     paddingBottom: theme.spacing[1],
   },
-  checkName: {
+  listRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: 6,
+    minHeight: 28,
+  },
+  listRowHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  listRowLabel: {
     fontSize: theme.fontSize.sm,
+    flexShrink: 0,
+  },
+  listRowSecondary: {
     color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
     flex: 1,
     minWidth: 0,
+    textAlign: "right",
+  },
+  listRowSpacer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  checksSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: 6,
+    minHeight: 28,
+  },
+  checksSummaryLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+  },
+  checksSummaryCounts: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flex: 1,
+    justifyContent: "flex-end",
   },
 }));
