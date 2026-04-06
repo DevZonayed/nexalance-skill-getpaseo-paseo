@@ -18,17 +18,13 @@
   "exports": {
     ".": {
       "types": "./dist/server/server/exports.d.ts",
-      "default": [
-        "./dist/server/server/exports.js",
-        "./src/server/exports.ts"
-      ]
+      "source": "./src/server/exports.ts",
+      "default": "./dist/server/server/exports.js"
     },
     "./utils/tool-call-parsers": {
       "types": "./dist/server/utils/tool-call-parsers.d.ts",
-      "default": [
-        "./dist/server/utils/tool-call-parsers.js",
-        "./src/utils/tool-call-parsers.ts"
-      ]
+      "source": "./src/utils/tool-call-parsers.ts",
+      "default": "./dist/server/utils/tool-call-parsers.js"
     }
   },
   "scripts": {

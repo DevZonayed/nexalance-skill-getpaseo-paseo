@@ -10,10 +10,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": [
-        "./dist/index.js",
-        "./src/index.ts"
-      ]
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
