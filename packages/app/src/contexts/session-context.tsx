@@ -33,6 +33,7 @@ import {
   type Agent,
   type SessionState,
   type WorkspaceDescriptor,
+  mergeWorkspaceSnapshotWithExisting,
   normalizeWorkspaceDescriptor,
 } from "@/stores/session-store";
 import { useDraftStore } from "@/stores/draft-store";
@@ -326,6 +327,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       }
 
       const workspaces = new Map<string, WorkspaceDescriptor>();
+      const existingWorkspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
       let cursor: string | null = null;
       let includeSubscribe = options?.subscribe ?? false;
 
@@ -341,7 +343,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
         for (const entry of payload.entries) {
           const workspace = normalizeWorkspaceDescriptor(entry);
-          workspaces.set(workspace.id, workspace);
+          workspaces.set(
+            workspace.id,
+            mergeWorkspaceSnapshotWithExisting({
+              incoming: workspace,
+              existing: existingWorkspaces?.get(workspace.id),
+            }),
+          );
         }
 
         if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {
