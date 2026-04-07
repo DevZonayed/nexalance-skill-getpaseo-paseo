@@ -72,6 +72,8 @@ import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { buildNewAgentRoute, resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { GitActionsSplitButton } from "@/components/git-actions-split-button";
+import { usePanelStore } from "@/stores/panel-store";
+import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
 
 export type { GitActionId, GitAction, GitActions } from "@/components/git-actions-policy";
 
@@ -541,7 +543,25 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   });
   // Track user-initiated refresh to avoid iOS RefreshControl animation on background fetches
   const [isManualRefresh, setIsManualRefresh] = useState(false);
-  const [expandedByPath, setExpandedByPath] = useState<Record<string, boolean>>({});
+  const normalizedWorkspaceRoot = useMemo(() => cwd.trim(), [cwd]);
+  const workspaceStateKey = useMemo(
+    () =>
+      buildWorkspaceExplorerStateKey({
+        workspaceId,
+        workspaceRoot: normalizedWorkspaceRoot,
+      }),
+    [normalizedWorkspaceRoot, workspaceId],
+  );
+  const expandedPathsArray = usePanelStore((state) =>
+    workspaceStateKey ? state.diffExpandedPathsByWorkspace[workspaceStateKey] : undefined,
+  );
+  const setDiffExpandedPathsForWorkspace = usePanelStore(
+    (state) => state.setDiffExpandedPathsForWorkspace,
+  );
+  const expandedPaths = useMemo(
+    () => new Set(expandedPathsArray ?? []),
+    [expandedPathsArray],
+  );
   const diffListRef = useRef<FlatList<DiffFlatItem>>(null);
   const scrollbar = useWebScrollViewScrollbar(diffListRef, {
     enabled: showDesktopWebScrollbar,
@@ -601,7 +621,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     const stickyIndices: number[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const isExpanded = expandedByPath[file.path] ?? false;
+      const isExpanded = expandedPaths.has(file.path);
       items.push({ type: "header", file, fileIndex: i, isExpanded });
       if (isExpanded) {
         stickyIndices.push(items.length - 1);
@@ -611,7 +631,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
       }
     }
     return { flatItems: items, stickyHeaderIndices: stickyIndices };
-  }, [files, expandedByPath]);
+  }, [expandedPaths, files]);
 
   const handleHeaderHeightChange = useCallback((path: string, height: number) => {
     if (!Number.isFinite(height) || height <= 0) {
@@ -657,18 +677,21 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
           break;
         }
         offset += headerHeightByPathRef.current[file.path] ?? defaultHeaderHeight;
-        if (expandedByPath[file.path]) {
+        if (expandedPaths.has(file.path)) {
           offset += bodyHeightByPathRef.current[file.path] ?? 0;
         }
       }
       return Math.max(0, offset);
     },
-    [expandedByPath, files],
+    [expandedPaths, files],
   );
 
   const handleToggleExpanded = useCallback(
     (path: string) => {
-      const isCurrentlyExpanded = expandedByPath[path] ?? false;
+      if (!workspaceStateKey) {
+        return;
+      }
+      const isCurrentlyExpanded = expandedPaths.has(path);
       const nextExpanded = !isCurrentlyExpanded;
       const targetOffset = isCurrentlyExpanded ? computeHeaderOffset(path) : null;
       const headerHeight = headerHeightByPathRef.current[path] ?? defaultHeaderHeightRef.current;
@@ -690,32 +713,32 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
         });
       }
 
-      setExpandedByPath((prev) => ({
-        ...prev,
-        // Use a deterministic target value (instead of toggling from prev) so duplicate
-        // onPress events from sticky headers on Android can't flip back immediately.
-        [path]: nextExpanded,
-      }));
+      const nextPaths = nextExpanded
+        ? [...expandedPaths, path]
+        : Array.from(expandedPaths).filter((expandedPath) => expandedPath !== path);
+      setDiffExpandedPathsForWorkspace(workspaceStateKey, nextPaths);
     },
-    [computeHeaderOffset, expandedByPath],
+    [computeHeaderOffset, expandedPaths, setDiffExpandedPathsForWorkspace, workspaceStateKey],
   );
 
   const allExpanded = useMemo(() => {
     if (files.length === 0) return false;
-    return files.every((file) => expandedByPath[file.path]);
-  }, [files, expandedByPath]);
+    return files.every((file) => expandedPaths.has(file.path));
+  }, [expandedPaths, files]);
 
   const handleToggleExpandAll = useCallback(() => {
-    if (allExpanded) {
-      setExpandedByPath({});
-    } else {
-      const newExpanded: Record<string, boolean> = {};
-      for (const file of files) {
-        newExpanded[file.path] = true;
-      }
-      setExpandedByPath(newExpanded);
+    if (!workspaceStateKey) {
+      return;
     }
-  }, [allExpanded, files]);
+    if (allExpanded) {
+      setDiffExpandedPathsForWorkspace(workspaceStateKey, []);
+    } else {
+      setDiffExpandedPathsForWorkspace(
+        workspaceStateKey,
+        files.map((file) => file.path),
+      );
+    }
+  }, [allExpanded, files, setDiffExpandedPathsForWorkspace, workspaceStateKey]);
 
   // Reset manual refresh flag when fetch completes
   useEffect(() => {
@@ -961,7 +984,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
         renderItem={renderFlatItem}
         keyExtractor={flatKeyExtractor}
         stickyHeaderIndices={stickyHeaderIndices}
-        extraData={{ expandedByPath, effectiveLayout, wrapLines }}
+        extraData={{ expandedPathsArray, effectiveLayout, wrapLines }}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         testID="git-diff-scroll"
