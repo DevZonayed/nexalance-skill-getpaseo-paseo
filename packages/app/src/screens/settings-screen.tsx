@@ -62,12 +62,12 @@ import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { isCompactFormFactor } from "@/constants/layout";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
 import { getProviderIcon } from "@/components/provider-icons";
 import { ProviderDiagnosticSheet } from "@/components/provider-diagnostic-sheet";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { ProviderSnapshotEntry } from "@server/server/agent/agent-sdk-types";
 
 // ---------------------------------------------------------------------------
 // Section definitions
@@ -432,55 +432,49 @@ interface ProvidersSectionProps {
 
 function ProvidersSection({ routeServerId }: ProvidersSectionProps) {
   const { theme } = useUnistyles();
-  const client = useHostRuntimeClient(routeServerId);
   const isConnected = useHostRuntimeIsConnected(routeServerId);
-  const [entries, setEntries] = useState<ProviderSnapshotEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { entries, isLoading, isFetching, refresh } = useProvidersSnapshot(routeServerId);
   const [diagnosticProvider, setDiagnosticProvider] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!client || !isConnected) {
-      setEntries([]);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    client
-      .getProvidersSnapshot()
-      .then((result) => {
-        if (!cancelled) setEntries(result.entries);
-      })
-      .catch(() => {
-        if (!cancelled) setEntries([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [client, isConnected]);
 
   const hasServer = routeServerId.length > 0;
 
   return (
     <>
       <View style={settingsStyles.section}>
-        <Text style={settingsStyles.sectionTitle}>Providers</Text>
+        <View style={settingsStyles.sectionHeader}>
+          <Text style={settingsStyles.sectionHeaderTitle}>Providers</Text>
+          {hasServer && isConnected ? (
+            <Pressable
+              onPress={refresh}
+              disabled={isFetching}
+              style={[
+                settingsStyles.sectionHeaderLink,
+                isFetching ? { opacity: 0.5 } : null,
+              ]}
+            >
+              <Text
+                style={{
+                  color: theme.colors.primary,
+                  fontSize: theme.fontSize.xs,
+                }}
+              >
+                Refresh
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
         {!hasServer || !isConnected ? (
           <View style={[settingsStyles.card, styles.emptyCard]}>
             <Text style={styles.emptyText}>Connect to a host to see providers</Text>
           </View>
-        ) : loading ? (
+        ) : isLoading ? (
           <View style={[settingsStyles.card, styles.emptyCard]}>
             <Text style={styles.emptyText}>Loading...</Text>
           </View>
         ) : (
           <View style={[settingsStyles.card, styles.audioCard]}>
             {AGENT_PROVIDER_DEFINITIONS.map((def) => {
-              const entry = entries.find((e) => e.provider === def.id);
+              const entry = entries?.find((e) => e.provider === def.id);
               const status = entry?.status ?? "unavailable";
               const ProviderIcon = getProviderIcon(def.id);
 
