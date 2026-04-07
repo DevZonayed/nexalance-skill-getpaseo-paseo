@@ -1381,20 +1381,12 @@ const styles = StyleSheet.create((theme) => ({
   diffStatusButtons: {
     flexDirection: "row",
     alignItems: "center",
-    gap: {
-      xs: theme.spacing[1],
-      sm: theme.spacing[1],
-      md: 0,
-    },
+    gap: theme.spacing[1],
     flexWrap: "wrap",
   },
   toggleButtonGroup: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.base,
-    overflow: "hidden",
   },
   toggleButton: {
     alignItems: "center",
@@ -1402,7 +1394,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: {
       xs: 32,
       sm: 32,
-      md: 28,
+      md: 24,
     },
     height: {
       xs: 32,
@@ -1414,15 +1406,17 @@ const styles = StyleSheet.create((theme) => ({
       sm: theme.spacing[2],
       md: theme.spacing[1],
     },
-    backgroundColor: theme.colors.surface1,
   },
   toggleButtonGroupStart: {
-    borderRightWidth: 1,
-    borderRightColor: theme.colors.border,
+    borderTopLeftRadius: theme.borderRadius.base,
+    borderBottomLeftRadius: theme.borderRadius.base,
   },
-  toggleButtonGroupEnd: {},
+  toggleButtonGroupEnd: {
+    borderTopRightRadius: theme.borderRadius.base,
+    borderBottomRightRadius: theme.borderRadius.base,
+  },
   toggleButtonSelected: {
-    backgroundColor: theme.colors.surface3,
+    backgroundColor: theme.colors.surface2,
   },
   expandAllButton: {
     flexDirection: "row",
