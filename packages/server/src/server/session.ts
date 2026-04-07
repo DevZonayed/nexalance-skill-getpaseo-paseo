@@ -5784,66 +5784,60 @@ export class Session {
       return;
     }
 
-    const changedWorkspaceIds = await this.reconcileActiveWorkspaceRecords();
     const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
       (workspace) => !workspace.archivedAt,
     );
     const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces);
     const all = await this.listWorkspaceDescriptorsSnapshot();
     const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
-    const workspaceIdsToEmit = new Set<string>([
-      workspaceId,
-      ...changedWorkspaceIds,
-    ]);
 
-    for (const nextWorkspaceId of workspaceIdsToEmit) {
-      const workspace = descriptorsByWorkspaceId.get(nextWorkspaceId);
-      const nextWorkspace =
-        workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
-          ? workspace
-          : null;
-      if (
-        options?.dedupeGitState &&
-        this.shouldSkipWorkspaceGitWatchUpdate(nextWorkspaceId, nextWorkspace)
-      ) {
-        continue;
-      }
-      this.rememberWorkspaceGitWatchFingerprint(nextWorkspaceId, nextWorkspace);
+    const workspace = descriptorsByWorkspaceId.get(workspaceId);
+    const nextWorkspace =
+      workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
+        ? workspace
+        : null;
+    if (
+      options?.dedupeGitState &&
+      this.shouldSkipWorkspaceGitWatchUpdate(workspaceId, nextWorkspace)
+    ) {
+      void this.reconcileAndEmitWorkspaceUpdates();
+      return;
+    }
+    this.rememberWorkspaceGitWatchFingerprint(workspaceId, nextWorkspace);
 
-      if (!nextWorkspace) {
-        this.bufferOrEmitWorkspaceUpdate(subscription, {
-          kind: "remove",
-          id: nextWorkspaceId,
-        });
-        continue;
-      }
-
+    if (!nextWorkspace) {
+      this.bufferOrEmitWorkspaceUpdate(subscription, {
+        kind: "remove",
+        id: workspaceId,
+      });
+    } else {
       this.bufferOrEmitWorkspaceUpdate(subscription, {
         kind: "upsert",
         workspace: nextWorkspace,
       });
     }
+
+    void this.reconcileAndEmitWorkspaceUpdates();
   }
 
   private async emitWorkspaceUpdatesForCwds(cwds: Iterable<string>): Promise<void> {
-    if (!this.workspaceUpdatesSubscription) {
+    const subscription = this.workspaceUpdatesSubscription;
+    if (!subscription) {
       return;
     }
 
-    const changedWorkspaceIds = await this.reconcileActiveWorkspaceRecords();
     const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
       (workspace) => !workspace.archivedAt,
     );
-    const uniqueWorkspaceCwds = new Set<string>(changedWorkspaceIds);
+    const uniqueWorkspaceIds = new Set<string>();
     for (const cwd of cwds) {
-      uniqueWorkspaceCwds.add(this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces));
+      uniqueWorkspaceIds.add(this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces));
     }
 
-    const subscription = this.workspaceUpdatesSubscription;
     const all = await this.listWorkspaceDescriptorsSnapshot();
     const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
 
-    for (const workspaceId of uniqueWorkspaceCwds) {
+    for (const workspaceId of uniqueWorkspaceIds) {
       const workspace = descriptorsByWorkspaceId.get(workspaceId);
       const nextWorkspace =
         workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
@@ -5864,6 +5858,8 @@ export class Session {
         workspace: nextWorkspace,
       });
     }
+
+    void this.reconcileAndEmitWorkspaceUpdates();
   }
 
   private async handleFetchAgents(
