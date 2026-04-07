@@ -964,34 +964,42 @@ describe("workspace aggregation", () => {
     };
     session.reconcileActiveWorkspaceRecords = async () => new Set();
 
-    session.listWorkspaceDescriptorsSnapshot = async () => [
-      {
-        id: "/tmp/repo",
-        projectId: "/tmp/repo",
-        projectDisplayName: "repo",
-        projectRootPath: "/tmp/repo",
-        projectKind: "non_git",
-        workspaceKind: "directory",
-        name: "repo",
-        status: "running",
-        activityAt: "2026-03-01T12:00:00.000Z",
-      },
-    ];
+    session.buildWorkspaceDescriptorMap = async () =>
+      new Map([
+        [
+          "/tmp/repo",
+          {
+            id: "/tmp/repo",
+            projectId: "/tmp/repo",
+            projectDisplayName: "repo",
+            projectRootPath: "/tmp/repo",
+            projectKind: "non_git",
+            workspaceKind: "directory",
+            name: "repo",
+            status: "running",
+            activityAt: "2026-03-01T12:00:00.000Z",
+          },
+        ],
+      ]);
     await session.emitWorkspaceUpdateForCwd("/tmp/repo");
 
-    session.listWorkspaceDescriptorsSnapshot = async () => [
-      {
-        id: "/tmp/repo",
-        projectId: "/tmp/repo",
-        projectDisplayName: "repo",
-        projectRootPath: "/tmp/repo",
-        projectKind: "non_git",
-        workspaceKind: "directory",
-        name: "repo",
-        status: "done",
-        activityAt: null,
-      },
-    ];
+    session.buildWorkspaceDescriptorMap = async () =>
+      new Map([
+        [
+          "/tmp/repo",
+          {
+            id: "/tmp/repo",
+            projectId: "/tmp/repo",
+            projectDisplayName: "repo",
+            projectRootPath: "/tmp/repo",
+            projectKind: "non_git",
+            workspaceKind: "directory",
+            name: "repo",
+            status: "done",
+            activityAt: null,
+          },
+        ],
+      ]);
     await session.emitWorkspaceUpdateForCwd("/tmp/repo");
 
     const workspaceUpdates = emitted.filter((message) => message.type === "workspace_update");
@@ -1083,30 +1091,37 @@ describe("workspace aggregation", () => {
     };
     session.reconcileActiveWorkspaceRecords = async () =>
       new Set(["/tmp/repo", "/tmp/repo/worktree"]);
-    session.listWorkspaceDescriptorsSnapshot = async () => [
-      {
-        id: "/tmp/repo",
-        projectId: "/tmp/repo",
-        projectDisplayName: "repo",
-        projectRootPath: "/tmp/repo",
-        projectKind: "git",
-        workspaceKind: "local_checkout",
-        name: "main",
-        status: "done",
-        activityAt: null,
-      },
-      {
-        id: "/tmp/repo/worktree",
-        projectId: "/tmp/repo",
-        projectDisplayName: "repo",
-        projectRootPath: "/tmp/repo",
-        projectKind: "git",
-        workspaceKind: "worktree",
-        name: "feature",
-        status: "running",
-        activityAt: "2026-03-01T12:00:00.000Z",
-      },
-    ];
+    session.buildWorkspaceDescriptorMap = async () =>
+      new Map([
+        [
+          "/tmp/repo",
+          {
+            id: "/tmp/repo",
+            projectId: "/tmp/repo",
+            projectDisplayName: "repo",
+            projectRootPath: "/tmp/repo",
+            projectKind: "git",
+            workspaceKind: "local_checkout",
+            name: "main",
+            status: "done",
+            activityAt: null,
+          },
+        ],
+        [
+          "/tmp/repo/worktree",
+          {
+            id: "/tmp/repo/worktree",
+            projectId: "/tmp/repo",
+            projectDisplayName: "repo",
+            projectRootPath: "/tmp/repo",
+            projectKind: "git",
+            workspaceKind: "worktree",
+            name: "feature",
+            status: "running",
+            activityAt: "2026-03-01T12:00:00.000Z",
+          },
+        ],
+      ]);
     session.onMessage = (message: { type: string; payload: unknown }) => {
       emitted.push(message);
     };
@@ -1604,5 +1619,177 @@ describe("workspace aggregation", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test("listWorkspaceDescriptorsSnapshot keeps git workspaces on the baseline descriptor path", async () => {
+    const session = createSessionForWorkspaceTests() as any;
+    const project = createPersistedProjectRecord({
+      projectId: "/tmp/repo",
+      rootPath: "/tmp/repo",
+      kind: "git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "/tmp/repo",
+      projectId: project.projectId,
+      cwd: "/tmp/repo",
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+
+    session.listAgentPayloads = async () => [];
+    session.projectRegistry.list = async () => [project];
+    session.workspaceRegistry.list = async () => [workspace];
+
+    const baselineDescriptor = {
+      id: workspace.workspaceId,
+      projectId: project.projectId,
+      projectDisplayName: project.displayName,
+      projectRootPath: project.rootPath,
+      projectKind: project.kind,
+      workspaceKind: workspace.kind,
+      name: "main",
+      status: "done",
+      activityAt: null,
+      diffStat: null,
+    } as const;
+    const gitDescriptor = {
+      ...baselineDescriptor,
+      diffStat: { additions: 3, deletions: 1 },
+    } as const;
+
+    session.describeWorkspaceRecord = vi.fn(async () => baselineDescriptor);
+    session.describeWorkspaceRecordWithGitData = vi.fn(async () => gitDescriptor);
+
+    const descriptors = await session.listWorkspaceDescriptorsSnapshot();
+
+    expect(session.describeWorkspaceRecord).toHaveBeenCalledWith(workspace, project);
+    expect(session.describeWorkspaceRecordWithGitData).not.toHaveBeenCalled();
+    expect(descriptors).toEqual([baselineDescriptor]);
+  });
+
+  test("subscribed fetch_workspaces emits git enrichment updates after the baseline snapshot", async () => {
+    const emitted: Array<{ type: string; payload: any }> = [];
+    const session = createSessionForWorkspaceTests() as any;
+    const gitProject = createPersistedProjectRecord({
+      projectId: "/tmp/repo",
+      rootPath: "/tmp/repo",
+      kind: "git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const directoryProject = createPersistedProjectRecord({
+      projectId: "/tmp/docs",
+      rootPath: "/tmp/docs",
+      kind: "non_git",
+      displayName: "docs",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const gitWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "/tmp/repo",
+      projectId: gitProject.projectId,
+      cwd: "/tmp/repo",
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const directoryWorkspace = createPersistedWorkspaceRecord({
+      workspaceId: "/tmp/docs",
+      projectId: directoryProject.projectId,
+      cwd: "/tmp/docs",
+      kind: "directory",
+      displayName: "docs",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const baselineGitDescriptor = {
+      id: gitWorkspace.workspaceId,
+      projectId: gitProject.projectId,
+      projectDisplayName: gitProject.displayName,
+      projectRootPath: gitProject.rootPath,
+      projectKind: gitProject.kind,
+      workspaceKind: gitWorkspace.kind,
+      name: "main",
+      status: "done",
+      activityAt: null,
+      diffStat: null,
+    } as const;
+    const enrichedGitDescriptor = {
+      ...baselineGitDescriptor,
+      diffStat: { additions: 3, deletions: 1 },
+    } as const;
+    const directoryDescriptor = {
+      id: directoryWorkspace.workspaceId,
+      projectId: directoryProject.projectId,
+      projectDisplayName: directoryProject.displayName,
+      projectRootPath: directoryProject.rootPath,
+      projectKind: directoryProject.kind,
+      workspaceKind: directoryWorkspace.kind,
+      name: "docs",
+      status: "done",
+      activityAt: null,
+      diffStat: null,
+    } as const;
+
+    session.emit = (message: any) => emitted.push(message);
+    session.listAgentPayloads = async () => [];
+    session.projectRegistry.list = async () => [gitProject, directoryProject];
+    session.workspaceRegistry.list = async () => [gitWorkspace, directoryWorkspace];
+    session.reconcileAndEmitWorkspaceUpdates = vi.fn(async () => {});
+    session.describeWorkspaceRecord = vi.fn(
+      async (workspace: typeof gitWorkspace | typeof directoryWorkspace, project: any) => {
+        if (workspace.workspaceId === gitWorkspace.workspaceId) {
+          expect(project).toEqual(gitProject);
+          return baselineGitDescriptor;
+        }
+        expect(project).toEqual(directoryProject);
+        return directoryDescriptor;
+      },
+    );
+    session.describeWorkspaceRecordWithGitData = vi.fn(async () => enrichedGitDescriptor);
+
+    await session.handleMessage({
+      type: "fetch_workspaces_request",
+      requestId: "req-fetch-workspaces",
+      subscribe: {},
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const response = emitted.find(
+      (message) => message.type === "fetch_workspaces_response",
+    ) as { type: "fetch_workspaces_response"; payload: any } | undefined;
+    expect(
+      response?.payload.entries.map((entry: typeof baselineGitDescriptor | typeof directoryDescriptor) => [
+        entry.id,
+        entry.diffStat,
+      ]),
+    ).toEqual([
+      [directoryDescriptor.id, directoryDescriptor.diffStat],
+      [baselineGitDescriptor.id, baselineGitDescriptor.diffStat],
+    ]);
+
+    const workspaceUpdates = emitted.filter(
+      (message) => message.type === "workspace_update",
+    ) as Array<{ type: "workspace_update"; payload: any }>;
+    expect(workspaceUpdates).toEqual([
+      {
+        type: "workspace_update",
+        payload: {
+          kind: "upsert",
+          workspace: enrichedGitDescriptor,
+        },
+      },
+    ]);
+    expect(session.describeWorkspaceRecordWithGitData).toHaveBeenCalledWith(
+      gitWorkspace,
+      gitProject,
+    );
   });
 });

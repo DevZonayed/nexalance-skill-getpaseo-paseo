@@ -5367,7 +5367,21 @@ export class Session {
     return { ...base, name: displayName, diffStat };
   }
 
-  private async listWorkspaceDescriptorsSnapshot(): Promise<WorkspaceDescriptorPayload[]> {
+  private async buildWorkspaceDescriptor(input: {
+    workspace: PersistedWorkspaceRecord;
+    projectRecord?: PersistedProjectRecord | null;
+    includeGitData: boolean;
+  }): Promise<WorkspaceDescriptorPayload> {
+    if (input.includeGitData && input.projectRecord?.kind === "git") {
+      return this.describeWorkspaceRecordWithGitData(input.workspace, input.projectRecord);
+    }
+    return this.describeWorkspaceRecord(input.workspace, input.projectRecord);
+  }
+
+  private async buildWorkspaceDescriptorMap(options: {
+    includeGitData: boolean;
+    workspaceIds?: Iterable<string>;
+  }): Promise<Map<string, WorkspaceDescriptorPayload>> {
     const [agents, persistedWorkspaces, persistedProjects] = await Promise.all([
       this.listAgentPayloads(),
       this.workspaceRegistry.list(),
@@ -5381,14 +5395,26 @@ export class Session {
         .map((project) => [project.projectId, project] as const),
     );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
+    const workspaceIds = options.workspaceIds
+      ? new Set(
+          Array.from(options.workspaceIds, (workspaceId) =>
+            normalizePersistedWorkspaceId(workspaceId),
+          ),
+        )
+      : null;
 
     for (const workspace of activeRecords) {
+      if (workspaceIds && !workspaceIds.has(workspace.workspaceId)) {
+        continue;
+      }
+      const projectRecord = activeProjects.get(workspace.projectId) ?? null;
       descriptorsByWorkspaceId.set(
         workspace.workspaceId,
-        await this.describeWorkspaceRecord(
+        await this.buildWorkspaceDescriptor({
           workspace,
-          activeProjects.get(workspace.projectId) ?? null,
-        ),
+          projectRecord,
+          includeGitData: options.includeGitData,
+        }),
       );
     }
 
@@ -5410,7 +5436,15 @@ export class Session {
       existing.activityAt = this.accumulateLatestActivityAt(existing.activityAt, agent);
     }
 
-    return Array.from(descriptorsByWorkspaceId.values());
+    return descriptorsByWorkspaceId;
+  }
+
+  private async listWorkspaceDescriptorsSnapshot(): Promise<WorkspaceDescriptorPayload[]> {
+    return Array.from(
+      (await this.buildWorkspaceDescriptorMap({
+        includeGitData: false,
+      })).values(),
+    );
   }
 
   private resolveRegisteredWorkspaceIdForCwd(
@@ -5770,8 +5804,7 @@ export class Session {
   }
 
   private async reconcileAndEmitWorkspaceUpdates(): Promise<void> {
-    const subscription = this.workspaceUpdatesSubscription;
-    if (!subscription) {
+    if (!this.workspaceUpdatesSubscription) {
       return;
     }
     try {
@@ -5779,82 +5812,34 @@ export class Session {
       if (changedWorkspaceIds.size === 0) {
         return;
       }
-      const all = await this.listWorkspaceDescriptorsSnapshot();
-      const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
-      for (const workspaceId of changedWorkspaceIds) {
-        const workspace = descriptorsByWorkspaceId.get(workspaceId) ?? null;
-        if (workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })) {
-          this.bufferOrEmitWorkspaceUpdate(subscription, { kind: "upsert", workspace });
-        } else {
-          this.bufferOrEmitWorkspaceUpdate(subscription, { kind: "remove", id: workspaceId });
-        }
-      }
+      await this.emitWorkspaceUpdatesForWorkspaceIds(changedWorkspaceIds, {
+        skipReconcile: true,
+      });
     } catch (error) {
       this.sessionLogger.error({ err: error }, "Background workspace reconciliation failed");
     }
   }
 
-  private async emitWorkspaceUpdateForCwd(
-    cwd: string,
-    options?: { dedupeGitState?: boolean },
+  private async emitWorkspaceUpdatesForWorkspaceIds(
+    workspaceIds: Iterable<string>,
+    options?: { dedupeGitState?: boolean; skipReconcile?: boolean },
   ): Promise<void> {
     const subscription = this.workspaceUpdatesSubscription;
     if (!subscription) {
       return;
     }
 
-    const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
-      (workspace) => !workspace.archivedAt,
+    const uniqueWorkspaceIds = new Set(
+      Array.from(workspaceIds, (workspaceId) => normalizePersistedWorkspaceId(workspaceId)),
     );
-    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces);
-    const all = await this.listWorkspaceDescriptorsSnapshot();
-    const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
-
-    const workspace = descriptorsByWorkspaceId.get(workspaceId);
-    const nextWorkspace =
-      workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
-        ? workspace
-        : null;
-    if (
-      options?.dedupeGitState &&
-      this.shouldSkipWorkspaceGitWatchUpdate(workspaceId, nextWorkspace)
-    ) {
-      void this.reconcileAndEmitWorkspaceUpdates();
-      return;
-    }
-    this.rememberWorkspaceGitWatchFingerprint(workspaceId, nextWorkspace);
-
-    if (!nextWorkspace) {
-      this.bufferOrEmitWorkspaceUpdate(subscription, {
-        kind: "remove",
-        id: workspaceId,
-      });
-    } else {
-      this.bufferOrEmitWorkspaceUpdate(subscription, {
-        kind: "upsert",
-        workspace: nextWorkspace,
-      });
-    }
-
-    void this.reconcileAndEmitWorkspaceUpdates();
-  }
-
-  private async emitWorkspaceUpdatesForCwds(cwds: Iterable<string>): Promise<void> {
-    const subscription = this.workspaceUpdatesSubscription;
-    if (!subscription) {
+    if (uniqueWorkspaceIds.size === 0) {
       return;
     }
 
-    const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
-      (workspace) => !workspace.archivedAt,
-    );
-    const uniqueWorkspaceIds = new Set<string>();
-    for (const cwd of cwds) {
-      uniqueWorkspaceIds.add(this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces));
-    }
-
-    const all = await this.listWorkspaceDescriptorsSnapshot();
-    const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const));
+    const descriptorsByWorkspaceId = await this.buildWorkspaceDescriptorMap({
+      workspaceIds: uniqueWorkspaceIds,
+      includeGitData: true,
+    });
 
     for (const workspaceId of uniqueWorkspaceIds) {
       const workspace = descriptorsByWorkspaceId.get(workspaceId);
@@ -5862,6 +5847,12 @@ export class Session {
         workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
           ? workspace
           : null;
+      if (
+        options?.dedupeGitState &&
+        this.shouldSkipWorkspaceGitWatchUpdate(workspaceId, nextWorkspace)
+      ) {
+        continue;
+      }
       this.rememberWorkspaceGitWatchFingerprint(workspaceId, nextWorkspace);
 
       if (!nextWorkspace) {
@@ -5878,7 +5869,52 @@ export class Session {
       });
     }
 
-    void this.reconcileAndEmitWorkspaceUpdates();
+    if (!options?.skipReconcile) {
+      void this.reconcileAndEmitWorkspaceUpdates();
+    }
+  }
+
+  private scheduleWorkspaceGitBootstrapUpdates(options: {
+    subscriptionId: string;
+    workspaces: Iterable<WorkspaceDescriptorPayload>;
+  }): void {
+    const gitWorkspaceIds = Array.from(options.workspaces, (workspace) => workspace)
+      .filter((workspace) => workspace.projectKind === "git")
+      .map((workspace) => workspace.id);
+    if (gitWorkspaceIds.length === 0) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      if (this.workspaceUpdatesSubscription?.subscriptionId !== options.subscriptionId) {
+        return;
+      }
+      void this.emitWorkspaceUpdatesForWorkspaceIds(gitWorkspaceIds, {
+        skipReconcile: true,
+      });
+    });
+  }
+
+  private async emitWorkspaceUpdateForCwd(
+    cwd: string,
+    options?: { dedupeGitState?: boolean },
+  ): Promise<void> {
+    const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
+      (workspace) => !workspace.archivedAt,
+    );
+    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces);
+    await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId], options);
+  }
+
+  private async emitWorkspaceUpdatesForCwds(cwds: Iterable<string>): Promise<void> {
+    const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
+      (workspace) => !workspace.archivedAt,
+    );
+    const uniqueWorkspaceIds = new Set<string>();
+    for (const cwd of cwds) {
+      uniqueWorkspaceIds.add(this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces));
+    }
+    await this.emitWorkspaceUpdatesForWorkspaceIds(uniqueWorkspaceIds);
   }
 
   private async handleFetchAgents(
@@ -5991,6 +6027,10 @@ export class Session {
       if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
         this.flushBootstrappedWorkspaceUpdates({ snapshotLatestActivityByWorkspaceId });
         void this.reconcileAndEmitWorkspaceUpdates();
+        this.scheduleWorkspaceGitBootstrapUpdates({
+          subscriptionId,
+          workspaces: payload.entries,
+        });
       }
     } catch (error) {
       if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
@@ -6558,7 +6598,6 @@ export class Session {
         : result.status === "error"
           ? "error"
           : "idle";
-
       this.emit({
         type: "wait_for_finish_response",
         payload: { requestId, status, final, error: null, lastMessage: result.lastMessage },
