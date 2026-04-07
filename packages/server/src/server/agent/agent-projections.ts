@@ -61,6 +61,7 @@ export function toStoredAgentRecord(
     lastModeId: agent.currentModeId ?? config?.modeId ?? null,
     config: config ?? null,
     runtimeInfo,
+    features: agent.features,
     persistence,
     requiresAttention: agent.attention.requiresAttention,
     attentionReason: agent.attention.requiresAttention ? agent.attention.attentionReason : null,
@@ -166,6 +167,7 @@ function sanitizePendingPermissions(
     ...request,
     input: sanitizeMetadata(request.input),
     suggestions: sanitizeMetadataArray(request.suggestions),
+    actions: request.actions?.map((action) => ({ ...action })),
     metadata: sanitizeMetadata(request.metadata),
   }));
 }

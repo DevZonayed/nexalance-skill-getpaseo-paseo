@@ -330,6 +330,14 @@ export type AgentPermissionRequestKind = "tool" | "plan" | "question" | "mode" |
 
 export type AgentPermissionUpdate = AgentMetadata;
 
+export type AgentPermissionAction = {
+  id: string;
+  label: string;
+  behavior: "allow" | "deny";
+  variant?: "primary" | "secondary" | "danger";
+  intent?: "implement" | "implement_resume" | "dismiss";
+};
+
 export type AgentPermissionRequest = {
   id: string;
   provider: AgentProvider;
@@ -340,17 +348,20 @@ export type AgentPermissionRequest = {
   input?: AgentMetadata;
   detail?: ToolCallDetail;
   suggestions?: AgentPermissionUpdate[];
+  actions?: AgentPermissionAction[];
   metadata?: AgentMetadata;
 };
 
 export type AgentPermissionResponse =
   | {
       behavior: "allow";
+      selectedActionId?: string;
       updatedInput?: AgentMetadata;
       updatedPermissions?: AgentPermissionUpdate[];
     }
   | {
       behavior: "deny";
+      selectedActionId?: string;
       message?: string;
       interrupt?: boolean;
     };

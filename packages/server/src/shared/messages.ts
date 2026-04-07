@@ -199,15 +199,24 @@ const AgentSessionConfigSchema = z.object({
 });
 
 const AgentPermissionUpdateSchema = z.record(z.unknown());
+const AgentPermissionActionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  behavior: z.enum(["allow", "deny"]),
+  variant: z.enum(["primary", "secondary", "danger"]).optional(),
+  intent: z.enum(["implement", "implement_resume", "dismiss"]).optional(),
+});
 
 export const AgentPermissionResponseSchema: z.ZodType<AgentPermissionResponse> = z.union([
   z.object({
     behavior: z.literal("allow"),
+    selectedActionId: z.string().optional(),
     updatedInput: z.record(z.unknown()).optional(),
     updatedPermissions: z.array(AgentPermissionUpdateSchema).optional(),
   }),
   z.object({
     behavior: z.literal("deny"),
+    selectedActionId: z.string().optional(),
     message: z.string().optional(),
     interrupt: z.boolean().optional(),
   }),
@@ -222,6 +231,7 @@ export const AgentPermissionRequestPayloadSchema: z.ZodType<AgentPermissionReque
   description: z.string().optional(),
   input: z.record(z.unknown()).optional(),
   suggestions: z.array(AgentPermissionUpdateSchema).optional(),
+  actions: z.array(AgentPermissionActionSchema).optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 
