@@ -677,12 +677,42 @@ function terminateChildProcessTree(child: ChildProcessWithoutNullStreams): void 
 function toAgentUsage(tokenUsage: unknown): AgentUsage | undefined {
   if (!tokenUsage || typeof tokenUsage !== "object") return undefined;
   const usage = tokenUsage as {
-    last?: { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number };
+    model_context_window?: number;
+    modelContextWindow?: number;
+    last?: {
+      inputTokens?: number;
+      cachedInputTokens?: number;
+      outputTokens?: number;
+      total_tokens?: number;
+      totalTokens?: number;
+    };
   };
+  const contextWindowMaxTokens =
+    typeof usage.model_context_window === "number" &&
+    Number.isFinite(usage.model_context_window) &&
+    usage.model_context_window > 0
+      ? usage.model_context_window
+      : typeof usage.modelContextWindow === "number" &&
+          Number.isFinite(usage.modelContextWindow) &&
+          usage.modelContextWindow > 0
+        ? usage.modelContextWindow
+        : undefined;
+  const contextWindowUsedTokens =
+    typeof usage.last?.total_tokens === "number" &&
+    Number.isFinite(usage.last.total_tokens) &&
+    usage.last.total_tokens > 0
+      ? usage.last.total_tokens
+      : typeof usage.last?.totalTokens === "number" &&
+          Number.isFinite(usage.last.totalTokens) &&
+          usage.last.totalTokens > 0
+        ? usage.last.totalTokens
+        : undefined;
   return {
     inputTokens: usage.last?.inputTokens,
     cachedInputTokens: usage.last?.cachedInputTokens,
     outputTokens: usage.last?.outputTokens,
+    ...(contextWindowMaxTokens !== undefined ? { contextWindowMaxTokens } : {}),
+    ...(contextWindowUsedTokens !== undefined ? { contextWindowUsedTokens } : {}),
   };
 }
 
@@ -4009,5 +4039,6 @@ export const __codexAppServerInternals = {
   planStepsToMarkdown,
   mapCodexPlanToToolCall,
   normalizeCodexQuestionPrompts,
+  toAgentUsage,
   threadItemToTimeline,
 };

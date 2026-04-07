@@ -132,6 +132,8 @@ export type AgentUsage = {
   cachedInputTokens?: number;
   outputTokens?: number;
   totalCostUsd?: number;
+  contextWindowMaxTokens?: number;
+  contextWindowUsedTokens?: number;
 };
 
 export const TOOL_CALL_ICON_NAMES = [

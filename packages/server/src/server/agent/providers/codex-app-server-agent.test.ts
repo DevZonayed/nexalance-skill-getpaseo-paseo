@@ -40,6 +40,82 @@ function createSession(configOverrides: Partial<AgentSessionConfig> = {}) {
 describe("Codex app-server provider", () => {
   const logger = createTestLogger();
 
+  test("extracts context window usage from snake_case token payloads", () => {
+    expect(
+      __codexAppServerInternals.toAgentUsage({
+        model_context_window: 200000,
+        last: {
+          total_tokens: 50000,
+          inputTokens: 30000,
+          cachedInputTokens: 5000,
+          outputTokens: 15000,
+        },
+      }),
+    ).toEqual({
+      inputTokens: 30000,
+      cachedInputTokens: 5000,
+      outputTokens: 15000,
+      contextWindowMaxTokens: 200000,
+      contextWindowUsedTokens: 50000,
+    });
+  });
+
+  test("extracts context window usage from camelCase token payloads", () => {
+    expect(
+      __codexAppServerInternals.toAgentUsage({
+        modelContextWindow: 200000,
+        last: {
+          totalTokens: 50000,
+          inputTokens: 30000,
+          cachedInputTokens: 5000,
+          outputTokens: 15000,
+        },
+      }),
+    ).toEqual({
+      inputTokens: 30000,
+      cachedInputTokens: 5000,
+      outputTokens: 15000,
+      contextWindowMaxTokens: 200000,
+      contextWindowUsedTokens: 50000,
+    });
+  });
+
+  test("keeps existing usage behavior when context window fields are missing", () => {
+    expect(
+      __codexAppServerInternals.toAgentUsage({
+        last: {
+          inputTokens: 30000,
+          cachedInputTokens: 5000,
+          outputTokens: 15000,
+        },
+      }),
+    ).toEqual({
+      inputTokens: 30000,
+      cachedInputTokens: 5000,
+      outputTokens: 15000,
+    });
+  });
+
+  test("excludes invalid context window values", () => {
+    expect(
+      __codexAppServerInternals.toAgentUsage({
+        model_context_window: Number.NaN,
+        modelContextWindow: "200000",
+        last: {
+          total_tokens: Number.NaN,
+          totalTokens: "50000",
+          inputTokens: 30000,
+          cachedInputTokens: 5000,
+          outputTokens: 15000,
+        },
+      }),
+    ).toEqual({
+      inputTokens: 30000,
+      cachedInputTokens: 5000,
+      outputTokens: 15000,
+    });
+  });
+
   test("maps image prompt blocks to Codex localImage input", async () => {
     const input = await codexAppServerTurnInputFromPrompt(
       [

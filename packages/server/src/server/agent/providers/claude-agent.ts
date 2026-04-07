@@ -18,6 +18,7 @@ import {
   type SpawnOptions,
   type SDKMessage,
   type SDKPartialAssistantMessage,
+  type SDKTaskProgressMessage,
   type SDKResultMessage,
   type SDKSystemMessage,
   type SDKUserMessage,
@@ -967,7 +968,8 @@ function isSyntheticUserEntry(entry: unknown): boolean {
   if (!entry || typeof entry !== "object") {
     return false;
   }
-  return (entry as { isSynthetic?: unknown }).isSynthetic === true;
+  const candidate = entry as { isSynthetic?: unknown; isMeta?: unknown };
+  return candidate.isSynthetic === true || candidate.isMeta === true;
 }
 
 export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
@@ -1161,6 +1163,40 @@ function resolveClaudeVersion(runtimeSettings?: ProviderRuntimeSettings): string
   }
 }
 
+function extractContextWindowSize(modelUsage: unknown): number | undefined {
+  if (!modelUsage || typeof modelUsage !== "object") {
+    return undefined;
+  }
+
+  let maxContextWindow: number | undefined;
+  for (const value of Object.values(modelUsage as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const contextWindow = (value as { contextWindow?: unknown }).contextWindow;
+    if (
+      typeof contextWindow !== "number" ||
+      !Number.isFinite(contextWindow) ||
+      contextWindow <= 0
+    ) {
+      continue;
+    }
+    maxContextWindow = Math.max(maxContextWindow ?? 0, contextWindow);
+  }
+
+  return maxContextWindow;
+}
+
+function readContextWindowUsedTokensFromTaskProgress(
+  message: SDKTaskProgressMessage,
+): number | undefined {
+  const totalTokens = message.usage?.total_tokens;
+  if (typeof totalTokens !== "number" || !Number.isFinite(totalTokens) || totalTokens < 0) {
+    return undefined;
+  }
+  return totalTokens;
+}
+
 class ClaudeAgentSession implements AgentSession {
   readonly provider: "claude" = "claude";
   readonly capabilities = CLAUDE_CAPABILITIES;
@@ -1202,6 +1238,7 @@ class ClaudeAgentSession implements AgentSession {
   private pendingInterruptAbort = false;
   private lastForegroundPromptText: string | null = null;
   private foregroundHasVisibleActivity = false;
+  private lastContextWindowUsedTokens: number | undefined;
   private userMessageIds: string[] = [];
   private recentStderr = "";
   private closed = false;
@@ -1381,6 +1418,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const sdkMessage = this.toSdkUserMessage(prompt);
     this.lastForegroundPromptText = this.extractPromptText(prompt);
+    this.lastContextWindowUsedTokens = undefined;
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
@@ -2207,6 +2245,7 @@ class ClaudeAgentSession implements AgentSession {
     this.notifySubscribers(event);
     this.activeForegroundTurnId = null;
     this.lastForegroundPromptText = null;
+    this.lastContextWindowUsedTokens = undefined;
     this.cancelCurrentTurn = null;
     this.syncTurnState("foreground turn terminal");
   }
@@ -2222,10 +2261,12 @@ class ClaudeAgentSession implements AgentSession {
       if (this.activeForegroundTurnId) {
         this.activeForegroundTurnId = null;
         this.lastForegroundPromptText = null;
+        this.lastContextWindowUsedTokens = undefined;
         this.cancelCurrentTurn = null;
         this.syncTurnState("foreground turn terminal");
       } else if (this.autonomousTurn) {
         this.autonomousTurn = null;
+        this.lastContextWindowUsedTokens = undefined;
         this.syncTurnState("autonomous turn terminal");
       }
     }
@@ -2238,6 +2279,7 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
+    this.lastContextWindowUsedTokens = undefined;
     this.notifySubscribers({ type: "turn_started", provider: "claude" });
     this.syncTurnState("autonomous turn started");
   }
@@ -2248,6 +2290,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
+    this.lastContextWindowUsedTokens = undefined;
     this.syncTurnState("autonomous turn completed");
   }
 
@@ -2576,6 +2619,10 @@ class ClaudeAgentSession implements AgentSession {
               provider: "claude",
             });
           }
+        } else if (message.subtype === "task_progress") {
+          this.lastContextWindowUsedTokens =
+            readContextWindowUsedTokensFromTaskProgress(message) ??
+            this.lastContextWindowUsedTokens;
         }
         break;
       case "user": {
@@ -2653,7 +2700,7 @@ class ClaudeAgentSession implements AgentSession {
         break;
       }
       case "result": {
-        const usage = this.convertUsage(message);
+        const usage = this.convertUsage(message, message.modelUsage);
         if (message.subtype === "success") {
           events.push({ type: "turn_completed", provider: "claude", usage });
         } else {
@@ -2794,16 +2841,38 @@ class ClaudeAgentSession implements AgentSession {
     return null;
   }
 
-  private convertUsage(message: SDKResultMessage): AgentUsage | undefined {
+  private convertUsage(message: SDKResultMessage, modelUsage?: unknown): AgentUsage | undefined {
     if (!message.usage) {
       return undefined;
     }
-    return {
+    const usage: AgentUsage = {
       inputTokens: message.usage.input_tokens,
       cachedInputTokens: message.usage.cache_read_input_tokens,
       outputTokens: message.usage.output_tokens,
       totalCostUsd: message.total_cost_usd,
     };
+    const contextWindowMaxTokens = extractContextWindowSize(
+      modelUsage ?? message.modelUsage,
+    );
+    if (contextWindowMaxTokens !== undefined) {
+      usage.contextWindowMaxTokens = contextWindowMaxTokens;
+    }
+    if (typeof this.lastContextWindowUsedTokens === "number") {
+      usage.contextWindowUsedTokens = this.lastContextWindowUsedTokens;
+    } else if (message.usage) {
+      const usageWithCacheCreation = message.usage as typeof message.usage & {
+        cache_creation_input_tokens?: number;
+      };
+      const derived =
+        (message.usage.input_tokens ?? 0) +
+        (usageWithCacheCreation.cache_creation_input_tokens ?? 0) +
+        (message.usage.cache_read_input_tokens ?? 0) +
+        (message.usage.output_tokens ?? 0);
+      if (Number.isFinite(derived) && derived > 0) {
+        usage.contextWindowUsedTokens = derived;
+      }
+    }
+    return usage;
   }
 
   private handlePermissionRequest: CanUseTool = async (

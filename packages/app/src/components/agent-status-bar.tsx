@@ -859,6 +859,7 @@ export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStat
             model: currentAgent.model,
             features: currentAgent.features,
             thinkingOptionId: currentAgent.thinkingOptionId,
+            lastUsage: currentAgent.lastUsage,
           }
         : null;
     }),

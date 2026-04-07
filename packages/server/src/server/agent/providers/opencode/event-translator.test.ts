@@ -14,6 +14,33 @@ function createState(sessionId = "session-1"): OpenCodeEventTranslationState {
 }
 
 describe("translateOpenCodeEvent", () => {
+  it("resolves context window max tokens from assistant message.updated model metadata", () => {
+    const resolvedContextWindowMaxTokens: number[] = [];
+    const state = createState();
+    state.modelContextWindowsByModelKey = new Map([["anthropic/claude-sonnet-4", 200_000]]);
+    state.onAssistantModelContextWindowResolved = (contextWindowMaxTokens) => {
+      resolvedContextWindowMaxTokens.push(contextWindowMaxTokens);
+    };
+
+    translateOpenCodeEvent(
+      {
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "message-model-1",
+            sessionID: "session-1",
+            role: "assistant",
+            providerID: "anthropic",
+            modelID: "claude-sonnet-4",
+          },
+        },
+      },
+      state,
+    );
+
+    expect(resolvedContextWindowMaxTokens).toEqual([200_000]);
+  });
+
   it("does not duplicate assistant output when completed part echoes streamed delta", () => {
     const state = createState();
 
