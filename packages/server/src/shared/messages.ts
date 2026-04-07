@@ -1084,6 +1084,32 @@ export const CreatePaseoWorktreeRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const EditorTargetIdSchema = z.enum([
+  "cursor",
+  "vscode",
+  "zed",
+  "finder",
+  "explorer",
+  "file-manager",
+]);
+
+export const EditorTargetDescriptorPayloadSchema = z.object({
+  id: EditorTargetIdSchema,
+  label: z.string(),
+});
+
+export const ListAvailableEditorsRequestSchema = z.object({
+  type: z.literal("list_available_editors_request"),
+  requestId: z.string(),
+});
+
+export const OpenInEditorRequestSchema = z.object({
+  type: z.literal("open_in_editor_request"),
+  path: z.string(),
+  editorId: EditorTargetIdSchema,
+  requestId: z.string(),
+});
+
 export const OpenProjectRequestSchema = z.object({
   type: z.literal("open_project_request"),
   cwd: z.string(),
@@ -1341,6 +1367,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
   CreatePaseoWorktreeRequestSchema,
+  ListAvailableEditorsRequestSchema,
+  OpenInEditorRequestSchema,
   OpenProjectRequestSchema,
   ArchiveWorkspaceRequestSchema,
   FileExplorerRequestSchema,
@@ -1824,6 +1852,23 @@ export const OpenProjectResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     workspace: WorkspaceDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ListAvailableEditorsResponseMessageSchema = z.object({
+  type: z.literal("list_available_editors_response"),
+  payload: z.object({
+    requestId: z.string(),
+    editors: z.array(EditorTargetDescriptorPayloadSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const OpenInEditorResponseMessageSchema = z.object({
+  type: z.literal("open_in_editor_response"),
+  payload: z.object({
+    requestId: z.string(),
     error: z.string().nullable(),
   }),
 });
@@ -2475,6 +2520,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentsResponseMessageSchema,
   FetchWorkspacesResponseMessageSchema,
   OpenProjectResponseMessageSchema,
+  ListAvailableEditorsResponseMessageSchema,
+  OpenInEditorResponseMessageSchema,
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
@@ -2567,9 +2614,15 @@ export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePaylo
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
 export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>;
 export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>;
+export type EditorTargetId = z.infer<typeof EditorTargetIdSchema>;
+export type EditorTargetDescriptorPayload = z.infer<typeof EditorTargetDescriptorPayloadSchema>;
 export type FetchAgentsResponseMessage = z.infer<typeof FetchAgentsResponseMessageSchema>;
 export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>;
 export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessageSchema>;
+export type ListAvailableEditorsResponseMessage = z.infer<
+  typeof ListAvailableEditorsResponseMessageSchema
+>;
+export type OpenInEditorResponseMessage = z.infer<typeof OpenInEditorResponseMessageSchema>;
 export type ArchiveWorkspaceResponseMessage = z.infer<typeof ArchiveWorkspaceResponseMessageSchema>;
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>;
 export type FetchAgentTimelineResponseMessage = z.infer<
@@ -2717,6 +2770,8 @@ export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSc
 export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponseSchema>;
 export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;
 export type PaseoWorktreeArchiveResponse = z.infer<typeof PaseoWorktreeArchiveResponseSchema>;
+export type ListAvailableEditorsRequest = z.infer<typeof ListAvailableEditorsRequestSchema>;
+export type OpenInEditorRequest = z.infer<typeof OpenInEditorRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;
