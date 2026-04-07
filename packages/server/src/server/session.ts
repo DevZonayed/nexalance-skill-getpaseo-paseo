@@ -257,6 +257,17 @@ export function resolveCreateAgentTitles(options: {
   };
 }
 
+export function resolveWaitForFinishError(options: {
+  status: "permission" | "error" | "idle";
+  final: AgentSnapshotPayload | null;
+}): string | null {
+  if (options.status !== "error") {
+    return null;
+  }
+  const message = options.final?.lastError;
+  return typeof message === "string" && message.trim().length > 0 ? message : "Agent failed";
+}
+
 type ProcessingPhase = "idle" | "transcribing";
 
 type WorkspaceGitWatchTarget = {
@@ -6569,9 +6580,10 @@ export class Session {
           : record.lastStatus === "error"
             ? "error"
             : "idle";
+      const error = resolveWaitForFinishError({ status, final });
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status, final, error: null, lastMessage: null },
+        payload: { requestId, status, final, error, lastMessage: null },
       });
       return;
     }
@@ -6598,9 +6610,11 @@ export class Session {
         : result.status === "error"
           ? "error"
           : "idle";
+      const error = resolveWaitForFinishError({ status, final });
+
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status, final, error: null, lastMessage: result.lastMessage },
+        payload: { requestId, status, final, error, lastMessage: result.lastMessage },
       });
     } catch (error) {
       const isAbort =
