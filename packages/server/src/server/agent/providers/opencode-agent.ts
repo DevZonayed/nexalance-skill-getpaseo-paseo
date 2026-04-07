@@ -2041,6 +2041,17 @@ class OpenCodeAgentSession implements AgentSession {
       if (translatedEvent.type === "permission_requested") {
         this.pendingPermissions.set(translatedEvent.request.id, translatedEvent.request);
       }
+      if (translatedEvent.type === "turn_completed") {
+        if (hasNormalizedOpenCodeUsage(this.accumulatedUsage)) {
+          translatedEvent.usage = this.accumulatedUsage;
+        }
+        const contextWindowMaxTokens =
+          this.resolveSelectedModelContextWindowMaxTokens();
+        this.accumulatedUsage =
+          contextWindowMaxTokens !== undefined
+            ? { contextWindowMaxTokens }
+            : {};
+      }
     }
 
     return translated;
