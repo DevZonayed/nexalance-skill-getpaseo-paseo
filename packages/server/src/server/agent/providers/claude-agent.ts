@@ -1460,7 +1460,6 @@ class ClaudeAgentSession implements AgentSession {
 
     const sdkMessage = this.toSdkUserMessage(prompt);
     this.lastForegroundPromptText = this.extractPromptText(prompt);
-    this.lastContextWindowUsedTokens = undefined;
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
@@ -2304,7 +2303,6 @@ class ClaudeAgentSession implements AgentSession {
     this.notifySubscribers(event);
     this.activeForegroundTurnId = null;
     this.lastForegroundPromptText = null;
-    this.lastContextWindowUsedTokens = undefined;
     this.cancelCurrentTurn = null;
     this.syncTurnState("foreground turn terminal");
   }
@@ -2320,12 +2318,10 @@ class ClaudeAgentSession implements AgentSession {
       if (this.activeForegroundTurnId) {
         this.activeForegroundTurnId = null;
         this.lastForegroundPromptText = null;
-        this.lastContextWindowUsedTokens = undefined;
         this.cancelCurrentTurn = null;
         this.syncTurnState("foreground turn terminal");
       } else if (this.autonomousTurn) {
         this.autonomousTurn = null;
-        this.lastContextWindowUsedTokens = undefined;
         this.syncTurnState("autonomous turn terminal");
       }
     }
@@ -2338,7 +2334,6 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
-    this.lastContextWindowUsedTokens = undefined;
     this.notifySubscribers({ type: "turn_started", provider: "claude" });
     this.syncTurnState("autonomous turn started");
   }
@@ -2349,7 +2344,6 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
-    this.lastContextWindowUsedTokens = undefined;
     this.syncTurnState("autonomous turn completed");
   }
 
@@ -2920,8 +2914,14 @@ class ClaudeAgentSession implements AgentSession {
       usage.contextWindowMaxTokens = contextWindowMaxTokens;
     }
     if (typeof this.lastContextWindowUsedTokens === "number") {
+      // task_progress.total_tokens is the accurate context window fill level.
+      // Prefer it over result.usage which contains accumulated session totals.
       usage.contextWindowUsedTokens = this.lastContextWindowUsedTokens;
     } else if (message.usage) {
+      // Fallback: derive from result.usage when no task_progress has been
+      // received yet. These values are accumulated across all API calls, but
+      // for the first turn they equal the per-call values so the estimate is
+      // reasonable. Once a task_progress arrives it takes over permanently.
       const usageWithCacheCreation = message.usage as typeof message.usage & {
         cache_creation_input_tokens?: number;
       };

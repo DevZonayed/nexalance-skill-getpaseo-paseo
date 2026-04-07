@@ -358,7 +358,7 @@ describe("ClaudeAgentSession context window usage", () => {
     });
   }
 
-  test("convertUsage includes contextWindowMaxTokens and derives used tokens from result usage", async () => {
+  test("convertUsage includes contextWindowMaxTokens and derives used tokens from result usage as initial fallback", async () => {
     const session = await createSessionForTest();
 
     const usage = session.convertUsage(
@@ -388,7 +388,7 @@ describe("ClaudeAgentSession context window usage", () => {
     });
   });
 
-  test("contextWindowUsedTokens is derived from result usage when task_progress is missing", async () => {
+  test("contextWindowUsedTokens falls back to result usage when no task_progress was received", async () => {
     const session = await createSessionForTest();
 
     const usage = session.convertUsage({
@@ -508,7 +508,7 @@ describe("ClaudeAgentSession context window usage", () => {
     });
   });
 
-  test("contextWindowUsedTokens resets between turns and falls back to result usage", async () => {
+  test("contextWindowUsedTokens persists across turns from last task_progress", async () => {
     const queryFactory = createQueryFactoryForTurns([
       [
         {
@@ -600,20 +600,23 @@ describe("ClaudeAgentSession context window usage", () => {
         contextWindowMaxTokens: 200_000,
         contextWindowUsedTokens: 999,
       });
+      // Turn 2 has no task_progress, so contextWindowUsedTokens retains the
+      // last known value from turn 1 rather than deriving from accumulated
+      // result.usage (which would be incorrect — those are session-level totals).
       expect(secondTurn.usage).toEqual({
         inputTokens: 11,
         cachedInputTokens: 6,
         outputTokens: 8,
         totalCostUsd: 0.1,
         contextWindowMaxTokens: 200_000,
-        contextWindowUsedTokens: 28,
+        contextWindowUsedTokens: 999,
       });
     } finally {
       await session.close();
     }
   });
 
-  test("convertUsage derives used tokens even when modelUsage is missing", async () => {
+  test("convertUsage derives used tokens from result usage as fallback when task_progress is missing", async () => {
     const session = await createSessionForTest();
 
     const usage = session.convertUsage({
