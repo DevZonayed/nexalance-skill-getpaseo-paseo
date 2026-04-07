@@ -1848,6 +1848,9 @@ class ClaudeAgentSession implements AgentSession {
       this.input = null;
       this.queryPumpPromise = null;
       this.queryRestartNeeded = false;
+      // Reset session identity for explicit restarts so the new query starts
+      // a fresh session rather than resuming the previous one.
+      this.claudeSessionId = null;
       oldInput?.end();
       oldQuery.close?.();
       try {
@@ -1856,6 +1859,12 @@ class ClaudeAgentSession implements AgentSession {
         /* ignore */
       }
     }
+
+    // When the pump died unexpectedly (query became null, e.g. after a session
+    // ID overwrite error), preserve claudeSessionId so buildOptions() passes
+    // resume: sessionId and the new query auto-resumes the previous session.
+    // For explicit restarts above, claudeSessionId was already cleared.
+    this.persistence = null;
 
     const input = createAsyncMessageInput<SDKUserMessage>();
     const options = this.buildOptions();
@@ -2689,11 +2698,16 @@ class ClaudeAgentSession implements AgentSession {
     if (this.claudeSessionId === sessionId) {
       return null;
     }
-    throw new Error(
-      `CRITICAL: Claude session ID overwrite detected! ` +
-        `Existing: ${this.claudeSessionId}, New: ${sessionId}. ` +
-        `This indicates a session identity corruption bug.`,
+    // Session ID changed mid-stream (e.g. a hook caused Claude to restart
+    // with a new session). Accept the new ID and continue — the turn should
+    // not be failed just because the underlying subprocess cycled.
+    this.logger.warn(
+      { existingSessionId: this.claudeSessionId, newSessionId: sessionId },
+      "Claude session ID changed in message; accepting new session",
     );
+    this.claudeSessionId = sessionId;
+    this.persistence = null;
+    return sessionId;
   }
 
   private handleSystemMessage(message: SDKSystemMessage): string | null {
@@ -2728,11 +2742,14 @@ class ClaudeAgentSession implements AgentSession {
     } else if (existingSessionId === newSessionId) {
       this.logger.debug({ sessionId: newSessionId }, "Claude session ID unchanged (same value)");
     } else {
-      throw new Error(
-        `CRITICAL: Claude session ID overwrite detected! ` +
-          `Existing: ${existingSessionId}, New: ${newSessionId}. ` +
-          `This indicates a session identity corruption bug.`,
+      // Session ID changed in an init message (e.g. a hook restarted Claude
+      // with a new session mid-turn). Accept the new ID and continue.
+      this.logger.warn(
+        { existingSessionId, newSessionId },
+        "Claude session ID changed in init message; accepting new session",
       );
+      this.claudeSessionId = newSessionId;
+      threadStartedSessionId = newSessionId;
     }
     this.availableModes = DEFAULT_MODES;
     this.currentMode = message.permissionMode;
