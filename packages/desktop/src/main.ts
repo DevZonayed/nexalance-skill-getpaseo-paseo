@@ -37,6 +37,18 @@ const APP_SCHEME = "paseo";
 const OPEN_PROJECT_EVENT = "paseo:event:open-project";
 app.setName("Paseo");
 
+// Allow users to pass Chromium flags via PASEO_ELECTRON_FLAGS for debugging
+// rendering issues (e.g. "--disable-gpu --ozone-platform=x11").
+// Must run before app.whenReady().
+const electronFlags = process.env.PASEO_ELECTRON_FLAGS?.trim();
+if (electronFlags) {
+  for (const token of electronFlags.split(/\s+/)) {
+    const [key, ...rest] = token.replace(/^--/, "").split("=");
+    app.commandLine.appendSwitch(key, rest.join("=") || undefined);
+  }
+  log.info("[electron-flags]", electronFlags);
+}
+
 let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
   isDefaultApp: process.defaultApp,
