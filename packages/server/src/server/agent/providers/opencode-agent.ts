@@ -93,6 +93,19 @@ type OpenCodeMcpConfig =
     };
 
 const MCP_ALREADY_PRESENT_ERROR_TOKENS = ["already", "exists", "connected"] as const;
+const OPENCODE_PROVIDER_LIST_TIMEOUT_MS = 30_000;
+const OPENCODE_FATAL_RETRY_MESSAGE_TOKENS = [
+  "insufficient balance",
+  "no resource package",
+  "please recharge",
+  "invalid api key",
+  "unauthorized",
+  "authentication",
+  "model not found",
+  "unknown model",
+  "does not exist",
+  "unsupported model",
+] as const;
 
 const OpencodeToolStateSchema = z
   .object({
@@ -215,6 +228,14 @@ function stringifyUnknownError(error: unknown): string {
 function normalizeTurnFailureError(error: unknown): string {
   const normalized = stringifyUnknownError(error).trim();
   return normalized.length > 0 ? normalized : "Unknown error";
+}
+
+function isFatalOpenCodeRetryMessage(message: string | null | undefined): boolean {
+  const normalized = typeof message === "string" ? message.trim().toLowerCase() : "";
+  if (!normalized) {
+    return false;
+  }
+  return OPENCODE_FATAL_RETRY_MESSAGE_TOKENS.some((token) => normalized.includes(token));
 }
 
 function isAlreadyPresentMcpError(error: unknown): boolean {
@@ -726,16 +747,17 @@ export class OpenCodeAgentClient implements AgentClient {
       directory: options?.cwd ?? process.cwd(),
     });
 
-    // Set a timeout for the API call to fail fast if OpenCode isn't responding
+    // Background model discovery can be legitimately slow while OpenCode refreshes
+    // provider state, so allow longer than turn execution paths.
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(
         () =>
           reject(
             new Error(
-              "OpenCode provider.list timed out after 10s - server may not be authenticated or connected to any providers",
+              `OpenCode provider.list timed out after ${OPENCODE_PROVIDER_LIST_TIMEOUT_MS / 1000}s - server may not be authenticated or connected to any providers`,
             ),
           ),
-        10_000,
+        OPENCODE_PROVIDER_LIST_TIMEOUT_MS,
       );
     });
 
@@ -1215,6 +1237,14 @@ export function translateOpenCodeEvent(
           provider: "opencode",
           usage: undefined,
         });
+      } else if (status.type === "retry" && isFatalOpenCodeRetryMessage(status.message)) {
+        state.streamedPartKeys.clear();
+        state.partTypes.clear();
+        events.push({
+          type: "turn_failed",
+          provider: "opencode",
+          error: normalizeTurnFailureError(status.message),
+        });
       }
       // "retry" and "busy" are transient — no terminal event.
       break;
@@ -1452,7 +1482,7 @@ class OpenCodeAgentSession implements AgentSession {
         );
       });
     } else {
-      const promptResponse = await this.client.session.promptAsync({
+      void this.client.session.promptAsync({
         sessionID: this.sessionId,
         directory: this.config.cwd,
         parts,
@@ -1468,14 +1498,27 @@ class OpenCodeAgentSession implements AgentSession {
         ...(model ? { model } : {}),
         ...(effectiveMode ? { agent: effectiveMode } : {}),
         ...(effectiveVariant ? { variant: effectiveVariant } : {}),
-      });
-
-      if (promptResponse.error) {
+      }).then((promptResponse) => {
+        if (promptResponse.error) {
+          this.finishForegroundTurn(
+            {
+              type: "turn_failed",
+              provider: "opencode",
+              error: normalizeTurnFailureError(promptResponse.error),
+            },
+            turnId,
+          );
+        }
+      }).catch((error) => {
         this.finishForegroundTurn(
-          { type: "turn_failed", provider: "opencode", error: normalizeTurnFailureError(promptResponse.error) },
+          {
+            type: "turn_failed",
+            provider: "opencode",
+            error: normalizeTurnFailureError(error),
+          },
           turnId,
         );
-      }
+      });
     }
 
     return { turnId };
@@ -1528,6 +1571,17 @@ class OpenCodeAgentSession implements AgentSession {
           }
           this.notifySubscribers(e, turnId);
         }
+      }
+
+      if (!turnAbortController.signal.aborted && this.activeForegroundTurnId === turnId) {
+        this.finishForegroundTurn(
+          {
+            type: "turn_failed",
+            provider: "opencode",
+            error: "OpenCode event stream ended before the turn reached a terminal state",
+          },
+          turnId,
+        );
       }
     } catch (error) {
       if (!turnAbortController.signal.aborted && this.activeForegroundTurnId === turnId) {
