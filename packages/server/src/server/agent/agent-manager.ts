@@ -18,6 +18,7 @@ import type {
   AgentMode,
   AgentPermissionRequest,
   AgentPermissionResponse,
+  AgentPermissionResult,
   AgentPersistenceHandle,
   AgentPromptInput,
   AgentProvider,
@@ -1098,11 +1099,10 @@ export class AgentManager {
     agent.lastError = undefined;
 
     const self = this;
+    const pendingRun = self.createPendingForegroundRun();
+    self.pendingForegroundRuns.set(agentId, pendingRun);
 
     const streamForwarder = (async function* streamForwarder() {
-      const pendingRun = self.createPendingForegroundRun();
-      self.pendingForegroundRuns.set(agentId, pendingRun);
-
       let turnId: string;
       let waiter: ForegroundTurnWaiter | null = null;
       try {
@@ -1382,12 +1382,12 @@ export class AgentManager {
     agentId: string,
     requestId: string,
     response: AgentPermissionResponse,
-  ): Promise<void> {
+  ): Promise<AgentPermissionResult | void> {
     const agent = this.requireAgent(agentId);
     agent.inFlightPermissionResponses.add(requestId);
 
     try {
-      await agent.session.respondToPermission(requestId, response);
+      const result = await agent.session.respondToPermission(requestId, response);
       agent.pendingPermissions.delete(requestId);
 
       try {
@@ -1405,6 +1405,8 @@ export class AgentManager {
         agent.bufferedPermissionResolutions.delete(requestId);
         this.dispatchStream(agent.id, bufferedResolution);
       }
+
+      return result;
     } finally {
       agent.inFlightPermissionResponses.delete(requestId);
       agent.bufferedPermissionResolutions.delete(requestId);
@@ -1638,8 +1640,9 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} not found`);
     }
 
+    const pendingForegroundRun = this.getPendingForegroundRun(agentId);
     const hasForegroundTurn =
-      Boolean(snapshot.activeForegroundTurnId) || this.hasPendingForegroundRun(agentId);
+      Boolean(snapshot.activeForegroundTurnId) || Boolean(pendingForegroundRun);
 
     const immediatePermission = this.peekPendingPermission(snapshot);
     if (immediatePermission) {
@@ -1681,7 +1684,10 @@ export class AgentManager {
       }
 
       let currentStatus: AgentLifecycleStatus = initialStatus;
-      let hasStarted = initialBusy || hasForegroundTurn;
+      let hasStarted =
+        isAgentBusy(initialStatus) ||
+        Boolean(snapshot.activeForegroundTurnId) ||
+        Boolean(pendingForegroundRun?.started);
       let terminalStatusOverride: AgentLifecycleStatus | null = null;
       let finished = false;
 

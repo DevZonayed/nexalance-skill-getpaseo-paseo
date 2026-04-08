@@ -466,7 +466,7 @@ export class ACPAgentClient implements AgentClient {
 
   async isAvailable(): Promise<boolean> {
     try {
-      this.resolveLaunchCommand();
+      await this.resolveLaunchCommand();
       return true;
     } catch {
       return false;
