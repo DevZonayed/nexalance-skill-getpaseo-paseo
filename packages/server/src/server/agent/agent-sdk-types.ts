@@ -441,6 +441,14 @@ export interface AgentLaunchContext {
   env?: Record<string, string>;
 }
 
+/**
+ * Returned by respondToPermission when the permission resolution requires
+ * a follow-up turn (e.g. Codex plan approval → implementation).
+ */
+export interface AgentPermissionResult {
+  followUpPrompt?: AgentPromptInput;
+}
+
 export interface AgentSession {
   readonly provider: AgentProvider;
   readonly id: string | null;
@@ -455,7 +463,10 @@ export interface AgentSession {
   getCurrentMode(): Promise<string | null>;
   setMode(modeId: string): Promise<void>;
   getPendingPermissions(): AgentPermissionRequest[];
-  respondToPermission(requestId: string, response: AgentPermissionResponse): Promise<void>;
+  respondToPermission(
+    requestId: string,
+    response: AgentPermissionResponse,
+  ): Promise<AgentPermissionResult | void>;
   describePersistence(): AgentPersistenceHandle | null;
   interrupt(): Promise<void>;
   close(): Promise<void>;

@@ -2836,7 +2836,7 @@ export class Session {
     images?: Array<{ data: string; mimeType: string }>,
     runOptions?: AgentRunOptions,
     options?: { spokenInput?: boolean },
-  ): Promise<void> {
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     this.sessionLogger.info(
       { agentId, textPreview: text.substring(0, 50), imageCount: images?.length ?? 0 },
       `Sending text to agent ${agentId}${images && images.length > 0 ? ` with ${images.length} image attachment(s)` : ""}`,
@@ -2848,7 +2848,10 @@ export class Session {
       await this.ensureAgentLoaded(agentId);
     } catch (error) {
       this.handleAgentRunError(agentId, error, "Failed to initialize agent before sending prompt");
-      return;
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
 
     try {
@@ -2866,7 +2869,7 @@ export class Session {
     const promptText = options?.spokenInput ? wrapSpokenInput(text) : text;
     const prompt = this.buildAgentPrompt(promptText, images);
 
-    this.startAgentStream(agentId, prompt, runOptions);
+    return this.startAgentStream(agentId, prompt, runOptions);
   }
 
   /**
@@ -2914,6 +2917,29 @@ export class Session {
       const snapshot = await this.agentManager.createAgent(sessionConfig, undefined, { labels });
       await this.forwardAgentUpdate(snapshot);
 
+      if (trimmedPrompt) {
+        scheduleAgentMetadataGeneration({
+          agentManager: this.agentManager,
+          agentId: snapshot.id,
+          cwd: snapshot.cwd,
+          initialPrompt: trimmedPrompt,
+          explicitTitle,
+          paseoHome: this.paseoHome,
+          logger: this.sessionLogger,
+        });
+
+        const started = await this.handleSendAgentMessage(
+          snapshot.id,
+          trimmedPrompt,
+          resolveClientMessageId(clientMessageId),
+          images,
+          outputSchema ? { outputSchema } : undefined,
+        );
+        if (!started.ok) {
+          throw new Error(started.error);
+        }
+      }
+
       if (requestId) {
         const agentPayload = await this.getAgentPayloadById(snapshot.id);
         if (!agentPayload) {
@@ -2927,40 +2953,6 @@ export class Session {
             requestId,
             agent: agentPayload,
           },
-        });
-      }
-
-      if (trimmedPrompt) {
-        scheduleAgentMetadataGeneration({
-          agentManager: this.agentManager,
-          agentId: snapshot.id,
-          cwd: snapshot.cwd,
-          initialPrompt: trimmedPrompt,
-          explicitTitle,
-          paseoHome: this.paseoHome,
-          logger: this.sessionLogger,
-        });
-
-        void this.handleSendAgentMessage(
-          snapshot.id,
-          trimmedPrompt,
-          resolveClientMessageId(clientMessageId),
-          images,
-          outputSchema ? { outputSchema } : undefined,
-        ).catch((promptError) => {
-          this.sessionLogger.error(
-            { err: promptError, agentId: snapshot.id },
-            `Failed to run initial prompt for agent ${snapshot.id}`,
-          );
-          this.emit({
-            type: "activity_log",
-            payload: {
-              id: uuidv4(),
-              timestamp: new Date(),
-              type: "error",
-              content: `Initial prompt failed: ${(promptError as Error)?.message ?? promptError}`,
-            },
-          });
         });
       }
 
@@ -3924,8 +3916,16 @@ export class Session {
     );
 
     try {
-      await this.agentManager.respondToPermission(agentId, requestId, response);
+      const result = await this.agentManager.respondToPermission(agentId, requestId, response);
       this.sessionLogger.debug({ agentId }, `Permission response forwarded to agent ${agentId}`);
+
+      if (result?.followUpPrompt) {
+        this.sessionLogger.debug(
+          { agentId },
+          "Permission response requires follow-up turn, starting agent stream",
+        );
+        this.startAgentStream(agentId, result.followUpPrompt);
+      }
     } catch (error: any) {
       this.sessionLogger.error(
         { err: error, agentId, requestId },
@@ -6602,6 +6602,7 @@ export class Session {
     try {
       let result = await this.agentManager.waitForAgentEvent(agentId, {
         signal: abortController.signal,
+        waitForActive: true,
       });
       let final = await this.getAgentPayloadById(agentId);
       if (!final) {

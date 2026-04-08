@@ -9,6 +9,7 @@ import type {
   McpServerConfig,
   AgentPermissionRequest,
   AgentPermissionResponse,
+  AgentPermissionResult,
   AgentPromptContentBlock,
   AgentPromptInput,
   AgentRunOptions,
@@ -2673,22 +2674,19 @@ class CodexAppServerAgentSession implements AgentSession {
     this.emitEvent({ type: "permission_requested", provider: CODEX_PROVIDER, request });
   }
 
-  private async handleApprovedPlanPermission(params: { planText?: unknown }): Promise<void> {
+  /**
+   * Prepare the session for plan implementation by disabling plan/fast mode
+   * and returning the implementation prompt. The caller is responsible for
+   * starting the turn through the normal streamAgent path.
+   */
+  private preparePlanImplementation(params: { planText?: unknown }): string {
     const planText =
       typeof params.planText === "string" ? normalizePlanMarkdown(params.planText) : "";
-    const previousPlanMode = this.planModeEnabled;
-    const previousFastMode = this.serviceTier === "fast";
 
     this.applyFeatureValue("plan_mode", false);
     this.applyFeatureValue("fast_mode", false);
 
-    try {
-      await this.startTurn(buildCodexPlanImplementationPrompt(planText));
-    } catch (error) {
-      this.applyFeatureValue("plan_mode", previousPlanMode);
-      this.applyFeatureValue("fast_mode", previousFastMode);
-      throw error;
-    }
+    return buildCodexPlanImplementationPrompt(planText);
   }
 
   private registerRequestHandlers(): void {
@@ -3102,7 +3100,10 @@ class CodexAppServerAgentSession implements AgentSession {
     return Array.from(this.pendingPermissions.values());
   }
 
-  async respondToPermission(requestId: string, response: AgentPermissionResponse): Promise<void> {
+  async respondToPermission(
+    requestId: string,
+    response: AgentPermissionResponse,
+  ): Promise<AgentPermissionResult | void> {
     const pending = this.pendingPermissionHandlers.get(requestId);
     if (!pending) {
       throw new Error(`No pending Codex app-server permission request with id '${requestId}'`);
@@ -3110,8 +3111,9 @@ class CodexAppServerAgentSession implements AgentSession {
     const pendingRequest = this.pendingPermissions.get(requestId) ?? null;
 
     if (pending.kind === "plan") {
+      let followUpPrompt: string | undefined;
       if (response.behavior === "allow") {
-        await this.handleApprovedPlanPermission({
+        followUpPrompt = this.preparePlanImplementation({
           planText: pending.planText ?? pendingRequest?.metadata?.planText,
         });
       }
@@ -3125,6 +3127,9 @@ class CodexAppServerAgentSession implements AgentSession {
         requestId,
         resolution: response,
       });
+      if (followUpPrompt) {
+        return { followUpPrompt };
+      }
       return;
     }
 
