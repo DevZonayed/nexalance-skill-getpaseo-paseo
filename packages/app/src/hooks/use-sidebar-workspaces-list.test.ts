@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceServicePayload } from "@server/shared/messages";
+import type { WorkspaceScriptPayload } from "@server/shared/messages";
 import {
   appendMissingOrderKeys,
   applyStoredOrdering,
@@ -25,7 +25,7 @@ function workspace(
         | "workspaceDirectory"
         | "projectKind"
         | "workspaceKind"
-        | "services"
+        | "scripts"
       >
     >,
 ): WorkspaceDescriptor {
@@ -41,12 +41,12 @@ function workspace(
     status: input.status,
     activityAt: input.activityAt,
     diffStat: null,
-    services: input.services ?? [],
+    scripts: input.scripts ?? [],
   };
 }
 
-const runningService: WorkspaceServicePayload = {
-  serviceName: "web",
+const runningScript: WorkspaceScriptPayload = {
+  scriptName: "web",
   hostname: "main.web.localhost",
   port: 3000,
   url: "http://main.web.localhost:6767",
@@ -54,8 +54,8 @@ const runningService: WorkspaceServicePayload = {
   health: "healthy",
 };
 
-const stoppedService: WorkspaceServicePayload = {
-  serviceName: "api",
+const stoppedScript: WorkspaceScriptPayload = {
+  scriptName: "api",
   hostname: "main.api.localhost",
   port: 3001,
   url: "http://main.api.localhost:6767",
@@ -143,7 +143,7 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
     expect(projects[0]?.workspaces[0]?.statusBucket).toBe("failed");
   });
 
-  it("threads services into workspace rows and derives hasRunningServices", () => {
+  it("threads scripts into workspace rows and derives hasRunningScripts", () => {
     const projects = buildSidebarProjectsFromWorkspaces({
       serverId: "srv",
       workspaces: [
@@ -153,15 +153,15 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
           name: "main",
           status: "running",
           activityAt: new Date("2026-01-01T00:00:00.000Z"),
-          services: [runningService, stoppedService],
+          scripts: [runningScript, stoppedScript],
         }),
       ],
       projectOrder: [],
       workspaceOrderByScope: {},
     });
 
-    expect(projects[0]?.workspaces[0]?.services).toEqual([runningService, stoppedService]);
-    expect(projects[0]?.workspaces[0]?.hasRunningServices).toBe(true);
+    expect(projects[0]?.workspaces[0]?.scripts).toEqual([runningScript, stoppedScript]);
+    expect(projects[0]?.workspaces[0]?.hasRunningScripts).toBe(true);
   });
 
   it("preserves stored project order even when activity changes", () => {

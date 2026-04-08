@@ -5,11 +5,11 @@ import express from "express";
 import WebSocket, { WebSocketServer } from "ws";
 import pino from "pino";
 import {
-  ServiceRouteStore,
-  createServiceProxyMiddleware,
-  createServiceProxyUpgradeHandler,
+  ScriptRouteStore,
+  createScriptProxyMiddleware,
+  createScriptProxyUpgradeHandler,
   findFreePort,
-} from "./service-proxy.js";
+} from "./script-proxy.js";
 
 const logger = pino({ level: "silent" });
 
@@ -24,17 +24,17 @@ function closeServer(server: http.Server): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// ServiceRouteStore
+// ScriptRouteStore
 // ---------------------------------------------------------------------------
 
-describe("ServiceRouteStore", () => {
+describe("ScriptRouteStore", () => {
   it("registerRoute and findRoute with exact match", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "editor.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "editor",
+      scriptName: "editor",
     });
 
     const route = store.findRoute("editor.localhost");
@@ -42,12 +42,12 @@ describe("ServiceRouteStore", () => {
   });
 
   it("findRoute strips port from host header", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "editor.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "editor",
+      scriptName: "editor",
     });
 
     const route = store.findRoute("editor.localhost:6767");
@@ -55,12 +55,12 @@ describe("ServiceRouteStore", () => {
   });
 
   it("findRoute subdomain match", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "editor.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "editor",
+      scriptName: "editor",
     });
 
     const route = store.findRoute("fix-auth.editor.localhost");
@@ -68,18 +68,18 @@ describe("ServiceRouteStore", () => {
   });
 
   it("listRoutes returns enriched entries", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "web",
+      scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
-      serviceName: "docs",
+      scriptName: "docs",
     });
 
     const routes = store.listRoutes();
@@ -88,35 +88,35 @@ describe("ServiceRouteStore", () => {
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "web",
+      scriptName: "web",
     });
     expect(routes).toContainEqual({
       hostname: "b.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
-      serviceName: "docs",
+      scriptName: "docs",
     });
   });
 
   it("listRoutesForWorkspace returns only routes for that workspace", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "web",
+      scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
-      serviceName: "docs",
+      scriptName: "docs",
     });
     store.registerRoute({
       hostname: "c.localhost",
       port: 5000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
     expect(store.listRoutesForWorkspace("/repo/.paseo/worktrees/feature-a")).toEqual([
@@ -124,24 +124,24 @@ describe("ServiceRouteStore", () => {
         hostname: "a.localhost",
         port: 3000,
         workspaceId: "/repo/.paseo/worktrees/feature-a",
-        serviceName: "web",
+        scriptName: "web",
       },
       {
         hostname: "c.localhost",
         port: 5000,
         workspaceId: "/repo/.paseo/worktrees/feature-a",
-        serviceName: "api",
+        scriptName: "api",
       },
     ]);
   });
 
   it("removeRoute works", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "editor.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "editor",
+      scriptName: "editor",
     });
     store.removeRoute("editor.localhost");
 
@@ -149,12 +149,12 @@ describe("ServiceRouteStore", () => {
   });
 
   it("removeRoute cleans up workspace index", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "editor.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "editor",
+      scriptName: "editor",
     });
 
     store.removeRoute("editor.localhost");
@@ -163,24 +163,24 @@ describe("ServiceRouteStore", () => {
   });
 
   it("removeRoutesForPort works", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "web",
+      scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "api",
+      scriptName: "api",
     });
     store.registerRoute({
       hostname: "c.localhost",
       port: 4000,
       workspaceId: "/repo/.paseo/worktrees/feature-b",
-      serviceName: "docs",
+      scriptName: "docs",
     });
 
     store.removeRoutesForPort(3000);
@@ -194,18 +194,18 @@ describe("ServiceRouteStore", () => {
   });
 
   it("removeRoutesForPort cleans up workspace index", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "a.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "web",
+      scriptName: "web",
     });
     store.registerRoute({
       hostname: "b.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
     store.removeRoutesForPort(3000);
@@ -214,12 +214,12 @@ describe("ServiceRouteStore", () => {
   });
 
   it("findRoute returns null for unknown hosts", () => {
-    const store = new ServiceRouteStore();
+    const store = new ScriptRouteStore();
     store.registerRoute({
       hostname: "editor.localhost",
       port: 3000,
       workspaceId: "/repo/.paseo/worktrees/feature-a",
-      serviceName: "editor",
+      scriptName: "editor",
     });
 
     expect(store.findRoute("unknown.example.com")).toBeNull();
@@ -267,12 +267,12 @@ describe("HTTP proxy", () => {
 
   /** Start an Express app with the service proxy middleware and an optional fallback. */
   async function startProxy(
-    routeStore: ServiceRouteStore,
+    routeStore: ScriptRouteStore,
     opts?: { fallback?: boolean },
   ): Promise<{ port: number; server: http.Server }> {
     const port = await findFreePort();
     const app = express();
-    app.use(createServiceProxyMiddleware({ routeStore, logger }));
+    app.use(createScriptProxyMiddleware({ routeStore, logger }));
 
     if (opts?.fallback) {
       app.use((_req, res) => {
@@ -312,7 +312,7 @@ describe("HTTP proxy", () => {
 
   it("proxies requests to the correct upstream based on Host header", async () => {
     const upstream = await startUpstream();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.addRoute("test-service.localhost", upstream.port);
 
     const proxy = await startProxy(routeStore);
@@ -330,7 +330,7 @@ describe("HTTP proxy", () => {
   });
 
   it("falls through when no route matches", async () => {
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     const proxy = await startProxy(routeStore, { fallback: true });
 
     const res = await httpGet(
@@ -346,7 +346,7 @@ describe("HTTP proxy", () => {
     // Get a port that nothing is listening on
     const deadPort = await findFreePort();
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.addRoute("dead-service.localhost", deadPort);
 
     const proxy = await startProxy(routeStore);
@@ -403,7 +403,7 @@ describe("WebSocket proxy", () => {
     httpServers.push(upstreamServer);
 
     // 2. Create the proxy server with the upgrade handler
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.addRoute("ws-service.localhost", upstreamPort);
 
     const proxyPort = await findFreePort();
@@ -412,7 +412,7 @@ describe("WebSocket proxy", () => {
       res.end();
     });
 
-    const upgradeHandler = createServiceProxyUpgradeHandler({
+    const upgradeHandler = createScriptProxyUpgradeHandler({
       routeStore,
       logger,
     });

@@ -28,8 +28,8 @@ export interface SidebarWorkspaceEntry {
   activityAt: Date | null;
   statusBucket: SidebarStateBucket;
   diffStat: { additions: number; deletions: number } | null;
-  services: WorkspaceDescriptor["services"];
-  hasRunningServices: boolean;
+  scripts: WorkspaceDescriptor["scripts"];
+  hasRunningScripts: boolean;
 }
 
 export interface SidebarProjectEntry {
@@ -148,8 +148,8 @@ export function buildSidebarProjectsFromWorkspaces(input: {
       activityAt: workspace.activityAt,
       statusBucket: workspace.status,
       diffStat: workspace.diffStat,
-      services: workspace.services,
-      hasRunningServices: workspace.services.some((service) => service.lifecycle === "running"),
+      scripts: workspace.scripts,
+      hasRunningScripts: workspace.scripts.some((script) => script.lifecycle === "running"),
     };
 
     project.workspaces.push(row);
@@ -273,11 +273,11 @@ function toWorkspaceDescriptor(payload: {
   name: string;
   status: WorkspaceDescriptor["status"];
   activityAt: string | null;
-  services?: WorkspaceDescriptorPayload["services"];
+  scripts?: WorkspaceDescriptorPayload["scripts"];
 }): WorkspaceDescriptor {
   return normalizeWorkspaceDescriptor({
     ...payload,
-    services: payload.services ?? [],
+    scripts: payload.scripts ?? [],
   });
 }
 

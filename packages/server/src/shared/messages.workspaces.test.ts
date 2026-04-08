@@ -65,7 +65,7 @@ describe("workspace message schemas", () => {
           name: "",
           status: "not-a-bucket",
           activityAt: null,
-          services: [],
+          scripts: [],
         },
       },
     });
@@ -73,7 +73,7 @@ describe("workspace message schemas", () => {
     expect(result.success).toBe(false);
   });
 
-  test("parses workspace descriptors with services", () => {
+  test("parses workspace descriptors with scripts", () => {
     const parsed = SessionOutboundMessageSchema.parse({
       type: "workspace_update",
       payload: {
@@ -89,9 +89,9 @@ describe("workspace message schemas", () => {
           name: "repo",
           status: "done",
           activityAt: null,
-          services: [
+          scripts: [
             {
-              serviceName: "web",
+              scriptName: "web",
               hostname: "web.localhost",
               port: 3000,
               url: "http://web.localhost:6767",
@@ -107,9 +107,9 @@ describe("workspace message schemas", () => {
     if (parsed.type !== "workspace_update" || parsed.payload.kind !== "upsert") {
       throw new Error("Expected workspace_update upsert payload");
     }
-    expect(parsed.payload.workspace.services).toEqual([
+    expect(parsed.payload.workspace.scripts).toEqual([
       {
-        serviceName: "web",
+        scriptName: "web",
         hostname: "web.localhost",
         port: 3000,
         url: "http://web.localhost:6767",
@@ -135,7 +135,7 @@ describe("workspace message schemas", () => {
           name: "repo",
           status: "done",
           activityAt: null,
-          services: [],
+          scripts: [],
         },
       },
     });
@@ -148,14 +148,14 @@ describe("workspace message schemas", () => {
     expect(parsed.payload.workspace.workspaceKind).toBe("directory");
   });
 
-  test("parses service_status_update payload", () => {
+  test("parses script_status_update payload", () => {
     const parsed = SessionOutboundMessageSchema.parse({
-      type: "service_status_update",
+      type: "script_status_update",
       payload: {
         workspaceId: "/repo",
-        services: [
+        scripts: [
           {
-            serviceName: "web",
+            scriptName: "web",
             hostname: "web.localhost",
             port: null,
             url: null,
@@ -166,7 +166,7 @@ describe("workspace message schemas", () => {
       },
     });
 
-    expect(parsed.type).toBe("service_status_update");
+    expect(parsed.type).toBe("script_status_update");
     expect(parsed.payload.workspaceId).toBe("/repo");
   });
 

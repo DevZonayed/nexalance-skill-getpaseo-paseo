@@ -1,11 +1,11 @@
 import net from "node:net";
 import { scheduler } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findFreePort, ServiceRouteStore } from "./service-proxy.js";
+import { findFreePort, ScriptRouteStore } from "./script-proxy.js";
 import {
-  ServiceHealthMonitor,
-  type ServiceHealthEntry,
-} from "./service-health-monitor.js";
+  ScriptHealthMonitor,
+  type ScriptHealthEntry,
+} from "./script-health-monitor.js";
 
 type TcpServerHandle = {
   port: number;
@@ -56,7 +56,7 @@ async function advancePoll(ms: number): Promise<void> {
   }
 }
 
-describe("ServiceHealthMonitor", () => {
+describe("ScriptHealthMonitor", () => {
   const servers = new Set<net.Server>();
 
   afterEach(async () => {
@@ -74,16 +74,16 @@ describe("ServiceHealthMonitor", () => {
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -98,7 +98,7 @@ describe("ServiceHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "api.localhost",
         port: healthy.port,
         health: "healthy",
@@ -110,16 +110,16 @@ describe("ServiceHealthMonitor", () => {
     vi.useFakeTimers();
 
     const deadPort = await findFreePort();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: deadPort,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -138,7 +138,7 @@ describe("ServiceHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "api.localhost",
         port: deadPort,
         health: "unhealthy",
@@ -152,16 +152,16 @@ describe("ServiceHealthMonitor", () => {
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -182,16 +182,16 @@ describe("ServiceHealthMonitor", () => {
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -209,7 +209,7 @@ describe("ServiceHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "api.localhost",
         port: healthy.port,
         health: "healthy",
@@ -223,16 +223,16 @@ describe("ServiceHealthMonitor", () => {
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -257,7 +257,7 @@ describe("ServiceHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange).toHaveBeenLastCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "api.localhost",
         port: healthy.port,
         health: "unhealthy",
@@ -271,16 +271,16 @@ describe("ServiceHealthMonitor", () => {
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -311,22 +311,22 @@ describe("ServiceHealthMonitor", () => {
     servers.add(api.server);
     servers.add(web.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: api.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
     routeStore.registerRoute({
       hostname: "web.localhost",
       port: web.port,
       workspaceId: "workspace-a",
-      serviceName: "web",
+      scriptName: "web",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -341,13 +341,13 @@ describe("ServiceHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "api.localhost",
         port: api.port,
         health: "healthy",
       },
       {
-        serviceName: "web",
+        scriptName: "web",
         hostname: "web.localhost",
         port: web.port,
         health: "healthy",
@@ -361,16 +361,16 @@ describe("ServiceHealthMonitor", () => {
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -396,22 +396,22 @@ describe("ServiceHealthMonitor", () => {
     servers.add(api.server);
     servers.add(web.server);
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: api.port,
       workspaceId: "workspace-a",
-      serviceName: "api",
+      scriptName: "api",
     });
     routeStore.registerRoute({
       hostname: "web.localhost",
       port: web.port,
       workspaceId: "workspace-a",
-      serviceName: "web",
+      scriptName: "web",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ServiceHealthEntry[]) => void>();
-    const monitor = new ServiceHealthMonitor({
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
       routeStore,
       onChange,
       pollIntervalMs: 1_000,
@@ -439,13 +439,13 @@ describe("ServiceHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "api.localhost",
         port: api.port,
         health: "unhealthy",
       },
       {
-        serviceName: "web",
+        scriptName: "web",
         hostname: "web.localhost",
         port: web.port,
         health: "unhealthy",

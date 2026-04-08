@@ -24,7 +24,7 @@ interface PaseoConfig {
     teardown?: string[];
     terminals?: WorktreeTerminalConfig[];
   };
-  services?: Record<string, ServiceConfig>;
+  scripts?: Record<string, ScriptConfig>;
 }
 
 const execAsync = promisify(exec);
@@ -90,7 +90,7 @@ export interface WorktreeTerminalConfig {
   command: string;
 }
 
-export interface ServiceConfig {
+export interface ScriptConfig {
   command: string;
   port?: number; // explicit port override, otherwise auto-assigned
 }
@@ -205,15 +205,15 @@ export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConf
   return specs;
 }
 
-export function getServiceConfigs(repoRoot: string): Map<string, ServiceConfig> {
+export function getScriptConfigs(repoRoot: string): Map<string, ScriptConfig> {
   const config = readPaseoConfig(repoRoot);
-  const services = config?.services;
-  if (!services || typeof services !== "object") {
+  const scripts = config?.scripts;
+  if (!scripts || typeof scripts !== "object") {
     return new Map();
   }
 
-  const result = new Map<string, ServiceConfig>();
-  for (const [name, entry] of Object.entries(services)) {
+  const result = new Map<string, ScriptConfig>();
+  for (const [name, entry] of Object.entries(scripts)) {
     if (!entry || typeof entry !== "object") {
       continue;
     }
@@ -227,13 +227,13 @@ export function getServiceConfigs(repoRoot: string): Map<string, ServiceConfig> 
       continue;
     }
 
-    const serviceConfig: ServiceConfig = { command };
+    const scriptConfig: ScriptConfig = { command };
 
     if (typeof entry.port === "number" && Number.isFinite(entry.port)) {
-      serviceConfig.port = entry.port;
+      scriptConfig.port = entry.port;
     }
 
-    result.set(name, serviceConfig);
+    result.set(name, scriptConfig);
   }
 
   return result;

@@ -21,21 +21,21 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
-// ServiceRouteStore
+// ScriptRouteStore
 // ---------------------------------------------------------------------------
 
-export interface ServiceRoute {
+export interface ScriptRoute {
   hostname: string;
   port: number;
 }
 
-export interface ServiceRouteEntry extends ServiceRoute {
+export interface ScriptRouteEntry extends ScriptRoute {
   workspaceId: string;
-  serviceName: string;
+  scriptName: string;
 }
 
-export class ServiceRouteStore {
-  private routes = new Map<string, ServiceRouteEntry>();
+export class ScriptRouteStore {
+  private routes = new Map<string, ScriptRouteEntry>();
   private workspaceHostnames = new Map<string, Set<string>>();
 
   addRoute(hostname: string, port: number): void {
@@ -43,11 +43,11 @@ export class ServiceRouteStore {
       hostname,
       port,
       workspaceId: "",
-      serviceName: hostname,
+      scriptName: hostname,
     });
   }
 
-  registerRoute(entry: ServiceRouteEntry): void {
+  registerRoute(entry: ScriptRouteEntry): void {
     const previous = this.routes.get(entry.hostname);
     if (previous) {
       this.removeHostnameFromWorkspaceIndex(previous.workspaceId, previous.hostname);
@@ -76,7 +76,7 @@ export class ServiceRouteStore {
     }
   }
 
-  findRoute(host: string): ServiceRoute | null {
+  findRoute(host: string): ScriptRoute | null {
     // Strip port suffix from the Host header value
     const hostname = host.replace(/:\d+$/, "");
 
@@ -99,22 +99,22 @@ export class ServiceRouteStore {
     return null;
   }
 
-  getRouteEntry(hostname: string): ServiceRouteEntry | null {
+  getRouteEntry(hostname: string): ScriptRouteEntry | null {
     const entry = this.routes.get(hostname);
     return entry ? { ...entry } : null;
   }
 
-  listRoutes(): ServiceRouteEntry[] {
+  listRoutes(): ScriptRouteEntry[] {
     return Array.from(this.routes.values()).map((entry) => ({ ...entry }));
   }
 
-  listRoutesForWorkspace(workspaceId: string): ServiceRouteEntry[] {
+  listRoutesForWorkspace(workspaceId: string): ScriptRouteEntry[] {
     const hostnames = this.workspaceHostnames.get(workspaceId);
     if (!hostnames) {
       return [];
     }
 
-    const routes: ServiceRouteEntry[] = [];
+    const routes: ScriptRouteEntry[] = [];
     for (const hostname of hostnames) {
       const entry = this.routes.get(hostname);
       if (entry) {
@@ -160,14 +160,14 @@ function stripHopByHopHeaders(
 }
 
 // ---------------------------------------------------------------------------
-// createServiceProxyMiddleware
+// createScriptProxyMiddleware
 // ---------------------------------------------------------------------------
 
-export function createServiceProxyMiddleware({
+export function createScriptProxyMiddleware({
   routeStore,
   logger,
 }: {
-  routeStore: ServiceRouteStore;
+  routeStore: ScriptRouteStore;
   logger: Logger;
 }): RequestHandler {
   return (req, res, next) => {
@@ -207,7 +207,7 @@ export function createServiceProxyMiddleware({
     proxyReq.on("error", (err) => {
       logger.warn(
         { err, hostname: route.hostname, port: route.port },
-        "Service proxy: upstream unreachable",
+        "Script proxy: upstream unreachable",
       );
       if (!res.headersSent) {
         res.writeHead(502, { "content-type": "text/plain" });
@@ -220,14 +220,14 @@ export function createServiceProxyMiddleware({
 }
 
 // ---------------------------------------------------------------------------
-// createServiceProxyUpgradeHandler
+// createScriptProxyUpgradeHandler
 // ---------------------------------------------------------------------------
 
-export function createServiceProxyUpgradeHandler({
+export function createScriptProxyUpgradeHandler({
   routeStore,
   logger,
 }: {
-  routeStore: ServiceRouteStore;
+  routeStore: ScriptRouteStore;
   logger: Logger;
 }): (req: IncomingMessage, socket: net.Socket, head: Buffer) => void {
   return (req, socket, head) => {
@@ -286,7 +286,7 @@ export function createServiceProxyUpgradeHandler({
     targetSocket.on("error", (err) => {
       logger.warn(
         { err, hostname: route.hostname, port: route.port },
-        "Service proxy: WebSocket upstream unreachable",
+        "Script proxy: WebSocket upstream unreachable",
       );
       socket.end();
     });

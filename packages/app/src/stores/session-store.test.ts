@@ -25,7 +25,7 @@ function createWorkspace(
     status: input.status ?? "done",
     activityAt: input.activityAt ?? null,
     diffStat: input.diffStat ?? null,
-    services: input.services ?? [],
+    scripts: input.scripts ?? [],
   };
 }
 
@@ -34,10 +34,10 @@ afterEach(() => {
 });
 
 describe("normalizeWorkspaceDescriptor", () => {
-  it("normalizes workspace services and invalid activity timestamps", () => {
-    const services = [
+  it("normalizes workspace scripts and invalid activity timestamps", () => {
+    const scripts = [
       {
-        serviceName: "web",
+        scriptName: "web",
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
@@ -57,13 +57,13 @@ describe("normalizeWorkspaceDescriptor", () => {
       status: "running",
       activityAt: "not-a-date",
       diffStat: null,
-      services,
+      scripts,
     });
 
     expect(workspace.activityAt).toBeNull();
-    expect(workspace.services).toEqual([
+    expect(workspace.scripts).toEqual([
       {
-        serviceName: "web",
+        scriptName: "web",
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
@@ -71,10 +71,10 @@ describe("normalizeWorkspaceDescriptor", () => {
         health: "healthy",
       },
     ]);
-    expect(workspace.services).not.toBe(services);
+    expect(workspace.scripts).not.toBe(scripts);
   });
 
-  it("defaults missing services to an empty array", () => {
+  it("defaults missing scripts to an empty array", () => {
     const payload = {
       id: "1",
       projectId: "1",
@@ -87,30 +87,30 @@ describe("normalizeWorkspaceDescriptor", () => {
       status: "done",
       activityAt: null,
       diffStat: null,
-      services: [],
+      scripts: [],
     } as WorkspaceDescriptorPayload;
 
     const workspace = normalizeWorkspaceDescriptor(payload);
 
-    expect(workspace.services).toEqual([]);
+    expect(workspace.scripts).toEqual([]);
   });
 });
 
 describe("mergeWorkspaces", () => {
-  it("preserves services on merged workspace entries", () => {
+  it("preserves scripts on merged workspace entries", () => {
     const store = useSessionStore.getState();
     store.initializeSession("test-server", null as unknown as DaemonClient);
     store.setWorkspaces(
       "test-server",
-      new Map([["/repo/main", createWorkspace({ id: "/repo/main", services: [] })]]),
+      new Map([["/repo/main", createWorkspace({ id: "/repo/main", scripts: [] })]]),
     );
 
     store.mergeWorkspaces("test-server", [
       createWorkspace({
         id: "/repo/main",
-        services: [
+        scripts: [
           {
-            serviceName: "web",
+            scriptName: "web",
             hostname: "main.web.localhost",
             port: 3000,
             url: "http://main.web.localhost:6767",
@@ -121,9 +121,9 @@ describe("mergeWorkspaces", () => {
       }),
     ]);
 
-    expect(store.getSession("test-server")?.workspaces.get("/repo/main")?.services).toEqual([
+    expect(store.getSession("test-server")?.workspaces.get("/repo/main")?.scripts).toEqual([
       {
-        serviceName: "web",
+        scriptName: "web",
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",

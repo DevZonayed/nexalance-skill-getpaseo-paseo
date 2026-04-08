@@ -81,7 +81,7 @@ describe("openProjectDirectly", () => {
             status: "done" as const,
             activityAt: null,
             diffStat: null,
-            services: [],
+            scripts: [],
           },
         })),
       },

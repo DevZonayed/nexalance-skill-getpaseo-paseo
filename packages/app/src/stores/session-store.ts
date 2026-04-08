@@ -124,7 +124,7 @@ export interface WorkspaceDescriptor {
   status: WorkspaceDescriptorPayload["status"];
   activityAt: Date | null;
   diffStat: { additions: number; deletions: number } | null;
-  services: WorkspaceDescriptorPayload["services"];
+  scripts: WorkspaceDescriptorPayload["scripts"];
 }
 
 export function normalizeWorkspaceDescriptor(
@@ -143,7 +143,7 @@ export function normalizeWorkspaceDescriptor(
     status: payload.status,
     activityAt: activityAt && !Number.isNaN(activityAt.getTime()) ? activityAt : null,
     diffStat: payload.diffStat ?? null,
-    services: (payload.services ?? []).map((s) => ({ ...s })),
+    scripts: (payload.scripts ?? []).map((s) => ({ ...s })),
   };
 }
 
@@ -964,7 +964,10 @@ export const useSessionStore = create<SessionStore>()(
             if (existing === workspace) {
               continue;
             }
-            next.set(workspace.id, workspace);
+            next.set(
+              workspace.id,
+              mergeWorkspaceSnapshotWithExisting({ incoming: workspace, existing }),
+            );
             changed = true;
           }
           if (!changed) {

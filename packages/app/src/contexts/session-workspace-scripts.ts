@@ -1,10 +1,10 @@
-import type { ServiceStatusUpdateMessage } from "@server/shared/messages";
+import type { ScriptStatusUpdateMessage } from "@server/shared/messages";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-execution";
 
-export function patchWorkspaceServices(
+export function patchWorkspaceScripts(
   workspaces: Map<string, WorkspaceDescriptor>,
-  update: ServiceStatusUpdateMessage["payload"],
+  update: ScriptStatusUpdateMessage["payload"],
 ): Map<string, WorkspaceDescriptor> {
   const workspaceKey = resolveWorkspaceMapKeyByIdentity({
     workspaces,
@@ -22,7 +22,7 @@ export function patchWorkspaceServices(
   const next = new Map(workspaces);
   next.set(workspaceKey, {
     ...existing,
-    services: update.services.map((s) => ({ ...s })),
+    scripts: update.scripts.map((s) => ({ ...s })),
   });
   return next;
 }

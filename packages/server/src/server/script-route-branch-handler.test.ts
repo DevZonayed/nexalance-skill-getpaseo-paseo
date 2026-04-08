@@ -1,42 +1,42 @@
 import { describe, expect, it, vi } from "vitest";
-import { ServiceRouteStore } from "./service-proxy.js";
-import { createBranchChangeRouteHandler } from "./service-route-branch-handler.js";
+import { ScriptRouteStore } from "./script-proxy.js";
+import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
 
 function registerRoute(
-  routeStore: ServiceRouteStore,
+  routeStore: ScriptRouteStore,
   {
     hostname,
     port,
     workspaceId = "workspace-a",
-    serviceName,
+    scriptName,
   }: {
     hostname: string;
     port: number;
     workspaceId?: string;
-    serviceName: string;
+    scriptName: string;
   },
 ): void {
   routeStore.registerRoute({
     hostname,
     port,
     workspaceId,
-    serviceName,
+    scriptName,
   });
 }
 
-describe("service-route-branch-handler", () => {
+describe("script-route-branch-handler", () => {
   it("updates routes on branch rename by removing old hostnames and registering new ones", () => {
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     registerRoute(routeStore, {
       hostname: "feature-auth.api.localhost",
       port: 3001,
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const emitServiceStatusUpdate = vi.fn();
+    const emitScriptStatusUpdate = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitServiceStatusUpdate,
+      emitScriptStatusUpdate,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
@@ -49,31 +49,31 @@ describe("service-route-branch-handler", () => {
   });
 
   it("is a no-op when the workspace has no routes", () => {
-    const routeStore = new ServiceRouteStore();
-    const emitServiceStatusUpdate = vi.fn();
+    const routeStore = new ScriptRouteStore();
+    const emitScriptStatusUpdate = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitServiceStatusUpdate,
+      emitScriptStatusUpdate,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
 
     expect(routeStore.listRoutes()).toEqual([]);
-    expect(emitServiceStatusUpdate).not.toHaveBeenCalled();
+    expect(emitScriptStatusUpdate).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the resolved hostnames do not change", () => {
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     registerRoute(routeStore, {
       hostname: "api.localhost",
       port: 3001,
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const emitServiceStatusUpdate = vi.fn();
+    const emitScriptStatusUpdate = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitServiceStatusUpdate,
+      emitScriptStatusUpdate,
     });
 
     handleBranchChange("workspace-a", "main", "master");
@@ -83,31 +83,31 @@ describe("service-route-branch-handler", () => {
         hostname: "api.localhost",
         port: 3001,
         workspaceId: "workspace-a",
-        serviceName: "api",
+        scriptName: "api",
       },
     ]);
-    expect(emitServiceStatusUpdate).not.toHaveBeenCalled();
+    expect(emitScriptStatusUpdate).not.toHaveBeenCalled();
   });
 
   it("emits a status update with the refreshed route payload after a route change", () => {
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     registerRoute(routeStore, {
       hostname: "feature-auth.api.localhost",
       port: 3001,
-      serviceName: "api",
+      scriptName: "api",
     });
 
-    const emitServiceStatusUpdate = vi.fn();
+    const emitScriptStatusUpdate = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitServiceStatusUpdate,
+      emitScriptStatusUpdate,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
 
-    expect(emitServiceStatusUpdate).toHaveBeenCalledWith("workspace-a", [
+    expect(emitScriptStatusUpdate).toHaveBeenCalledWith("workspace-a", [
       {
-        serviceName: "api",
+        scriptName: "api",
         hostname: "feature-billing.api.localhost",
         port: 3001,
         url: null,
@@ -118,28 +118,28 @@ describe("service-route-branch-handler", () => {
   });
 
   it("updates all services for a workspace when multiple routes are registered", () => {
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     registerRoute(routeStore, {
       hostname: "feature-auth.api.localhost",
       port: 3001,
-      serviceName: "api",
+      scriptName: "api",
     });
     registerRoute(routeStore, {
       hostname: "feature-auth.web.localhost",
       port: 3002,
-      serviceName: "web",
+      scriptName: "web",
     });
     registerRoute(routeStore, {
       hostname: "docs.localhost",
       port: 3003,
       workspaceId: "workspace-b",
-      serviceName: "docs",
+      scriptName: "docs",
     });
 
-    const emitServiceStatusUpdate = vi.fn();
+    const emitScriptStatusUpdate = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitServiceStatusUpdate,
+      emitScriptStatusUpdate,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
@@ -149,13 +149,13 @@ describe("service-route-branch-handler", () => {
         hostname: "feature-billing.api.localhost",
         port: 3001,
         workspaceId: "workspace-a",
-        serviceName: "api",
+        scriptName: "api",
       },
       {
         hostname: "feature-billing.web.localhost",
         port: 3002,
         workspaceId: "workspace-a",
-        serviceName: "web",
+        scriptName: "web",
       },
     ]);
     expect(routeStore.listRoutesForWorkspace("workspace-b")).toEqual([
@@ -163,27 +163,27 @@ describe("service-route-branch-handler", () => {
         hostname: "docs.localhost",
         port: 3003,
         workspaceId: "workspace-b",
-        serviceName: "docs",
+        scriptName: "docs",
       },
     ]);
   });
 
   it("does not emit a status update when no changes are needed", () => {
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     registerRoute(routeStore, {
       hostname: "web.localhost",
       port: 3002,
-      serviceName: "web",
+      scriptName: "web",
     });
 
-    const emitServiceStatusUpdate = vi.fn();
+    const emitScriptStatusUpdate = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitServiceStatusUpdate,
+      emitScriptStatusUpdate,
     });
 
     handleBranchChange("workspace-a", null, "main");
 
-    expect(emitServiceStatusUpdate).not.toHaveBeenCalled();
+    expect(emitScriptStatusUpdate).not.toHaveBeenCalled();
   });
 });

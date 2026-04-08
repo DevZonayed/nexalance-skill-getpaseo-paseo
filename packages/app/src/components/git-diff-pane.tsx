@@ -8,6 +8,7 @@ import {
   type ReactElement,
 } from "react";
 import { useRouter } from "expo-router";
+import { DiffStat } from "@/components/diff-stat";
 import {
   View,
   Text,
@@ -474,8 +475,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
           )}
         </View>
         <View style={styles.fileHeaderRight}>
-          <Text style={styles.additions}>+{file.additions}</Text>
-          <Text style={styles.deletions}>-{file.deletions}</Text>
+          <DiffStat additions={file.additions} deletions={file.deletions} />
         </View>
       </Pressable>
     </View>
@@ -1734,16 +1734,6 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   deletedBadgeText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
-  },
-  additions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
-  },
-  deletions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.palette.red[500],

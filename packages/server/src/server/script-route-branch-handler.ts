@@ -1,14 +1,14 @@
 import type { Logger } from "pino";
-import type { WorkspaceServicePayload } from "../shared/messages.js";
-import { buildServiceHostname } from "../utils/service-hostname.js";
-import { buildWorkspaceServicePayloads } from "./service-status-projection.js";
-import type { ServiceRouteEntry, ServiceRouteStore } from "./service-proxy.js";
+import type { WorkspaceScriptPayload } from "../shared/messages.js";
+import { buildScriptHostname } from "../utils/script-hostname.js";
+import { buildWorkspaceScriptPayloads } from "./script-status-projection.js";
+import type { ScriptRouteEntry, ScriptRouteStore } from "./script-proxy.js";
 
 interface BranchChangeRouteHandlerOptions {
-  routeStore: ServiceRouteStore;
-  emitServiceStatusUpdate: (
+  routeStore: ScriptRouteStore;
+  emitScriptStatusUpdate: (
     workspaceId: string,
-    services: WorkspaceServicePayload[],
+    scripts: WorkspaceScriptPayload[],
   ) => void;
   logger?: Logger;
 }
@@ -16,7 +16,7 @@ interface BranchChangeRouteHandlerOptions {
 interface RouteHostnameUpdate {
   oldHostname: string;
   newHostname: string;
-  route: ServiceRouteEntry;
+  route: ScriptRouteEntry;
 }
 
 export function createBranchChangeRouteHandler(
@@ -30,7 +30,7 @@ export function createBranchChangeRouteHandler(
 
     const updates: RouteHostnameUpdate[] = [];
     for (const route of routes) {
-      const newHostname = buildServiceHostname(newBranch, route.serviceName);
+      const newHostname = buildScriptHostname(newBranch, route.scriptName);
       if (newHostname !== route.hostname) {
         updates.push({
           oldHostname: route.hostname,
@@ -50,21 +50,21 @@ export function createBranchChangeRouteHandler(
         hostname: newHostname,
         port: route.port,
         workspaceId: route.workspaceId,
-        serviceName: route.serviceName,
+        scriptName: route.scriptName,
       });
       options.logger?.info(
         {
           oldHostname,
           newHostname,
-          serviceName: route.serviceName,
+          scriptName: route.scriptName,
         },
-        "Updated service route for branch rename",
+        "Updated script route for branch rename",
       );
     }
 
-    options.emitServiceStatusUpdate(
+    options.emitScriptStatusUpdate(
       workspaceId,
-      buildWorkspaceServicePayloads(options.routeStore, workspaceId, null),
+      buildWorkspaceScriptPayloads(options.routeStore, workspaceId, null),
     );
   };
 }

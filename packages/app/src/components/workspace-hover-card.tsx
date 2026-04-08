@@ -10,7 +10,9 @@ import { useMutation } from "@tanstack/react-query";
 import { Dimensions, Platform, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Check, ExternalLink, LoaderCircle, Minus, Play, X } from "lucide-react-native";
+import { ExternalLink, LoaderCircle, Play, Terminal } from "lucide-react-native";
+import { GitHubIcon } from "@/components/icons/github-icon";
+import { DiffStat } from "@/components/diff-stat";
 import { Pressable } from "react-native";
 import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
@@ -19,6 +21,7 @@ import type { PrHint } from "@/hooks/use-checkout-pr-status-query";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 
 interface Rect {
@@ -105,8 +108,8 @@ function WorkspaceHoverCardDesktop({
   const triggerHoveredRef = useRef(false);
   const contentHoveredRef = useRef(false);
 
-  const hasServices = workspace.services.length > 0;
-  const hasContent = hasServices || prHint !== null;
+  const hasScripts = workspace.scripts.length > 0;
+  const hasContent = hasScripts || prHint !== null;
 
   const clearGraceTimer = useCallback(() => {
     if (graceTimerRef.current) {
@@ -192,8 +195,8 @@ function WorkspaceHoverCardDesktop({
   );
 }
 
-function getServiceHealthColor(input: {
-  health: SidebarWorkspaceEntry["services"][number]["health"];
+function getScriptHealthColor(input: {
+  health: SidebarWorkspaceEntry["scripts"][number]["health"];
   theme: ReturnType<typeof useUnistyles>["theme"];
 }): string {
   if (input.health === "healthy") {
@@ -205,8 +208,8 @@ function getServiceHealthColor(input: {
   return input.theme.colors.foregroundMuted;
 }
 
-function getServiceHealthLabel(
-  health: SidebarWorkspaceEntry["services"][number]["health"],
+function getScriptHealthLabel(
+  health: SidebarWorkspaceEntry["scripts"][number]["health"],
 ): "Healthy" | "Unhealthy" | "Unknown" {
   if (health === "healthy") {
     return "Healthy";
@@ -217,93 +220,6 @@ function getServiceHealthLabel(
   return "Unknown";
 }
 
-
-function getCheckStatusColor(input: {
-  status: string;
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}): string {
-  if (input.status === "success") return input.theme.colors.palette.green[500];
-  if (input.status === "failure") return input.theme.colors.palette.red[500];
-  if (input.status === "pending") return input.theme.colors.palette.amber[500];
-  return input.theme.colors.foregroundMuted;
-}
-
-function getCheckStatusIcon(status: string): typeof Check {
-  if (status === "success") return Check;
-  if (status === "failure") return X;
-  return Minus;
-}
-
-export function CheckStatusIndicator({
-  status,
-  size = 12,
-}: {
-  status: string;
-  size?: number;
-}): ReactElement | null {
-  const { theme } = useUnistyles();
-
-  if (!status || status === "none") return null;
-
-  const color = getCheckStatusColor({ status, theme });
-  const IconComponent = getCheckStatusIcon(status);
-
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        borderWidth: 1,
-        borderColor: color,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <IconComponent size={Math.round(size * 0.5)} color={color} strokeWidth={3} />
-    </View>
-  );
-}
-
-function ChecksSummary({ checks }: { checks: Array<{ status: string }> }): ReactElement {
-  const { theme } = useUnistyles();
-  const counts: Record<string, number> = {};
-  for (const check of checks) {
-    const bucket = check.status === "success" ? "success" : check.status === "failure" ? "failure" : "pending";
-    counts[bucket] = (counts[bucket] ?? 0) + 1;
-  }
-
-  const buckets: Array<{ status: string; count: number }> = [];
-  if (counts.failure) buckets.push({ status: "failure", count: counts.failure });
-  if (counts.success) buckets.push({ status: "success", count: counts.success });
-  if (counts.pending) buckets.push({ status: "pending", count: counts.pending });
-
-  return (
-    <>
-      {buckets.map((bucket) => {
-        const color = getCheckStatusColor({ status: bucket.status, theme });
-        return (
-          <View key={bucket.status} style={checksSummaryStyles.item}>
-            <Text style={[checksSummaryStyles.count, { color }]}>{bucket.count}</Text>
-            <CheckStatusIndicator status={bucket.status} size={12} />
-          </View>
-        );
-      })}
-    </>
-  );
-}
-
-const checksSummaryStyles = StyleSheet.create((theme) => ({
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  count: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
-}));
 
 function WorkspaceHoverCardContent({
   workspace,
@@ -325,20 +241,29 @@ function WorkspaceHoverCardContent({
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const startServiceMutation = useMutation({
-    mutationFn: async (serviceName: string) => {
+  const startScriptMutation = useMutation({
+    mutationFn: async (scriptName: string) => {
       if (!client) {
         throw new Error("Daemon client not available");
       }
-      const result = await client.startWorkspaceService(workspace.workspaceId, serviceName);
+      const result = await client.startWorkspaceScript(workspace.workspaceId, scriptName);
       if (result.error) {
         throw new Error(result.error);
       }
       return result;
     },
-    onError: (error, serviceName) => {
+    onSuccess: (data) => {
+      if (data.terminalId) {
+        navigateToPreparedWorkspaceTab({
+          serverId: workspace.serverId,
+          workspaceId: workspace.workspaceId,
+          target: { kind: "terminal", terminalId: data.terminalId },
+        });
+      }
+    },
+    onError: (error, scriptName) => {
       toast.show(
-        error instanceof Error ? error.message : `Failed to start ${serviceName}`,
+        error instanceof Error ? error.message : `Failed to start ${scriptName}`,
         { variant: "error" },
       );
     },
@@ -392,7 +317,7 @@ function WorkspaceHoverCardContent({
           onPointerEnter={onContentEnter}
           onPointerLeave={onContentLeave}
           accessibilityRole="menu"
-          accessibilityLabel="Workspace services"
+          accessibilityLabel="Workspace scripts"
           testID="workspace-hover-card"
           style={[
             styles.card,
@@ -412,44 +337,47 @@ function WorkspaceHoverCardContent({
           {prHint || workspace.diffStat ? (
             <View style={styles.cardMetaRow}>
               {workspace.diffStat ? (
-                <View style={styles.diffStatRow}>
-                  <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
-                  <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-                </View>
+                <DiffStat
+                  additions={workspace.diffStat.additions}
+                  deletions={workspace.diffStat.deletions}
+                />
               ) : null}
               {prHint ? <PrBadge hint={prHint} /> : null}
             </View>
           ) : null}
-          {workspace.services.length > 0 ? (
+          {workspace.scripts.length > 0 ? (
             <>
               <View style={styles.separator} />
-              <Text style={styles.sectionLabel}>Services</Text>
-              <View style={styles.sectionList} testID="hover-card-service-list">
-                {workspace.services.map((service) => {
-                  const isRunning = service.lifecycle === "running";
-                  const isLinkable = isRunning && !!service.url;
+              <View style={styles.sectionLabelRow}>
+                <Terminal size={12} color={theme.colors.foregroundMuted} />
+                <Text style={styles.sectionLabel}>Scripts</Text>
+              </View>
+              <View style={styles.sectionList} testID="hover-card-script-list">
+                {workspace.scripts.map((script) => {
+                  const isRunning = script.lifecycle === "running";
+                  const isLinkable = isRunning && !!script.url;
                   return (
                     <Pressable
-                      key={service.hostname}
+                      key={script.hostname}
                       accessibilityRole={isLinkable ? "link" : undefined}
-                      accessibilityLabel={`${service.serviceName} service — ${isRunning ? getServiceHealthLabel(service.health) : "Stopped"}`}
-                      testID={`hover-card-service-${service.serviceName}`}
+                      accessibilityLabel={`${script.scriptName} script — ${isRunning ? getScriptHealthLabel(script.health) : "Stopped"}`}
+                      testID={`hover-card-script-${script.scriptName}`}
                       style={({ hovered }) => [
                         styles.listRow,
                         hovered && isLinkable && styles.listRowHovered,
                       ]}
-                      onPress={isLinkable ? () => void openExternalUrl(service.url!) : undefined}
+                      onPress={isLinkable ? () => void openExternalUrl(script.url!) : undefined}
                       disabled={!isLinkable}
                     >
                       {({ hovered }) => (
                         <>
                           <View
-                            testID={`hover-card-service-health-${service.serviceName}`}
+                            testID={`hover-card-script-health-${script.scriptName}`}
                             style={[
                               styles.statusDot,
                               {
                                 backgroundColor: isRunning
-                                  ? getServiceHealthColor({ health: service.health, theme })
+                                  ? getScriptHealthColor({ health: script.health, theme })
                                   : theme.colors.foregroundMuted,
                               },
                             ]}
@@ -465,44 +393,68 @@ function WorkspaceHoverCardContent({
                             ]}
                             numberOfLines={1}
                           >
-                            {service.serviceName}
+                            {script.scriptName}
                           </Text>
-                          {isRunning && service.url ? (
+                          {isRunning && script.url ? (
                             <Text style={styles.listRowSecondary} numberOfLines={1}>
-                              {service.url.replace(/^https?:\/\//, "")}
+                              {script.url.replace(/^https?:\/\//, "")}
                             </Text>
                           ) : (
                             <View style={styles.listRowSpacer} />
                           )}
                           {isRunning ? (
-                            service.url ? (
-                              <ExternalLink
-                                size={12}
-                                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                              />
+                            script.url && hovered ? (
+                              <View
+                                style={[
+                                  styles.externalLinkOverlay,
+                                  {
+                                    backgroundImage: `linear-gradient(to right, transparent, ${theme.colors.surface2} 40%)`,
+                                  },
+                                ]}
+                              >
+                                <ExternalLink
+                                  size={12}
+                                  color={theme.colors.foreground}
+                                />
+                              </View>
                             ) : null
                           ) : (
                             <Pressable
                               accessibilityRole="button"
-                              accessibilityLabel={`Start ${service.serviceName} service`}
-                              testID={`hover-card-service-start-${service.serviceName}`}
+                              accessibilityLabel={`Run ${script.scriptName} script`}
+                              testID={`hover-card-script-start-${script.scriptName}`}
                               hitSlop={4}
-                              disabled={startServiceMutation.isPending}
+                              disabled={startScriptMutation.isPending}
                               onPress={(event) => {
                                 event.stopPropagation();
-                                startServiceMutation.mutate(service.serviceName);
+                                startScriptMutation.mutate(script.scriptName);
                               }}
+                              style={styles.startButton}
                             >
                               {({ hovered: actionHovered }) =>
-                                startServiceMutation.isPending &&
-                                startServiceMutation.variables === service.serviceName ? (
+                                startScriptMutation.isPending &&
+                                startScriptMutation.variables === script.scriptName ? (
                                   <LoaderCircle size={12} color={theme.colors.foregroundMuted} />
                                 ) : (
-                                  <Play
-                                    size={12}
-                                    color={actionHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                                    fill="transparent"
-                                  />
+                                  <>
+                                    <Play
+                                      size={10}
+                                      color={actionHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                                      fill="transparent"
+                                    />
+                                    <Text
+                                      style={[
+                                        styles.startButtonLabel,
+                                        {
+                                          color: actionHovered
+                                            ? theme.colors.foreground
+                                            : theme.colors.foregroundMuted,
+                                        },
+                                      ]}
+                                    >
+                                      Run
+                                    </Text>
+                                  </>
                                 )
                               }
                             </Pressable>
@@ -525,18 +477,53 @@ function WorkspaceHoverCardContent({
                 ]}
                 onPress={() => void openExternalUrl(`${prHint.url}/checks`)}
               >
-                {({ hovered }) => (
-                  <>
-                    <Text style={styles.checksSummaryLabel}>Checks</Text>
-                    <View style={styles.checksSummaryCounts}>
-                      <ChecksSummary checks={prHint.checks!} />
-                    </View>
-                    <ExternalLink
-                      size={12}
-                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                    />
-                  </>
-                )}
+                {({ hovered }) => {
+                  const checks = prHint.checks!;
+                  const failed = checks.filter((c) => c.status === "failure").length;
+                  const pending = checks.filter((c) => c.status === "pending").length;
+
+                  let badgeColor: string;
+                  let badgeLabel: string;
+
+                  if (failed > 0) {
+                    badgeColor = theme.colors.palette.red[500];
+                    badgeLabel = `${failed} failed`;
+                  } else if (pending > 0) {
+                    badgeColor = theme.colors.palette.amber[500];
+                    badgeLabel = `${pending} running`;
+                  } else {
+                    badgeColor = theme.colors.palette.green[500];
+                    badgeLabel = `${checks.length} passed`;
+                  }
+
+                  return (
+                    <>
+                      <GitHubIcon size={12} color={theme.colors.foregroundMuted} />
+                      <Text style={styles.checksSummaryLabel}>Checks</Text>
+                      <View style={styles.checksSummaryCounts}>
+                        <View style={[styles.checksDot, { backgroundColor: badgeColor }]} />
+                        <Text style={[styles.checksStatusText, { color: badgeColor }]}>
+                          {badgeLabel}
+                        </Text>
+                      </View>
+                      {hovered ? (
+                        <View
+                          style={[
+                            styles.externalLinkOverlay,
+                            {
+                              backgroundImage: `linear-gradient(to right, transparent, ${theme.colors.surface2} 40%)`,
+                            },
+                          ]}
+                        >
+                          <ExternalLink
+                            size={12}
+                            color={theme.colors.foreground}
+                          />
+                        </View>
+                      ) : null}
+                    </>
+                  );
+                }}
               </Pressable>
             </>
           ) : null}
@@ -560,7 +547,7 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
-    paddingVertical: theme.spacing[2],
+    paddingTop: theme.spacing[2],
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -589,32 +576,22 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingBottom: theme.spacing[2],
   },
-  diffStatRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  diffStatAdditions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
-  },
-  diffStatDeletions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
-  },
   separator: {
     height: 1,
     backgroundColor: theme.colors.border,
   },
-  sectionLabel: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foregroundMuted,
+  sectionLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[1],
+  },
+  sectionLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundMuted,
   },
   sectionList: {
     paddingBottom: theme.spacing[1],
@@ -630,13 +607,26 @@ const styles = StyleSheet.create((theme) => ({
   listRowHovered: {
     backgroundColor: theme.colors.surface2,
   },
+  externalLinkOverlay: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    paddingLeft: theme.spacing[4],
+    paddingRight: theme.spacing[3],
+    alignItems: "center",
+    justifyContent: "center",
+  },
   listRowLabel: {
     fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.normal,
+    lineHeight: 18,
     flexShrink: 0,
   },
   listRowSecondary: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 18,
     flex: 1,
     minWidth: 0,
     textAlign: "right",
@@ -650,25 +640,44 @@ const styles = StyleSheet.create((theme) => ({
     height: 8,
     borderRadius: 4,
     flexShrink: 0,
+    marginLeft: 2,
   },
   checksSummaryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: 6,
     minHeight: 28,
   },
   checksSummaryLabel: {
     fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
   checksSummaryCounts: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: 4,
     flex: 1,
     justifyContent: "flex-end",
+  },
+  checksDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  checksStatusText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+  },
+  startButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  startButtonLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
   },
 }));

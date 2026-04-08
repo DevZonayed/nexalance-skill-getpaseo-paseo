@@ -22,7 +22,7 @@ function getServerId(): string {
 // Composable helpers
 // ---------------------------------------------------------------------------
 
-/** Waits for the globe icon to appear on a workspace row (proves services are running). */
+/** Waits for the globe icon to appear on a workspace row (proves scripts are running). */
 async function expectGlobeIcon(page: Page): Promise<void> {
   await expect(page.getByTestId("workspace-globe-icon")).toBeVisible({ timeout: 30_000 });
 }
@@ -34,38 +34,38 @@ async function expectHoverCard(page: Page, workspaceName: string): Promise<void>
   await expect(page.getByTestId("workspace-hover-card")).toBeVisible({ timeout: 10_000 });
 }
 
-/** Asserts that a service row with the given name exists in the hover card. */
-async function expectServiceInCard(page: Page, serviceName: string): Promise<void> {
+/** Asserts that a script row with the given name exists in the hover card. */
+async function expectScriptInCard(page: Page, scriptName: string): Promise<void> {
   const card = page.getByTestId("workspace-hover-card");
-  await expect(card.getByTestId(`hover-card-service-${serviceName}`)).toBeVisible({
+  await expect(card.getByTestId(`hover-card-script-${scriptName}`)).toBeVisible({
     timeout: 10_000,
   });
 }
 
-/** Asserts the service status dot indicates "running". */
-async function expectServiceRunning(page: Page, serviceName: string): Promise<void> {
+/** Asserts the script status dot indicates "running". */
+async function expectScriptRunning(page: Page, scriptName: string): Promise<void> {
   const card = page.getByTestId("workspace-hover-card");
   await expect(
-    card.getByTestId(`hover-card-service-status-${serviceName}`),
+    card.getByTestId(`hover-card-script-status-${scriptName}`),
   ).toHaveAttribute("aria-label", "Running", { timeout: 10_000 });
 }
 
-/** Asserts the service lifecycle is stopped. */
-async function expectServiceStopped(page: Page, serviceName: string): Promise<void> {
+/** Asserts the script lifecycle is stopped. */
+async function expectScriptStopped(page: Page, scriptName: string): Promise<void> {
   const card = page.getByTestId("workspace-hover-card");
   await expect(
-    card.getByTestId(`hover-card-service-status-${serviceName}`),
+    card.getByTestId(`hover-card-script-status-${scriptName}`),
   ).toHaveAttribute("aria-label", "Stopped", { timeout: 10_000 });
 }
 
-/** Asserts the service health label shown in the hover card. */
-async function expectServiceHealth(
+/** Asserts the script health label shown in the hover card. */
+async function expectScriptHealth(
   page: Page,
-  serviceName: string,
+  scriptName: string,
   health: "Healthy" | "Unhealthy" | "Unknown",
 ): Promise<void> {
   const card = page.getByTestId("workspace-hover-card");
-  await expect(card.getByTestId(`hover-card-service-health-${serviceName}`)).toHaveAttribute(
+  await expect(card.getByTestId(`hover-card-script-health-${scriptName}`)).toHaveAttribute(
     "aria-label",
     health,
     { timeout: 10_000 },
@@ -93,7 +93,7 @@ async function expectHoverCardDismissed(page: Page): Promise<void> {
 // ---------------------------------------------------------------------------
 
 test.describe("Workspace hover card", () => {
-  test("shows hover card with services when hovering a workspace with running services", async ({
+  test("shows hover card with scripts when hovering a workspace with running scripts", async ({
     page,
   }) => {
     const client = await connectWorkspaceSetupClient();
@@ -102,7 +102,7 @@ test.describe("Workspace hover card", () => {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
-        services: {
+        scripts: {
           web: {
             command:
               "node -e \"const http = require('http'); const s = http.createServer((q,r) => r.end('ok')); s.listen(process.env.PORT || 3000, () => console.log('listening on ' + s.address().port))\"",
@@ -133,7 +133,7 @@ test.describe("Workspace hover card", () => {
 
       await waitForWorkspaceTabsVisible(page);
 
-      // Wait for the globe icon — proves services are running and client has the data
+      // Wait for the globe icon — proves scripts are running and client has the data
       await expectGlobeIcon(page);
 
       // Hover the workspace row — hover card should appear
@@ -142,15 +142,15 @@ test.describe("Workspace hover card", () => {
       // Assert the card shows the workspace name
       await expectWorkspaceNameInCard(page, workspace.name);
 
-      // Assert the "web" service entry exists in the card
-      await expectServiceInCard(page, "web");
+      // Assert the "web" script entry exists in the card
+      await expectScriptInCard(page, "web");
 
       // Assert the status dot shows "running"
-      await expectServiceRunning(page, "web");
+      await expectScriptRunning(page, "web");
 
-      // Assert the service row is a link (has role="link")
+      // Assert the script row is a link (has role="link")
       const card = page.getByTestId("workspace-hover-card");
-      const serviceLink = card.getByRole("link", { name: "web service" });
+      const serviceLink = card.getByRole("link", { name: "web script" });
       await expect(serviceLink).toBeVisible({ timeout: 10_000 });
 
       // Move mouse away — card should dismiss
@@ -161,11 +161,11 @@ test.describe("Workspace hover card", () => {
     }
   });
 
-  test("shows stopped services and starts them from the hover card", async ({ page }) => {
+  test("shows stopped scripts and starts them from the hover card", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("hovercard-start-", {
       paseoConfig: {
-        services: {
+        scripts: {
           web: {
             command:
               "node -e \"const http = require('http'); const s = http.createServer((q,r) => r.end('ok')); s.listen(process.env.PORT || 3000, '127.0.0.1', () => console.log('listening on ' + s.address().port))\"",
@@ -187,18 +187,18 @@ test.describe("Workspace hover card", () => {
 
       await expectHoverCard(page, workspace.workspace.name);
       await expectWorkspaceNameInCard(page, workspace.workspace.name);
-      await expectServiceInCard(page, "web");
-      await expectServiceStopped(page, "web");
-      await expectServiceHealth(page, "web", "Unknown");
+      await expectScriptInCard(page, "web");
+      await expectScriptStopped(page, "web");
+      await expectScriptHealth(page, "web", "Unknown");
 
       const card = page.getByTestId("workspace-hover-card");
-      const startButton = card.getByTestId("hover-card-service-start-web");
+      const startButton = card.getByTestId("hover-card-script-start-web");
       await expect(startButton).toBeVisible({ timeout: 10_000 });
       await startButton.click();
 
-      await expectServiceRunning(page, "web");
-      await expectServiceHealth(page, "web", "Healthy");
-      await expect(card.getByRole("link", { name: "web service" })).toBeVisible({ timeout: 10_000 });
+      await expectScriptRunning(page, "web");
+      await expectScriptHealth(page, "web", "Healthy");
+      await expect(card.getByRole("link", { name: "web script" })).toBeVisible({ timeout: 10_000 });
       await expect(startButton).not.toBeVisible({ timeout: 10_000 });
     } finally {
       await client.close();

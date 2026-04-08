@@ -25,6 +25,7 @@ import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
+import { DiffStat } from "@/components/diff-stat";
 import {
   Archive,
   ArrowUpRight,
@@ -36,7 +37,7 @@ import {
   FolderPlus,
   FolderGit2,
   GitPullRequest,
-  Globe,
+  Terminal,
   Monitor,
   MoreVertical,
   Plus,
@@ -94,7 +95,8 @@ import {
   requireWorkspaceExecutionDirectory,
   resolveWorkspaceExecutionDirectory,
 } from "@/utils/workspace-execution";
-import { CheckStatusIndicator, WorkspaceHoverCard } from "@/components/workspace-hover-card";
+import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { createNameId } from "mnemonic-id";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
@@ -225,6 +227,38 @@ const prBadgeStyles = StyleSheet.create((theme) => ({
   },
   badgePressed: {
     opacity: 0.82,
+  },
+  text: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    lineHeight: 14,
+  },
+}));
+
+function ChecksBadge({ checks }: { checks: PrHint["checks"] }): ReactElement | null {
+  const { theme } = useUnistyles();
+
+  if (!checks || checks.length === 0) return null;
+
+  const failed = checks.filter((c) => c.status === "failure").length;
+  if (failed === 0) return null;
+
+  const color = theme.colors.palette.red[500];
+  const label = `${failed} failed`;
+
+  return (
+    <View style={checksBadgeStyles.badge}>
+      <GitHubIcon size={10} color={color} />
+      <Text style={[checksBadgeStyles.text, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+const checksBadgeStyles = StyleSheet.create((theme) => ({
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
   },
   text: {
     fontSize: theme.fontSize.xs,
@@ -932,7 +966,7 @@ function WorkspaceRowInner({
   }, [interaction.didLongPressRef, onPress]);
 
   const isDesktop = !isTouchPlatform;
-  const showGlobe = isDesktop && workspace.hasRunningServices;
+  const showScriptsIcon = isDesktop && workspace.hasRunningScripts;
 
   return (
     <WorkspaceHoverCard workspace={workspace} prHint={prHint} isDragging={isDragging}>
@@ -980,9 +1014,9 @@ function WorkspaceRowInner({
               </Text>
             </View>
             <View style={styles.workspaceRowRight}>
-              {showGlobe ? (
-                <View testID="workspace-globe-icon" accessibilityLabel="Services available">
-                  <Globe size={12} color={theme.colors.foregroundMuted} />
+              {showScriptsIcon ? (
+                <View testID="workspace-globe-icon" accessibilityLabel="Scripts available">
+                  <Terminal size={12} color={theme.colors.foregroundMuted} />
                 </View>
               ) : null}
               {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
@@ -1037,10 +1071,10 @@ function WorkspaceRowInner({
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : workspace.diffStat ? (
-                <View style={styles.diffStatRow}>
-                  <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
-                  <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-                </View>
+                <DiffStat
+                  additions={workspace.diffStat.additions}
+                  deletions={workspace.diffStat.deletions}
+                />
               ) : null}
               {showShortcutBadge && shortcutNumber !== null ? (
                 <View style={styles.shortcutBadge}>
@@ -1051,7 +1085,7 @@ function WorkspaceRowInner({
           </View>
           {prHint ? (
             <View style={styles.workspacePrBadgeRow}>
-              <CheckStatusIndicator status={prHint.checksStatus ?? "none"} size={12} />
+              <ChecksBadge checks={prHint.checks} />
               <PrBadge hint={prHint} />
             </View>
           ) : null}
@@ -2430,22 +2464,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     flexShrink: 0,
-  },
-  diffStatRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexShrink: 0,
-  },
-  diffStatAdditions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
-  },
-  diffStatDeletions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
   },
   kebabButton: {
     padding: 2,

@@ -1,7 +1,7 @@
 import { slugify } from "./worktree.js";
 
-export function buildServiceHostname(branchName: string | null, serviceName: string): string {
-  const serviceHostnameLabel = slugify(serviceName);
+export function buildScriptHostname(branchName: string | null, scriptName: string): string {
+  const serviceHostnameLabel = slugify(scriptName);
   const isDefaultBranch =
     branchName === null || branchName === "main" || branchName === "master";
 

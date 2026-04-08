@@ -19,7 +19,7 @@ import {
   type SubscribeTerminalsRequest,
   type UnsubscribeTerminalsRequest,
   type CreateTerminalRequest,
-  type StartWorkspaceServiceRequest,
+  type StartWorkspaceScriptRequest,
   type SubscribeTerminalRequest,
   type UnsubscribeTerminalRequest,
   type TerminalInput,
@@ -65,8 +65,8 @@ import {
 import { experimental_createMCPClient } from "ai";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
-import { buildWorkspaceServicePayloads } from "./service-status-projection.js";
-import { spawnWorkspaceService } from "./worktree-bootstrap.js";
+import { buildWorkspaceScriptPayloads } from "./script-status-projection.js";
+import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import { readGitCommand } from "./workspace-git-metadata.js";
 import { BackgroundGitFetchManager } from "./background-git-fetch-manager.js";
 
@@ -134,7 +134,7 @@ import {
   type WorktreeConfig,
 } from "../utils/worktree.js";
 import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
-import type { ServiceRouteStore } from "./service-proxy.js";
+import type { ScriptRouteStore } from "./script-proxy.js";
 import {
   getCheckoutDiff,
   getCachedCheckoutShortstat,
@@ -416,14 +416,14 @@ export type SessionOptions = {
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
   providerSnapshotManager?: ProviderSnapshotManager;
-  serviceRouteStore?: ServiceRouteStore;
+  scriptRouteStore?: ScriptRouteStore;
   onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
     newBranch: string | null,
   ) => void;
   getDaemonTcpPort?: () => number | null;
-  resolveServiceHealth?: (hostname: string) => "healthy" | "unhealthy" | null;
+  resolveScriptHealth?: (hostname: string) => "healthy" | "unhealthy" | null;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
@@ -600,14 +600,14 @@ export class Session {
   private readonly terminalManager: TerminalManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager | null;
   private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
-  private readonly serviceRouteStore: ServiceRouteStore | null;
+  private readonly scriptRouteStore: ScriptRouteStore | null;
   private readonly onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
     newBranch: string | null,
   ) => void;
   private readonly getDaemonTcpPort: (() => number | null) | null;
-  private readonly resolveServiceHealth:
+  private readonly resolveScriptHealth:
     | ((hostname: string) => "healthy" | "unhealthy" | null)
     | null;
   private readonly subscribedTerminalDirectories = new Set<string>();
@@ -667,10 +667,10 @@ export class Session {
       tts,
       terminalManager,
       providerSnapshotManager,
-      serviceRouteStore,
+      scriptRouteStore,
       onBranchChanged,
       getDaemonTcpPort,
-      resolveServiceHealth,
+      resolveScriptHealth,
       voice,
       voiceBridge,
       dictation,
@@ -711,10 +711,10 @@ export class Session {
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
     this.providerSnapshotManager = providerSnapshotManager ?? null;
-    this.serviceRouteStore = serviceRouteStore ?? null;
+    this.scriptRouteStore = scriptRouteStore ?? null;
     this.onBranchChanged = onBranchChanged;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
-    this.resolveServiceHealth = resolveServiceHealth ?? null;
+    this.resolveScriptHealth = resolveScriptHealth ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged((event) =>
         this.handleTerminalsChanged(event),
@@ -1773,8 +1773,8 @@ export class Session {
           await this.handleCreateTerminalRequest(msg);
           break;
 
-        case "start_workspace_service_request":
-          await this.handleStartWorkspaceServiceRequest(msg);
+        case "start_workspace_script_request":
+          await this.handleStartWorkspaceScriptRequest(msg);
           break;
 
         case "subscribe_terminal_request":
@@ -2878,7 +2878,7 @@ export class Session {
               agentId: snapshot.id,
               item,
             }),
-          serviceRouteStore: this.serviceRouteStore ?? undefined,
+          scriptRouteStore: this.scriptRouteStore ?? undefined,
           daemonPort: this.getDaemonTcpPort?.() ?? null,
           logger: this.sessionLogger,
         });
@@ -5273,12 +5273,12 @@ export class Session {
       status: "done",
       activityAt: null,
       diffStat,
-      services: this.serviceRouteStore
-        ? buildWorkspaceServicePayloads(
-            this.serviceRouteStore,
+      scripts: this.scriptRouteStore
+        ? buildWorkspaceScriptPayloads(
+            this.scriptRouteStore,
             workspace.directory,
             this.getDaemonTcpPort?.() ?? null,
-            this.resolveServiceHealth ?? undefined,
+            this.resolveScriptHealth ?? undefined,
           )
         : [],
     };
@@ -6102,26 +6102,26 @@ export class Session {
     }
   }
 
-  private buildWorkspaceServicePayloadSnapshot(
+  private buildWorkspaceScriptPayloadSnapshot(
     workspaceDirectory: string,
-  ): WorkspaceDescriptorPayload["services"] {
-    if (!this.serviceRouteStore) {
+  ): WorkspaceDescriptorPayload["scripts"] {
+    if (!this.scriptRouteStore) {
       return [];
     }
-    return buildWorkspaceServicePayloads(
-      this.serviceRouteStore,
+    return buildWorkspaceScriptPayloads(
+      this.scriptRouteStore,
       workspaceDirectory,
       this.getDaemonTcpPort?.() ?? null,
-      this.resolveServiceHealth ?? undefined,
+      this.resolveScriptHealth ?? undefined,
     );
   }
 
-  private emitWorkspaceServiceStatusUpdate(workspaceDirectory: string): void {
+  private emitWorkspaceScriptStatusUpdate(workspaceDirectory: string): void {
     this.emit({
-      type: "service_status_update",
+      type: "script_status_update",
       payload: {
         workspaceId: workspaceDirectory,
-        services: this.buildWorkspaceServicePayloadSnapshot(workspaceDirectory),
+        scripts: this.buildWorkspaceScriptPayloadSnapshot(workspaceDirectory),
       },
     });
   }
@@ -6134,12 +6134,12 @@ export class Session {
     await openInEditorTarget(options);
   }
 
-  private async handleStartWorkspaceServiceRequest(
-    request: StartWorkspaceServiceRequest,
+  private async handleStartWorkspaceScriptRequest(
+    request: StartWorkspaceScriptRequest,
   ): Promise<void> {
     try {
-      if (!this.terminalManager || !this.serviceRouteStore) {
-        throw new Error("Workspace services are not available on this daemon");
+      if (!this.terminalManager || !this.scriptRouteStore) {
+        throw new Error("Workspace scripts are not available on this daemon");
       }
 
       const workspace = await this.resolveWorkspaceByIdOrDirectory(request.workspaceId);
@@ -6147,46 +6147,48 @@ export class Session {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
 
-      await spawnWorkspaceService({
+      const serviceResult = await spawnWorkspaceScript({
         repoRoot: workspace.directory,
         workspaceId: workspace.directory,
         branchName: readGitCommand(workspace.directory, "git symbolic-ref --short HEAD"),
-        serviceName: request.serviceName,
+        scriptName: request.scriptName,
         daemonPort: this.getDaemonTcpPort?.() ?? null,
-        routeStore: this.serviceRouteStore,
+        routeStore: this.scriptRouteStore,
         terminalManager: this.terminalManager,
         logger: this.sessionLogger,
         onLifecycleChanged: () => {
-          this.emitWorkspaceServiceStatusUpdate(workspace.directory);
+          this.emitWorkspaceScriptStatusUpdate(workspace.directory);
         },
       });
 
-      this.emitWorkspaceServiceStatusUpdate(workspace.directory);
+      this.emitWorkspaceScriptStatusUpdate(workspace.directory);
       this.emit({
-        type: "start_workspace_service_response",
+        type: "start_workspace_script_response",
         payload: {
           requestId: request.requestId,
           workspaceId: request.workspaceId,
-          serviceName: request.serviceName,
+          scriptName: request.scriptName,
+          terminalId: serviceResult.terminalId,
           error: null,
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to start workspace service";
+      const message = error instanceof Error ? error.message : "Failed to start workspace script";
       this.sessionLogger.error(
         {
           err: error,
           workspaceId: request.workspaceId,
-          serviceName: request.serviceName,
+          scriptName: request.scriptName,
         },
-        "Failed to start workspace service",
+        "Failed to start workspace script",
       );
       this.emit({
-        type: "start_workspace_service_response",
+        type: "start_workspace_script_response",
         payload: {
           requestId: request.requestId,
           workspaceId: request.workspaceId,
-          serviceName: request.serviceName,
+          scriptName: request.scriptName,
+          terminalId: null,
           error: message,
         },
       });
@@ -6292,7 +6294,7 @@ export class Session {
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
         archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
-        serviceRouteStore: this.serviceRouteStore,
+        scriptRouteStore: this.scriptRouteStore,
         daemonPort: this.getDaemonTcpPort?.() ?? null,
       },
       options,

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
+import { DiffStat } from "@/components/diff-stat";
 import {
   CopyX,
   ArrowLeftToLine,
@@ -50,6 +51,7 @@ import { SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceGitActions } from "@/screens/workspace/workspace-git-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
+import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
@@ -2105,6 +2107,13 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                     cwd={normalizedWorkspaceId}
                   />
                 ) : null}
+                {!isMobile && workspaceDescriptor && workspaceDescriptor.scripts.length > 0 ? (
+                  <WorkspaceScriptsButton
+                    serverId={normalizedServerId}
+                    workspaceId={normalizedWorkspaceId}
+                    scripts={workspaceDescriptor.scripts}
+                  />
+                ) : null}
                 {!isMobile && isGitCheckout ? (
                   <>
                     {workspaceDirectory ? (
@@ -2142,14 +2151,10 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                                   color={iconColor}
                                 />
                                 {workspaceDescriptor?.diffStat ? (
-                                  <View style={styles.diffStatRow}>
-                                    <Text style={styles.diffStatAdditions}>
-                                      +{workspaceDescriptor.diffStat.additions}
-                                    </Text>
-                                    <Text style={styles.diffStatDeletions}>
-                                      -{workspaceDescriptor.diffStat.deletions}
-                                    </Text>
-                                  </View>
+                                  <DiffStat
+                                    additions={workspaceDescriptor.diffStat.additions}
+                                    deletions={workspaceDescriptor.diffStat.deletions}
+                                  />
                                 ) : null}
                               </>
                             );
@@ -2416,22 +2421,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   sourceControlButtonHovered: {
     backgroundColor: theme.colors.surface2,
-  },
-  diffStatRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexShrink: 0,
-  },
-  diffStatAdditions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
-  },
-  diffStatDeletions: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
   },
   newTabActions: {
     flexDirection: "row",

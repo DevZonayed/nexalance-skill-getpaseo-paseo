@@ -26,10 +26,10 @@ import {
   createAgentWorktree,
   createWorktreeSetupProgressAccumulator,
   getWorktreeSetupProgressResults,
-  spawnWorktreeServices,
+  spawnWorktreeScripts,
 } from "./worktree-bootstrap.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
-import type { ServiceRouteStore } from "./service-proxy.js";
+import type { ScriptRouteStore } from "./script-proxy.js";
 import {
   getCheckoutStatusLite,
   resolveRepositoryDefaultBranch,
@@ -110,7 +110,7 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
   archiveWorkspaceRecord: (workspaceId: number) => Promise<void>;
-  serviceRouteStore: ServiceRouteStore | null;
+  scriptRouteStore: ScriptRouteStore | null;
   daemonPort?: number | null;
 };
 
@@ -765,17 +765,17 @@ export async function createPaseoWorktreeInBackground(
       return;
     }
 
-    if (!dependencies.terminalManager || !dependencies.serviceRouteStore) {
+    if (!dependencies.terminalManager || !dependencies.scriptRouteStore) {
       return;
     }
 
     try {
-      await spawnWorktreeServices({
+      await spawnWorktreeScripts({
         repoRoot: worktree.worktreePath,
         workspaceId: worktree.worktreePath,
         branchName: worktree.branchName,
         daemonPort: dependencies.daemonPort,
-        routeStore: dependencies.serviceRouteStore,
+        routeStore: dependencies.scriptRouteStore,
         terminalManager: dependencies.terminalManager,
         logger: dependencies.sessionLogger,
         onLifecycleChanged: () => {
@@ -791,7 +791,7 @@ export async function createPaseoWorktreeInBackground(
           worktreeSlug: worktree.branchName,
           worktreePath: worktree.worktreePath,
         },
-        "Failed to spawn worktree services after workspace setup completed",
+        "Failed to spawn worktree scripts after workspace setup completed",
       );
     }
   } finally {

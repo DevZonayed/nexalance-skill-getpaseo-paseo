@@ -36,7 +36,7 @@ import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { buildProviderRegistry } from "./agent/provider-registry.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
-import type { ServiceRouteStore } from "./service-proxy.js";
+import type { ScriptRouteStore } from "./script-proxy.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import {
@@ -248,9 +248,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly createAgentMcpTransport: AgentMcpTransportFactory;
   private readonly speech: SpeechService | null;
   private readonly terminalManager: TerminalManager | null;
-  private readonly serviceRouteStore: ServiceRouteStore | null;
+  private readonly scriptRouteStore: ScriptRouteStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
-  private readonly resolveServiceHealth:
+  private readonly resolveScriptHealth:
     | ((hostname: string) => "healthy" | "unhealthy" | null)
     | null;
   private readonly dictation: {
@@ -323,14 +323,14 @@ export class VoiceAssistantWebSocketServer {
     loopService?: LoopService,
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
-    serviceRouteStore?: ServiceRouteStore | null,
+    scriptRouteStore?: ScriptRouteStore | null,
     onBranchChanged?: (
       workspaceId: string,
       oldBranch: string | null,
       newBranch: string | null,
     ) => void,
     getDaemonTcpPort?: () => number | null,
-    resolveServiceHealth?: (hostname: string) => "healthy" | "unhealthy" | null,
+    resolveScriptHealth?: (hostname: string) => "healthy" | "unhealthy" | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -377,10 +377,10 @@ export class VoiceAssistantWebSocketServer {
       providerSnapshotLogger,
     );
     this.onLifecycleIntent = onLifecycleIntent ?? null;
-    this.serviceRouteStore = serviceRouteStore ?? null;
+    this.scriptRouteStore = scriptRouteStore ?? null;
     this.onBranchChanged = onBranchChanged ?? null;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
-    this.resolveServiceHealth = resolveServiceHealth ?? null;
+    this.resolveScriptHealth = resolveScriptHealth ?? null;
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
     });
@@ -699,10 +699,10 @@ export class VoiceAssistantWebSocketServer {
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
       providerSnapshotManager: this.providerSnapshotManager,
-      serviceRouteStore: this.serviceRouteStore ?? undefined,
+      scriptRouteStore: this.scriptRouteStore ?? undefined,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
-      resolveServiceHealth: this.resolveServiceHealth ?? undefined,
+      resolveScriptHealth: this.resolveScriptHealth ?? undefined,
       voice: {
         ...(this.voice ?? {}),
         turnDetection: () => this.speech?.resolveTurnDetection() ?? null,

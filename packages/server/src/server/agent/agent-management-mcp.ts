@@ -48,13 +48,13 @@ import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
 import { expandUserPath } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
-import type { ServiceRouteStore } from "../service-proxy.js";
+import type { ScriptRouteStore } from "../script-proxy.js";
 
 export interface AgentManagementMcpOptions {
   agentManager: AgentManager;
   agentStorage: AgentSnapshotStore;
   terminalManager?: TerminalManager | null;
-  serviceRouteStore?: ServiceRouteStore;
+  scriptRouteStore?: ScriptRouteStore;
   getDaemonTcpPort?: () => number | null;
   paseoHome?: string;
   logger: Logger;
@@ -350,7 +350,7 @@ export async function createAgentManagementMcpServer(
               agentId: snapshot.id,
               item,
             }),
-          serviceRouteStore: options.serviceRouteStore,
+          scriptRouteStore: options.scriptRouteStore,
           daemonPort: options.getDaemonTcpPort?.() ?? null,
           logger: childLogger,
         });

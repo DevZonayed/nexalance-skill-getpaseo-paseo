@@ -1,24 +1,24 @@
 import net from "node:net";
-import type { ServiceRouteEntry, ServiceRouteStore } from "./service-proxy.js";
+import type { ScriptRouteEntry, ScriptRouteStore } from "./script-proxy.js";
 
-export interface ServiceHealthEntry {
-  serviceName: string;
+export interface ScriptHealthEntry {
+  scriptName: string;
   hostname: string;
   port: number;
   health: "healthy" | "unhealthy";
 }
 
 type RouteHealthState = {
-  health: ServiceHealthEntry["health"] | null;
+  health: ScriptHealthEntry["health"] | null;
   consecutiveFailures: number;
   registeredAt: number;
 };
 
-export class ServiceHealthMonitor {
-  private readonly routeStore: ServiceRouteStore;
+export class ScriptHealthMonitor {
+  private readonly routeStore: ScriptRouteStore;
   private readonly onChange: (
     workspaceId: string,
-    services: ServiceHealthEntry[],
+    scripts: ScriptHealthEntry[],
   ) => void;
   private readonly pollIntervalMs: number;
   private readonly probeTimeoutMs: number;
@@ -38,8 +38,8 @@ export class ServiceHealthMonitor {
     graceMs = 5_000,
     failuresBeforeStopped = 2,
   }: {
-    routeStore: ServiceRouteStore;
-    onChange: (workspaceId: string, services: ServiceHealthEntry[]) => void;
+    routeStore: ScriptRouteStore;
+    onChange: (workspaceId: string, scripts: ScriptHealthEntry[]) => void;
     pollIntervalMs?: number;
     probeTimeoutMs?: number;
     graceMs?: number;
@@ -114,14 +114,14 @@ export class ServiceHealthMonitor {
       this.pruneRemovedRoutes(activeHostnames);
 
       for (const workspaceId of changedWorkspaceIds) {
-        const services = this.buildWorkspaceServiceList(workspaceId);
-        const snapshot = JSON.stringify(services);
+        const scripts = this.buildWorkspaceScriptList(workspaceId);
+        const snapshot = JSON.stringify(scripts);
         if (snapshot === this.lastEmittedSnapshots.get(workspaceId)) {
           continue;
         }
 
         this.lastEmittedSnapshots.set(workspaceId, snapshot);
-        this.onChange(workspaceId, services);
+        this.onChange(workspaceId, scripts);
       }
     } finally {
       this.pollInFlight = false;
@@ -152,7 +152,7 @@ export class ServiceHealthMonitor {
     }
   }
 
-  private buildWorkspaceServiceList(workspaceId: string): ServiceHealthEntry[] {
+  private buildWorkspaceScriptList(workspaceId: string): ScriptHealthEntry[] {
     return this.routeStore
       .listRoutesForWorkspace(workspaceId)
       .flatMap((route) => {
@@ -160,20 +160,20 @@ export class ServiceHealthMonitor {
         if (!state?.health) {
           return [];
         }
-        return [this.toServiceHealthEntry(route, state.health)];
+        return [this.toScriptHealthEntry(route, state.health)];
       });
   }
 
-  getHealthForHostname(hostname: string): ServiceHealthEntry["health"] | null {
+  getHealthForHostname(hostname: string): ScriptHealthEntry["health"] | null {
     return this.routeStates.get(hostname)?.health ?? null;
   }
 
-  private toServiceHealthEntry(
-    route: ServiceRouteEntry,
-    health: ServiceHealthEntry["health"],
-  ): ServiceHealthEntry {
+  private toScriptHealthEntry(
+    route: ScriptRouteEntry,
+    health: ScriptHealthEntry["health"],
+  ): ScriptHealthEntry {
     return {
-      serviceName: route.serviceName,
+      scriptName: route.scriptName,
       hostname: route.hostname,
       port: route.port,
       health,

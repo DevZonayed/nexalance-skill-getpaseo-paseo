@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceServicePayload } from "@server/shared/messages";
+import type { WorkspaceScriptPayload } from "@server/shared/messages";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { patchWorkspaceServices } from "./session-workspace-services";
+import { patchWorkspaceScripts } from "./session-workspace-scripts";
 
 function workspace(input: {
   id: string;
-  services?: WorkspaceDescriptor["services"];
+  scripts?: WorkspaceDescriptor["scripts"];
 }): WorkspaceDescriptor {
   return {
     id: input.id,
@@ -19,12 +19,12 @@ function workspace(input: {
     status: "running",
     activityAt: null,
     diffStat: null,
-    services: input.services ?? [],
+    scripts: input.scripts ?? [],
   };
 }
 
-const runningService: WorkspaceServicePayload = {
-  serviceName: "web",
+const runningScript: WorkspaceScriptPayload = {
+  scriptName: "web",
   hostname: "main.web.localhost",
   port: 3000,
   url: "http://main.web.localhost:6767",
@@ -32,21 +32,21 @@ const runningService: WorkspaceServicePayload = {
   health: "healthy",
 };
 
-describe("patchWorkspaceServices", () => {
-  it("patches only the matching workspace services", () => {
-    const other = workspace({ id: "/repo/other", services: [] });
+describe("patchWorkspaceScripts", () => {
+  it("patches only the matching workspace scripts", () => {
+    const other = workspace({ id: "/repo/other", scripts: [] });
     const current = new Map<string, WorkspaceDescriptor>([
-      ["/repo/main", workspace({ id: "/repo/main", services: [] })],
+      ["/repo/main", workspace({ id: "/repo/main", scripts: [] })],
       [other.id, other],
     ]);
 
-    const next = patchWorkspaceServices(current, {
+    const next = patchWorkspaceScripts(current, {
       workspaceId: "/repo/main",
-      services: [runningService],
+      scripts: [runningScript],
     });
 
     expect(next).not.toBe(current);
-    expect(next.get("/repo/main")?.services).toEqual([runningService]);
+    expect(next.get("/repo/main")?.scripts).toEqual([runningScript]);
     expect(next.get("/repo/other")).toBe(other);
   });
 
@@ -56,7 +56,7 @@ describe("patchWorkspaceServices", () => {
         "42",
         workspace({
           id: "42",
-          services: [],
+          scripts: [],
         }),
       ],
     ]);
@@ -66,26 +66,26 @@ describe("patchWorkspaceServices", () => {
       workspaceDirectory: "C:\\repo\\main\\",
     });
 
-    const next = patchWorkspaceServices(current, {
+    const next = patchWorkspaceScripts(current, {
       workspaceId: "C:/repo/main",
-      services: [runningService],
+      scripts: [runningScript],
     });
 
     expect(next).not.toBe(current);
-    expect(next.get("42")?.services).toEqual([runningService]);
+    expect(next.get("42")?.scripts).toEqual([runningScript]);
   });
 
   it("ignores updates for unknown workspaces", () => {
     const current = new Map<string, WorkspaceDescriptor>([
-      ["/repo/main", workspace({ id: "/repo/main", services: [] })],
+      ["/repo/main", workspace({ id: "/repo/main", scripts: [] })],
     ]);
 
-    const next = patchWorkspaceServices(current, {
+    const next = patchWorkspaceScripts(current, {
       workspaceId: "/repo/missing",
-      services: [runningService],
+      scripts: [runningScript],
     });
 
     expect(next).toBe(current);
-    expect(next.get("/repo/main")?.services).toEqual([]);
+    expect(next.get("/repo/main")?.scripts).toEqual([]);
   });
 });

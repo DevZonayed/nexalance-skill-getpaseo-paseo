@@ -53,7 +53,7 @@ import { resolveProjectPlacement } from "@/utils/project-placement";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { reconcilePreviousAgentStatuses } from "@/contexts/session-status-tracking";
-import { patchWorkspaceServices } from "@/contexts/session-workspace-services";
+import { patchWorkspaceScripts } from "@/contexts/session-workspace-scripts";
 
 // Re-export types from session-store and draft-store for backward compatibility
 export type { DraftInput } from "@/stores/draft-store";
@@ -1168,9 +1168,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       mergeWorkspaces(serverId, [normalizeWorkspaceDescriptor(message.payload.workspace)]);
     });
 
-    const unsubServiceStatusUpdate = client.on("service_status_update", (message) => {
-      if (message.type !== "service_status_update") return;
-      setWorkspaces(serverId, (prev) => patchWorkspaceServices(prev, message.payload));
+    const unsubScriptStatusUpdate = client.on("script_status_update", (message) => {
+      if (message.type !== "script_status_update") return;
+      setWorkspaces(serverId, (prev) => patchWorkspaceScripts(prev, message.payload));
     });
 
     const unsubWorkspaceSetupProgress = client.on("workspace_setup_progress", (message) => {
@@ -1538,7 +1538,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubAgentStream();
       unsubAgentTimeline();
       unsubWorkspaceUpdate();
-      unsubServiceStatusUpdate();
+      unsubScriptStatusUpdate();
       unsubWorkspaceSetupProgress();
       unsubWorkspaceSetupStatusResponse();
       unsubStatus();

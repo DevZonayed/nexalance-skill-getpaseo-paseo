@@ -1331,19 +1331,19 @@ export class DaemonClient {
     });
   }
 
-  async startWorkspaceService(
+  async startWorkspaceScript(
     workspaceId: string,
-    serviceName: string,
+    scriptName: string,
     requestId?: string,
-  ): Promise<Extract<SessionOutboundMessage, { type: "start_workspace_service_response" }>["payload"]> {
+  ): Promise<Extract<SessionOutboundMessage, { type: "start_workspace_script_response" }>["payload"]> {
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
-        type: "start_workspace_service_request",
+        type: "start_workspace_script_request",
         workspaceId,
-        serviceName,
+        scriptName,
       },
-      responseType: "start_workspace_service_response",
+      responseType: "start_workspace_script_response",
       timeout: 10000,
     });
   }

@@ -221,14 +221,14 @@ test.describe("Workspace setup streaming", () => {
     }
   });
 
-  test("launches service terminals after setup completes", async ({ page }) => {
+  test("launches script terminals after setup completes", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-svc-ui-", {
       paseoConfig: {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
-        services: {
+        scripts: {
           web: {
             command:
               "node -e \"const http = require('http'); const s = http.createServer((q,r) => r.end('ok')); s.listen(process.env.PORT || 3000, () => console.log('listening on ' + s.address().port))\"",
@@ -256,12 +256,12 @@ test.describe("Workspace setup streaming", () => {
 
       await waitForWorkspaceTabsVisible(page);
 
-      // Wait for the service terminal tab to appear in the tabs bar.
-      // The tab title shows the command, not the service name.
+      // Wait for the script terminal tab to appear in the tabs bar.
+      // The tab title shows the command, not the script name.
       const terminalTab = page.locator('[data-testid^="workspace-tab-terminal_"]').first();
       await expect(terminalTab).toBeVisible({ timeout: 30_000 });
 
-      // Click the service terminal tab
+      // Click the script terminal tab
       await terminalTab.click();
 
       // Verify the terminal surface rendered
@@ -277,14 +277,14 @@ test.describe("Workspace setup streaming", () => {
     }
   });
 
-  test("launches workspace services after setup completes", async () => {
+  test("launches workspace scripts after setup completes", async () => {
     const client = await connectWorkspaceSetupClient();
-    const repo = await createTempGitRepo("setup-services-", {
+    const repo = await createTempGitRepo("setup-scripts-", {
       paseoConfig: {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
-        services: {
+        scripts: {
           editor: {
             command: "npm run dev",
           },
@@ -301,7 +301,7 @@ test.describe("Workspace setup streaming", () => {
 
       const result = await client.createPaseoWorktree({
         cwd: repo.path,
-        worktreeSlug: "workspace-setup-services",
+        worktreeSlug: "workspace-setup-scripts",
       });
       if (!result.workspace) {
         throw new Error(result.error ?? "Failed to create workspace");

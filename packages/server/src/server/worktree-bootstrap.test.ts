@@ -8,9 +8,9 @@ import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
 import {
   createAgentWorktree,
   runAsyncWorktreeBootstrap,
-  spawnWorktreeServices,
+  spawnWorktreeScripts,
 } from "./worktree-bootstrap.js";
-import { ServiceRouteStore } from "./service-proxy.js";
+import { ScriptRouteStore } from "./script-proxy.js";
 
 describe("runAsyncWorktreeBootstrap", () => {
   let tempDir: string;
@@ -507,11 +507,11 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(terminalToolCall?.status).toBe("completed");
   });
 
-  it("spawns services without PASEO_SERVICE_URL when the daemon has no TCP port", async () => {
+  it("spawns scripts without PASEO_SCRIPT_URL when the daemon has no TCP port", async () => {
     writeFileSync(
       join(repoDir, "paseo.json"),
       JSON.stringify({
-        services: {
+        scripts: {
           web: {
             command: "npm run dev",
           },
@@ -519,15 +519,15 @@ describe("runAsyncWorktreeBootstrap", () => {
       }),
     );
     execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
-    execSync("git -c commit.gpgsign=false commit -m 'add service config'", {
+    execSync("git -c commit.gpgsign=false commit -m 'add script config'", {
       cwd: repoDir,
       stdio: "pipe",
     });
 
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     const createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }> = [];
 
-    const results = await spawnWorktreeServices({
+    const results = await spawnWorktreeScripts({
       repoRoot: repoDir,
       workspaceId: repoDir,
       branchName: "feature-socket-service",
@@ -577,7 +577,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         hostname: "feature-socket-service.web.localhost",
         port: expect.any(Number),
         workspaceId: repoDir,
-        serviceName: "web",
+        scriptName: "web",
       },
     ]);
     expect(createTerminalCalls).toHaveLength(1);
@@ -585,6 +585,6 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.name).toBe("web");
     expect(createTerminalCalls[0]?.env?.PORT).toEqual(expect.any(String));
     expect(createTerminalCalls[0]?.env?.HOST).toBe("127.0.0.1");
-    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_URL).toBeUndefined();
+    expect(createTerminalCalls[0]?.env?.PASEO_SCRIPT_URL).toBeUndefined();
   });
 });

@@ -4,12 +4,14 @@
       "npm ci",
       "npm run build --workspace=@getpaseo/relay",
       "cp \"$PASEO_SOURCE_CHECKOUT_PATH/packages/server/.env\" \"$PASEO_WORKTREE_PATH/packages/server/.env\""
-    ],
-    "terminals": [
-      {
-        "name": "dev",
-        "command": "npm run dev"
-      }
     ]
+  },
+  "scripts": {
+    "server": {
+      "command": "npm run dev"
+    },
+    "typecheck": {
+      "command": "npm run typecheck"
+    }
   }
 }

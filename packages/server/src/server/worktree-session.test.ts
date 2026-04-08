@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { SessionOutboundMessage } from "./messages.js";
-import { ServiceRouteStore } from "./service-proxy.js";
+import { ScriptRouteStore } from "./script-proxy.js";
 import * as worktreeBootstrap from "./worktree-bootstrap.js";
 import {
   createPaseoWorktreeInBackground,
@@ -102,10 +102,10 @@ describe("createPaseoWorktreeInBackground", () => {
     }
   });
 
-  test("emits running then completed snapshots for no-setup workspaces and then launches services", async () => {
+  test("emits running then completed snapshots for no-setup workspaces and then launches scripts", async () => {
     const { tempDir, repoDir } = createGitRepo({
       paseoConfig: {
-        services: {
+        scripts: {
           web: {
             command: "npm run dev",
           },
@@ -126,7 +126,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const worktreePath = createdWorktree.worktreePath;
     const emitted: SessionOutboundMessage[] = [];
     const snapshots = new Map<string, unknown>();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub();
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
@@ -141,7 +141,7 @@ describe("createPaseoWorktreeInBackground", () => {
         sessionLogger: logger,
         terminalManager: terminalManager.manager,
         archiveWorkspaceRecord,
-        serviceRouteStore: routeStore,
+        scriptRouteStore: routeStore,
         daemonPort: 6767,
       },
       {
@@ -202,13 +202,13 @@ describe("createPaseoWorktreeInBackground", () => {
         hostname: "feature-no-setup.web.localhost",
         port: expect.any(Number),
         workspaceId: worktreePath,
-        serviceName: "web",
+        scriptName: "web",
       },
     ]);
     expect(terminalManager.terminals).toHaveLength(1);
     expect(terminalManager.terminals[0]?.cwd).toBe(worktreePath);
     expect(terminalManager.terminals[0]?.env?.PORT).toEqual(expect.any(String));
-    expect(terminalManager.terminals[0]?.env?.PASEO_SERVICE_URL).toBeDefined();
+    expect(terminalManager.terminals[0]?.env?.PASEO_SCRIPT_URL).toBeDefined();
     expect(terminalManager.terminals[0]?.sent).toEqual(["npm run dev\r"]);
     expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
@@ -251,7 +251,7 @@ describe("createPaseoWorktreeInBackground", () => {
         sessionLogger: logger,
         terminalManager: null,
         archiveWorkspaceRecord,
-        serviceRouteStore: null,
+        scriptRouteStore: null,
         daemonPort: null,
       },
       {
@@ -319,7 +319,7 @@ describe("createPaseoWorktreeInBackground", () => {
         sessionLogger: logger,
         terminalManager: null,
         archiveWorkspaceRecord,
-        serviceRouteStore: null,
+        scriptRouteStore: null,
         daemonPort: null,
       },
       {
@@ -400,7 +400,7 @@ describe("createPaseoWorktreeInBackground", () => {
         worktree: {
           setup: ["printf 'ran' > setup-ran.txt"],
         },
-        services: {
+        scripts: {
           web: {
             command: "npm run dev",
           },
@@ -421,7 +421,7 @@ describe("createPaseoWorktreeInBackground", () => {
 
     const emitted: SessionOutboundMessage[] = [];
     const snapshots = new Map<string, unknown>();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub();
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
@@ -436,7 +436,7 @@ describe("createPaseoWorktreeInBackground", () => {
         sessionLogger: logger,
         terminalManager: terminalManager.manager,
         archiveWorkspaceRecord,
-        serviceRouteStore: routeStore,
+        scriptRouteStore: routeStore,
         daemonPort: 6767,
       },
       {
@@ -478,14 +478,14 @@ describe("createPaseoWorktreeInBackground", () => {
         hostname: "reused-worktree.web.localhost",
         port: expect.any(Number),
         workspaceId: existingWorktree.worktreePath,
-        serviceName: "web",
+        scriptName: "web",
       },
     ]);
     expect(terminalManager.terminals).toHaveLength(1);
     expect(terminalManager.terminals[0]?.cwd).toBe(existingWorktree.worktreePath);
     expect(terminalManager.terminals[0]?.name).toBe("web");
     expect(terminalManager.terminals[0]?.env?.PORT).toEqual(expect.any(String));
-    expect(terminalManager.terminals[0]?.env?.PASEO_SERVICE_URL).toBeDefined();
+    expect(terminalManager.terminals[0]?.env?.PASEO_SCRIPT_URL).toBeDefined();
     expect(terminalManager.terminals[0]?.sent).toEqual(["npm run dev\r"]);
     expect(
       readFileSync(path.join(existingWorktree.worktreePath, "README.md"), "utf8"),
@@ -502,7 +502,7 @@ describe("createPaseoWorktreeInBackground", () => {
   test("keeps setup completed when service launch fails afterward", async () => {
     const { tempDir, repoDir } = createGitRepo({
       paseoConfig: {
-        services: {
+        scripts: {
           web: {
             command: "npm run dev",
           },
@@ -523,7 +523,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const worktreePath = createdWorktree.worktreePath;
     const emitted: SessionOutboundMessage[] = [];
     const snapshots = new Map<string, unknown>();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub({
       createTerminal: async () => {
@@ -542,7 +542,7 @@ describe("createPaseoWorktreeInBackground", () => {
         sessionLogger: logger,
         terminalManager: terminalManager.manager,
         archiveWorkspaceRecord,
-        serviceRouteStore: routeStore,
+        scriptRouteStore: routeStore,
         daemonPort: 6767,
       },
       {
@@ -575,7 +575,7 @@ describe("createPaseoWorktreeInBackground", () => {
         worktreeSlug: "feature-service-failure",
         worktreePath,
       }),
-      "Failed to spawn worktree services after workspace setup completed",
+      "Failed to spawn worktree scripts after workspace setup completed",
     );
     expect(snapshots.get("45")).toMatchObject({
       status: "completed",
@@ -585,10 +585,10 @@ describe("createPaseoWorktreeInBackground", () => {
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
   });
 
-  test("launches services in socket mode without requiring a daemon TCP port", async () => {
+  test("launches scripts in socket mode without requiring a daemon TCP port", async () => {
     const { tempDir, repoDir } = createGitRepo({
       paseoConfig: {
-        services: {
+        scripts: {
           web: {
             command: "npm run dev",
           },
@@ -609,7 +609,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const worktreePath = createdWorktree.worktreePath;
     const emitted: SessionOutboundMessage[] = [];
     const snapshots = new Map<string, unknown>();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     const logger = createLogger();
     const terminalManager = createTerminalManagerStub();
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
@@ -624,7 +624,7 @@ describe("createPaseoWorktreeInBackground", () => {
         sessionLogger: logger,
         terminalManager: terminalManager.manager,
         archiveWorkspaceRecord,
-        serviceRouteStore: routeStore,
+        scriptRouteStore: routeStore,
         daemonPort: null,
       },
       {
@@ -644,13 +644,13 @@ describe("createPaseoWorktreeInBackground", () => {
         hostname: "feature-socket-mode.web.localhost",
         port: expect.any(Number),
         workspaceId: worktreePath,
-        serviceName: "web",
+        scriptName: "web",
       },
     ]);
     expect(terminalManager.terminals).toHaveLength(1);
     expect(terminalManager.terminals[0]?.cwd).toBe(worktreePath);
     expect(terminalManager.terminals[0]?.env?.PORT).toEqual(expect.any(String));
-    expect(terminalManager.terminals[0]?.env?.PASEO_SERVICE_URL).toBeUndefined();
+    expect(terminalManager.terminals[0]?.env?.PASEO_SCRIPT_URL).toBeUndefined();
     expect(terminalManager.terminals[0]?.sent).toEqual(["npm run dev\r"]);
     expect(snapshots.get("46")).toMatchObject({
       status: "completed",

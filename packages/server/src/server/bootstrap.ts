@@ -9,7 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Logger } from "pino";
-import { createBranchChangeRouteHandler } from "./service-route-branch-handler.js";
+import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -119,12 +119,12 @@ import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
-  ServiceRouteStore,
-  createServiceProxyMiddleware,
-  createServiceProxyUpgradeHandler,
-} from "./service-proxy.js";
-import { ServiceHealthMonitor } from "./service-health-monitor.js";
-import { createServiceStatusEmitter } from "./service-status-projection.js";
+  ScriptRouteStore,
+  createScriptProxyMiddleware,
+  createScriptProxyUpgradeHandler,
+} from "./script-proxy.js";
+import { ScriptHealthMonitor } from "./script-health-monitor.js";
+import { createScriptStatusEmitter } from "./script-status-projection.js";
 import {
   createVoiceMcpSocketBridgeManager,
   type VoiceMcpSocketBridgeManager,
@@ -201,7 +201,7 @@ export interface PaseoDaemon {
   agentManager: AgentManager;
   agentStorage: AgentSnapshotStore;
   terminalManager: TerminalManager;
-  serviceRouteStore: ServiceRouteStore;
+  scriptRouteStore: ScriptRouteStore;
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
@@ -232,25 +232,25 @@ export async function createPaseoDaemon(
     const app = express();
     let boundListenTarget: ListenTarget | null = null;
 
-    const serviceRouteStore = new ServiceRouteStore();
+    const scriptRouteStore = new ScriptRouteStore();
     let wsServer: VoiceAssistantWebSocketServer | null = null;
-    const serviceHealthMonitor = new ServiceHealthMonitor({
-      routeStore: serviceRouteStore,
-      onChange: createServiceStatusEmitter({
+    const scriptHealthMonitor = new ScriptHealthMonitor({
+      routeStore: scriptRouteStore,
+      onChange: createScriptStatusEmitter({
         sessions: () =>
           wsServer?.listActiveSessions().map((session) => ({
             emit: (message) => session.emitServerMessage(message),
           })) ?? [],
-        routeStore: serviceRouteStore,
+        routeStore: scriptRouteStore,
         daemonPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
       }),
     });
     const handleBranchChange = createBranchChangeRouteHandler({
-      routeStore: serviceRouteStore,
-      emitServiceStatusUpdate: (workspaceId, services) => {
+      routeStore: scriptRouteStore,
+      emitScriptStatusUpdate: (workspaceId, scripts) => {
         const message = {
-          type: "service_status_update" as const,
-          payload: { workspaceId, services },
+          type: "script_status_update" as const,
+          payload: { workspaceId, scripts },
         };
         const activeSessions = wsServer?.listActiveSessions() ?? [];
         for (const session of activeSessions) {
@@ -273,12 +273,12 @@ export async function createPaseoDaemon(
       });
     }
 
-    // Service proxy — intercepts requests for registered *.localhost hostnames
-    // and forwards them to the corresponding local service port. Placed after
+    // Script proxy — intercepts requests for registered *.localhost hostnames
+    // and forwards them to the corresponding local script port. Placed after
     // the host allowlist (*.localhost is already allowed) but before CORS and
     // the rest of the routes so proxied requests skip unnecessary middleware.
     app.use(
-      createServiceProxyMiddleware({ routeStore: serviceRouteStore, logger }),
+      createScriptProxyMiddleware({ routeStore: scriptRouteStore, logger }),
     );
 
     // CORS - allow same-origin + configured origins
@@ -384,15 +384,15 @@ export async function createPaseoDaemon(
     database = await openPaseoDatabase(path.join(config.paseoHome, "db"));
     logger.info({ elapsed: elapsed() }, "Paseo database opened");
 
-    // Service proxy WebSocket upgrade handler — must be registered before the
+    // Script proxy WebSocket upgrade handler — must be registered before the
     // VoiceAssistantWebSocketServer attaches its own "upgrade" listener so that
-    // service-bound upgrades are forwarded first. The handler is a no-op for
-    // requests that don't match a registered service route.
-    const serviceProxyUpgradeHandler = createServiceProxyUpgradeHandler({
-      routeStore: serviceRouteStore,
+    // script-bound upgrades are forwarded first. The handler is a no-op for
+    // requests that don't match a registered script route.
+    const scriptProxyUpgradeHandler = createScriptProxyUpgradeHandler({
+      routeStore: scriptRouteStore,
       logger,
     });
-    httpServer.on("upgrade", serviceProxyUpgradeHandler);
+    httpServer.on("upgrade", scriptProxyUpgradeHandler);
 
     const agentStorage = new DbAgentSnapshotStore(database.db);
     const chatService = new FileBackedChatService({
@@ -485,7 +485,7 @@ export async function createPaseoDaemon(
         agentManager,
         agentStorage,
         terminalManager,
-        serviceRouteStore,
+        scriptRouteStore,
         getDaemonTcpPort: () =>
           boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
         paseoHome: config.paseoHome,
@@ -514,7 +514,7 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
-          serviceRouteStore,
+          scriptRouteStore,
           getDaemonTcpPort: () =>
             boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
@@ -637,7 +637,7 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
-          serviceRouteStore,
+          scriptRouteStore,
           getDaemonTcpPort: () =>
             boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
@@ -701,10 +701,10 @@ export async function createPaseoDaemon(
       loopService,
       scheduleService,
       checkoutDiffManager,
-      serviceRouteStore,
+      scriptRouteStore,
       handleBranchChange,
       () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
-      (hostname) => serviceHealthMonitor.getHealthForHostname(hostname),
+      (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
     );
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
@@ -795,12 +795,12 @@ export async function createPaseoDaemon(
       // Start speech service after listening so synchronous Sherpa native
       // model loading doesn't block the server from accepting connections.
       speechService.start();
-      serviceHealthMonitor.start();
+      scriptHealthMonitor.start();
     };
 
     const stop = async () => {
       reconciliationService.stop();
-      serviceHealthMonitor.stop();
+      scriptHealthMonitor.stop();
       await closeAllAgents(logger, agentManager);
       await agentManager.flush().catch(() => undefined);
       await shutdownProviders(logger, {
@@ -831,7 +831,7 @@ export async function createPaseoDaemon(
       agentManager,
       agentStorage,
       terminalManager,
-      serviceRouteStore,
+      scriptRouteStore,
       start,
       stop,
       getListenTarget: () => boundListenTarget,

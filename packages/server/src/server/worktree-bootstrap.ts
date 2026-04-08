@@ -5,10 +5,10 @@ import { promisify } from "node:util";
 import { sep } from "node:path";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
-import { buildServiceHostname } from "../utils/service-hostname.js";
+import { buildScriptHostname } from "../utils/script-hostname.js";
 import {
   createWorktree,
-  getServiceConfigs,
+  getScriptConfigs,
   getWorktreeTerminalSpecs,
   listPaseoWorktrees,
   processCarriageReturns,
@@ -19,7 +19,7 @@ import {
   type WorktreeSetupCommandResult,
   type WorktreeRuntimeEnv,
 } from "../utils/worktree.js";
-import { findFreePort, type ServiceRouteStore } from "./service-proxy.js";
+import { findFreePort, type ScriptRouteStore } from "./script-proxy.js";
 import type { AgentTimelineItem, ToolCallDetail } from "./agent/agent-sdk-types.js";
 
 export interface WorktreeBootstrapTerminalResult {
@@ -35,7 +35,7 @@ export interface RunAsyncWorktreeBootstrapOptions {
   worktree: WorktreeConfig;
   shouldBootstrap?: boolean;
   terminalManager: TerminalManager | null;
-  serviceRouteStore?: ServiceRouteStore;
+  scriptRouteStore?: ScriptRouteStore;
   daemonPort?: number | null;
   appendTimelineItem: (item: AgentTimelineItem) => Promise<boolean>;
   emitLiveTimelineItem?: (item: AgentTimelineItem) => Promise<boolean>;
@@ -735,79 +735,79 @@ export async function runAsyncWorktreeBootstrap(
 
   await runWorktreeTerminalBootstrap(options, runtimeEnv);
 
-  if (!options.terminalManager || !options.serviceRouteStore) {
+  if (!options.terminalManager || !options.scriptRouteStore) {
     return;
   }
 
   try {
-    await spawnWorktreeServices({
+    await spawnWorktreeScripts({
       repoRoot: options.worktree.worktreePath,
       workspaceId: options.worktree.worktreePath,
       branchName: options.worktree.branchName,
       daemonPort: options.daemonPort,
-      routeStore: options.serviceRouteStore,
+      routeStore: options.scriptRouteStore,
       terminalManager: options.terminalManager,
       logger: options.logger,
     });
   } catch (error) {
     options.logger?.warn(
       { err: error, agentId: options.agentId, worktreePath: options.worktree.worktreePath },
-      "Failed to spawn worktree services",
+      "Failed to spawn worktree scripts",
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Service lifecycle helpers
+// Script lifecycle helpers
 // ---------------------------------------------------------------------------
 
-export interface WorktreeServiceResult {
-  serviceName: string;
+export interface WorktreeScriptResult {
+  scriptName: string;
   hostname: string;
   port: number;
   terminalId: string;
 }
 
-type SpawnWorkspaceServiceOptions = {
+type SpawnWorkspaceScriptOptions = {
   repoRoot: string;
   workspaceId: string;
   branchName: string | null;
-  serviceName: string;
+  scriptName: string;
   daemonPort?: number | null;
-  routeStore: ServiceRouteStore;
+  routeStore: ScriptRouteStore;
   terminalManager: TerminalManager;
   logger?: Logger;
   onLifecycleChanged?: () => void;
 };
 
-export async function spawnWorkspaceService(
-  options: SpawnWorkspaceServiceOptions,
-): Promise<WorktreeServiceResult> {
+export async function spawnWorkspaceScript(
+  options: SpawnWorkspaceScriptOptions,
+): Promise<WorktreeScriptResult> {
   const {
     repoRoot,
     workspaceId,
     branchName,
-    serviceName,
+    scriptName,
     daemonPort,
     routeStore,
     terminalManager,
     logger,
     onLifecycleChanged,
   } = options;
-  const serviceConfigs = getServiceConfigs(repoRoot);
-  const config = serviceConfigs.get(serviceName);
+  const scriptConfigs = getScriptConfigs(repoRoot);
+  const config = scriptConfigs.get(scriptName);
   if (!config) {
-    throw new Error(`Service '${serviceName}' is not configured in paseo.json`);
+    throw new Error(`Script '${scriptName}' is not configured in paseo.json`);
   }
 
   let hostname: string | null = null;
   let port: number | null = null;
 
   try {
-    hostname = buildServiceHostname(branchName, serviceName);
+    hostname = buildScriptHostname(branchName, scriptName);
     const resolvedHostname = hostname;
     if (routeStore.getRouteEntry(resolvedHostname)) {
-      throw new Error(`Service '${serviceName}' is already running`);
+      throw new Error(`Script '${scriptName}' is already running`);
     }
 
     port = config.port ?? (await findFreePort());
@@ -816,7 +816,7 @@ export async function spawnWorkspaceService(
       hostname: resolvedHostname,
       port,
       workspaceId,
-      serviceName,
+      scriptName,
     });
 
     const env: Record<string, string> = {
@@ -824,12 +824,12 @@ export async function spawnWorkspaceService(
       HOST: "127.0.0.1",
     };
     if (daemonPort !== null && daemonPort !== undefined) {
-      env.PASEO_SERVICE_URL = `http://${resolvedHostname}:${daemonPort}`;
+      env.PASEO_SCRIPT_URL = `http://${resolvedHostname}:${daemonPort}`;
     }
 
     const terminal = await terminalManager.createTerminal({
       cwd: repoRoot,
-      name: serviceName,
+      name: scriptName,
       env,
     });
 
@@ -837,8 +837,8 @@ export async function spawnWorkspaceService(
       routeStore.removeRoute(resolvedHostname);
       onLifecycleChanged?.();
       logger?.info(
-        { serviceName, hostname: resolvedHostname, terminalId: terminal.id },
-        "Stopped worktree service",
+        { scriptName, hostname: resolvedHostname, terminalId: terminal.id },
+        "Stopped worktree script",
       );
     });
 
@@ -846,13 +846,13 @@ export async function spawnWorkspaceService(
     terminal.send({ type: "input", data: `${config.command}\r` });
 
     logger?.info(
-      { serviceName, hostname: resolvedHostname, port, terminalId: terminal.id },
-      `Registered service proxy: ${resolvedHostname} -> 127.0.0.1:${port}`,
+      { scriptName, hostname: resolvedHostname, port, terminalId: terminal.id },
+      `Registered script proxy: ${resolvedHostname} -> 127.0.0.1:${port}`,
     );
 
     onLifecycleChanged?.();
     return {
-      serviceName,
+      scriptName,
       hostname: resolvedHostname,
       port,
       terminalId: terminal.id,
@@ -864,41 +864,41 @@ export async function spawnWorkspaceService(
     logger?.error(
       {
         err: error,
-        serviceName,
+        scriptName,
         repoRoot,
         branchName,
         hostname,
         port,
         command: config.command,
       },
-      "Failed to spawn worktree service",
+      "Failed to spawn worktree script",
     );
     throw error;
   }
 }
 
-export async function spawnWorktreeServices(options: {
+export async function spawnWorktreeScripts(options: {
   repoRoot: string;
   workspaceId: string;
   branchName: string | null;
   daemonPort?: number | null;
-  routeStore: ServiceRouteStore;
+  routeStore: ScriptRouteStore;
   terminalManager: TerminalManager;
   logger?: Logger;
   onLifecycleChanged?: () => void;
-}): Promise<WorktreeServiceResult[]> {
+}): Promise<WorktreeScriptResult[]> {
   const { repoRoot } = options;
-  const serviceConfigs = getServiceConfigs(repoRoot);
-  if (serviceConfigs.size === 0) {
+  const scriptConfigs = getScriptConfigs(repoRoot);
+  if (scriptConfigs.size === 0) {
     return [];
   }
 
-  const results: WorktreeServiceResult[] = [];
-  for (const serviceName of serviceConfigs.keys()) {
+  const results: WorktreeScriptResult[] = [];
+  for (const scriptName of scriptConfigs.keys()) {
     results.push(
-      await spawnWorkspaceService({
+      await spawnWorkspaceScript({
         ...options,
-        serviceName,
+        scriptName,
       }),
     );
   }
@@ -906,14 +906,14 @@ export async function spawnWorktreeServices(options: {
   return results;
 }
 
-export function teardownWorktreeServices(options: {
+export function teardownWorktreeScripts(options: {
   hostnames: string[];
-  routeStore: ServiceRouteStore;
+  routeStore: ScriptRouteStore;
   logger: Logger;
 }): void {
   const { hostnames, routeStore, logger } = options;
   for (const hostname of hostnames) {
     routeStore.removeRoute(hostname);
-    logger.info({ hostname }, "Removed service proxy route");
+    logger.info({ hostname }, "Removed script proxy route");
   }
 }

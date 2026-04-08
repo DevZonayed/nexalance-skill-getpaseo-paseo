@@ -3,17 +3,17 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
-import { ServiceRouteStore } from "./service-proxy.js";
+import { ScriptRouteStore } from "./script-proxy.js";
 import {
-  buildWorkspaceServicePayloads,
-  createServiceStatusEmitter,
-} from "./service-status-projection.js";
+  buildWorkspaceScriptPayloads,
+  createScriptStatusEmitter,
+} from "./script-status-projection.js";
 
 function createWorkspaceRepo(options?: {
   branchName?: string;
   paseoConfig?: Record<string, unknown>;
 }): { tempDir: string; repoDir: string; cleanup: () => void } {
-  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "service-projection-")));
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "script-projection-")));
   const repoDir = path.join(tempDir, "repo");
   execSync(`mkdir -p ${JSON.stringify(repoDir)}`);
   execSync(`git init -b ${options?.branchName ?? "main"}`, { cwd: repoDir, stdio: "pipe" });
@@ -35,22 +35,22 @@ function createWorkspaceRepo(options?: {
   };
 }
 
-describe("service-status-projection", () => {
-  it("shows configured services even before they have routes", () => {
+describe("script-status-projection", () => {
+  it("shows configured scripts even before they have routes", () => {
     const workspace = createWorkspaceRepo({
       paseoConfig: {
-        services: {
+        scripts: {
           api: { command: "npm run api" },
           web: { command: "npm run web", port: 3000 },
         },
       },
     });
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
 
     try {
-      expect(buildWorkspaceServicePayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
         {
-          serviceName: "api",
+          scriptName: "api",
           hostname: "api.localhost",
           port: null,
           url: "http://api.localhost:6767",
@@ -58,7 +58,7 @@ describe("service-status-projection", () => {
           health: null,
         },
         {
-          serviceName: "web",
+          scriptName: "web",
           hostname: "web.localhost",
           port: 3000,
           url: "http://web.localhost:6767",
@@ -71,27 +71,27 @@ describe("service-status-projection", () => {
     }
   });
 
-  it("uses the active route port and branch-aware hostname for running services", () => {
+  it("uses the active route port and branch-aware hostname for running scripts", () => {
     const workspace = createWorkspaceRepo({
       branchName: "feature/card",
       paseoConfig: {
-        services: {
+        scripts: {
           web: { command: "npm run web" },
         },
       },
     });
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "feature-card.web.localhost",
       port: 4321,
       workspaceId: workspace.repoDir,
-      serviceName: "web",
+      scriptName: "web",
     });
 
     try {
-      expect(buildWorkspaceServicePayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
         {
-          serviceName: "web",
+          scriptName: "web",
           hostname: "feature-card.web.localhost",
           port: 4321,
           url: "http://feature-card.web.localhost:6767",
@@ -106,18 +106,18 @@ describe("service-status-projection", () => {
 
   it("includes orphaned active routes even if the current config no longer declares them", () => {
     const workspace = createWorkspaceRepo();
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "docs.localhost",
       port: 3002,
       workspaceId: workspace.repoDir,
-      serviceName: "docs",
+      scriptName: "docs",
     });
 
     try {
-      expect(buildWorkspaceServicePayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
         {
-          serviceName: "docs",
+          scriptName: "docs",
           hostname: "docs.localhost",
           port: 3002,
           url: "http://docs.localhost:6767",
@@ -130,25 +130,25 @@ describe("service-status-projection", () => {
     }
   });
 
-  it("createServiceStatusEmitter overlays health onto the full workspace service list", () => {
+  it("createScriptStatusEmitter overlays health onto the full workspace script list", () => {
     const workspace = createWorkspaceRepo({
       paseoConfig: {
-        services: {
+        scripts: {
           api: { command: "npm run api" },
           web: { command: "npm run web" },
         },
       },
     });
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: 3001,
       workspaceId: workspace.repoDir,
-      serviceName: "api",
+      scriptName: "api",
     });
 
     const session = { emit: vi.fn() };
-    const emitUpdate = createServiceStatusEmitter({
+    const emitUpdate = createScriptStatusEmitter({
       sessions: () => [session],
       routeStore,
       daemonPort: 6767,
@@ -157,7 +157,7 @@ describe("service-status-projection", () => {
     try {
       emitUpdate(workspace.repoDir, [
         {
-          serviceName: "api",
+          scriptName: "api",
           hostname: "api.localhost",
           port: 3001,
           health: "healthy",
@@ -165,12 +165,12 @@ describe("service-status-projection", () => {
       ]);
 
       expect(session.emit).toHaveBeenCalledWith({
-        type: "service_status_update",
+        type: "script_status_update",
         payload: {
           workspaceId: workspace.repoDir,
-          services: [
+          scripts: [
             {
-              serviceName: "api",
+              scriptName: "api",
               hostname: "api.localhost",
               port: 3001,
               url: "http://api.localhost:6767",
@@ -178,7 +178,7 @@ describe("service-status-projection", () => {
               health: "healthy",
             },
             {
-              serviceName: "web",
+              scriptName: "web",
               hostname: "web.localhost",
               port: null,
               url: "http://web.localhost:6767",
@@ -196,17 +196,17 @@ describe("service-status-projection", () => {
   it("computes URLs with and without a daemon port", () => {
     const workspace = createWorkspaceRepo({
       paseoConfig: {
-        services: {
+        scripts: {
           api: { command: "npm run api" },
         },
       },
     });
-    const routeStore = new ServiceRouteStore();
+    const routeStore = new ScriptRouteStore();
 
     try {
-      expect(buildWorkspaceServicePayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
         {
-          serviceName: "api",
+          scriptName: "api",
           hostname: "api.localhost",
           port: null,
           url: "http://api.localhost:6767",
@@ -215,9 +215,9 @@ describe("service-status-projection", () => {
         },
       ]);
 
-      expect(buildWorkspaceServicePayloads(routeStore, workspace.repoDir, null)).toEqual([
+      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, null)).toEqual([
         {
-          serviceName: "api",
+          scriptName: "api",
           hostname: "api.localhost",
           port: null,
           url: null,
