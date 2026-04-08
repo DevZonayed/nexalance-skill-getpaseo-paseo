@@ -18,6 +18,7 @@ import {
   type SpawnOptions,
   type SDKMessage,
   type SDKPartialAssistantMessage,
+  type SDKTaskProgressMessage,
   type SDKResultMessage,
   type SDKSystemMessage,
   type SDKUserMessage,
@@ -47,6 +48,7 @@ import {
 } from "./diagnostic-utils.js";
 
 import type {
+  AgentPermissionAction,
   AgentCapabilityFlags,
   AgentClient,
   AgentLaunchContext,
@@ -669,6 +671,43 @@ function resolvePermissionKind(
   return "tool";
 }
 
+function getClaudeModeLabel(modeId: PermissionMode): string {
+  return DEFAULT_MODES.find((mode) => mode.id === modeId)?.label ?? modeId;
+}
+
+function buildClaudePlanPermissionActions(
+  resumeMode: PermissionMode | null,
+): AgentPermissionAction[] {
+  const actions: AgentPermissionAction[] = [
+    {
+      id: "reject",
+      label: "Reject",
+      behavior: "deny",
+      variant: "danger",
+      intent: "dismiss",
+    },
+    {
+      id: "implement",
+      label: "Implement",
+      behavior: "allow",
+      variant: "primary",
+      intent: "implement",
+    },
+  ];
+
+  if (resumeMode === "bypassPermissions") {
+    actions.push({
+      id: "implement_resume",
+      label: `Implement with ${getClaudeModeLabel(resumeMode)}`,
+      behavior: "allow",
+      variant: "secondary",
+      intent: "implement_resume",
+    });
+  }
+
+  return actions;
+}
+
 type TimelineFragment = {
   kind: "assistant" | "reasoning";
   text: string;
@@ -967,7 +1006,8 @@ function isSyntheticUserEntry(entry: unknown): boolean {
   if (!entry || typeof entry !== "object") {
     return false;
   }
-  return (entry as { isSynthetic?: unknown }).isSynthetic === true;
+  const candidate = entry as { isSynthetic?: unknown; isMeta?: unknown };
+  return candidate.isSynthetic === true || candidate.isMeta === true;
 }
 
 export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
@@ -1160,6 +1200,40 @@ function resolveClaudeVersion(runtimeSettings?: ProviderRuntimeSettings): string
   }
 }
 
+function extractContextWindowSize(modelUsage: unknown): number | undefined {
+  if (!modelUsage || typeof modelUsage !== "object") {
+    return undefined;
+  }
+
+  let maxContextWindow: number | undefined;
+  for (const value of Object.values(modelUsage as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const contextWindow = (value as { contextWindow?: unknown }).contextWindow;
+    if (
+      typeof contextWindow !== "number" ||
+      !Number.isFinite(contextWindow) ||
+      contextWindow <= 0
+    ) {
+      continue;
+    }
+    maxContextWindow = Math.max(maxContextWindow ?? 0, contextWindow);
+  }
+
+  return maxContextWindow;
+}
+
+function readContextWindowUsedTokensFromTaskProgress(
+  message: SDKTaskProgressMessage,
+): number | undefined {
+  const totalTokens = message.usage?.total_tokens;
+  if (typeof totalTokens !== "number" || !Number.isFinite(totalTokens) || totalTokens < 0) {
+    return undefined;
+  }
+  return totalTokens;
+}
+
 class ClaudeAgentSession implements AgentSession {
   readonly provider: "claude" = "claude";
   readonly capabilities = CLAUDE_CAPABILITIES;
@@ -1175,6 +1249,7 @@ class ClaudeAgentSession implements AgentSession {
   private claudeSessionId: string | null;
   private persistence: AgentPersistenceHandle | null;
   private currentMode: PermissionMode;
+  private planResumeMode: PermissionMode | null = null;
   private availableModes: AgentMode[] = DEFAULT_MODES;
   private toolUseCache = new Map<string, ToolUseCacheEntry>();
   private toolUseIndexToId = new Map<number, string>();
@@ -1201,6 +1276,7 @@ class ClaudeAgentSession implements AgentSession {
   private pendingInterruptAbort = false;
   private lastForegroundPromptText: string | null = null;
   private foregroundHasVisibleActivity = false;
+  private lastContextWindowUsedTokens: number | undefined;
   private userMessageIds: string[] = [];
   private recentStderr = "";
   private closed = false;
@@ -1235,6 +1311,9 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     this.currentMode = isPermissionMode(config.modeId) ? config.modeId : "default";
+    if (this.currentMode !== "plan") {
+      this.planResumeMode = this.currentMode;
+    }
   }
 
   get id(): string | null {
@@ -1380,6 +1459,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const sdkMessage = this.toSdkUserMessage(prompt);
     this.lastForegroundPromptText = this.extractPromptText(prompt);
+    this.lastContextWindowUsedTokens = undefined;
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
@@ -1476,8 +1556,16 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const normalized = isPermissionMode(modeId) ? modeId : "default";
+    const previousMode = this.currentMode;
     const query = await this.ensureQuery();
     await query.setPermissionMode(normalized);
+    if (normalized === "plan") {
+      if (previousMode !== "plan") {
+        this.planResumeMode = previousMode;
+      }
+    } else {
+      this.planResumeMode = normalized;
+    }
     this.currentMode = normalized;
   }
 
@@ -1524,13 +1612,22 @@ class ClaudeAgentSession implements AgentSession {
 
     if (response.behavior === "allow") {
       if (pending.request.kind === "plan") {
-        await this.setMode("acceptEdits");
+        const selectedActionId = response.selectedActionId;
+        const shouldResumePriorMode =
+          selectedActionId === "implement_resume" && this.planResumeMode === "bypassPermissions";
+        const targetMode: PermissionMode = shouldResumePriorMode
+          ? "bypassPermissions"
+          : "acceptEdits";
+        await this.setMode(targetMode);
         this.pushToolCall(
           mapClaudeCompletedToolCall({
             name: "plan_approval",
             callId: pending.request.id,
             input: pending.request.input ?? null,
-            output: { approved: true },
+            output: {
+              approved: true,
+              actionId: selectedActionId ?? "implement",
+            },
           }),
         );
       }
@@ -1847,6 +1944,9 @@ class ClaudeAgentSession implements AgentSession {
       this.input = null;
       this.queryPumpPromise = null;
       this.queryRestartNeeded = false;
+      // Reset session identity for explicit restarts so the new query starts
+      // a fresh session rather than resuming the previous one.
+      this.claudeSessionId = null;
       oldInput?.end();
       oldQuery.close?.();
       try {
@@ -1855,6 +1955,12 @@ class ClaudeAgentSession implements AgentSession {
         /* ignore */
       }
     }
+
+    // When the pump died unexpectedly (query became null, e.g. after a session
+    // ID overwrite error), preserve claudeSessionId so buildOptions() passes
+    // resume: sessionId and the new query auto-resumes the previous session.
+    // For explicit restarts above, claudeSessionId was already cleared.
+    this.persistence = null;
 
     const input = createAsyncMessageInput<SDKUserMessage>();
     const options = this.buildOptions();
@@ -2197,6 +2303,7 @@ class ClaudeAgentSession implements AgentSession {
     this.notifySubscribers(event);
     this.activeForegroundTurnId = null;
     this.lastForegroundPromptText = null;
+    this.lastContextWindowUsedTokens = undefined;
     this.cancelCurrentTurn = null;
     this.syncTurnState("foreground turn terminal");
   }
@@ -2212,10 +2319,12 @@ class ClaudeAgentSession implements AgentSession {
       if (this.activeForegroundTurnId) {
         this.activeForegroundTurnId = null;
         this.lastForegroundPromptText = null;
+        this.lastContextWindowUsedTokens = undefined;
         this.cancelCurrentTurn = null;
         this.syncTurnState("foreground turn terminal");
       } else if (this.autonomousTurn) {
         this.autonomousTurn = null;
+        this.lastContextWindowUsedTokens = undefined;
         this.syncTurnState("autonomous turn terminal");
       }
     }
@@ -2228,6 +2337,7 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
+    this.lastContextWindowUsedTokens = undefined;
     this.notifySubscribers({ type: "turn_started", provider: "claude" });
     this.syncTurnState("autonomous turn started");
   }
@@ -2238,6 +2348,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
+    this.lastContextWindowUsedTokens = undefined;
     this.syncTurnState("autonomous turn completed");
   }
 
@@ -2566,6 +2677,10 @@ class ClaudeAgentSession implements AgentSession {
               provider: "claude",
             });
           }
+        } else if (message.subtype === "task_progress") {
+          this.lastContextWindowUsedTokens =
+            readContextWindowUsedTokensFromTaskProgress(message) ??
+            this.lastContextWindowUsedTokens;
         }
         break;
       case "user": {
@@ -2643,7 +2758,7 @@ class ClaudeAgentSession implements AgentSession {
         break;
       }
       case "result": {
-        const usage = this.convertUsage(message);
+        const usage = this.convertUsage(message, message.modelUsage);
         if (message.subtype === "success") {
           events.push({ type: "turn_completed", provider: "claude", usage });
         } else {
@@ -2688,11 +2803,16 @@ class ClaudeAgentSession implements AgentSession {
     if (this.claudeSessionId === sessionId) {
       return null;
     }
-    throw new Error(
-      `CRITICAL: Claude session ID overwrite detected! ` +
-        `Existing: ${this.claudeSessionId}, New: ${sessionId}. ` +
-        `This indicates a session identity corruption bug.`,
+    // Session ID changed mid-stream (e.g. a hook caused Claude to restart
+    // with a new session). Accept the new ID and continue — the turn should
+    // not be failed just because the underlying subprocess cycled.
+    this.logger.warn(
+      { existingSessionId: this.claudeSessionId, newSessionId: sessionId },
+      "Claude session ID changed in message; accepting new session",
     );
+    this.claudeSessionId = sessionId;
+    this.persistence = null;
+    return sessionId;
   }
 
   private handleSystemMessage(message: SDKSystemMessage): string | null {
@@ -2727,14 +2847,20 @@ class ClaudeAgentSession implements AgentSession {
     } else if (existingSessionId === newSessionId) {
       this.logger.debug({ sessionId: newSessionId }, "Claude session ID unchanged (same value)");
     } else {
-      throw new Error(
-        `CRITICAL: Claude session ID overwrite detected! ` +
-          `Existing: ${existingSessionId}, New: ${newSessionId}. ` +
-          `This indicates a session identity corruption bug.`,
+      // Session ID changed in an init message (e.g. a hook restarted Claude
+      // with a new session mid-turn). Accept the new ID and continue.
+      this.logger.warn(
+        { existingSessionId, newSessionId },
+        "Claude session ID changed in init message; accepting new session",
       );
+      this.claudeSessionId = newSessionId;
+      threadStartedSessionId = newSessionId;
     }
     this.availableModes = DEFAULT_MODES;
     this.currentMode = message.permissionMode;
+    if (this.currentMode !== "plan") {
+      this.planResumeMode = this.currentMode;
+    }
     this.persistence = null;
     if (message.model) {
       const normalizedRuntimeModel = normalizeClaudeRuntimeModelId(message.model);
@@ -2776,16 +2902,38 @@ class ClaudeAgentSession implements AgentSession {
     return null;
   }
 
-  private convertUsage(message: SDKResultMessage): AgentUsage | undefined {
+  private convertUsage(message: SDKResultMessage, modelUsage?: unknown): AgentUsage | undefined {
     if (!message.usage) {
       return undefined;
     }
-    return {
+    const usage: AgentUsage = {
       inputTokens: message.usage.input_tokens,
       cachedInputTokens: message.usage.cache_read_input_tokens,
       outputTokens: message.usage.output_tokens,
       totalCostUsd: message.total_cost_usd,
     };
+    const contextWindowMaxTokens = extractContextWindowSize(
+      modelUsage ?? message.modelUsage,
+    );
+    if (contextWindowMaxTokens !== undefined) {
+      usage.contextWindowMaxTokens = contextWindowMaxTokens;
+    }
+    if (typeof this.lastContextWindowUsedTokens === "number") {
+      usage.contextWindowUsedTokens = this.lastContextWindowUsedTokens;
+    } else if (message.usage) {
+      const usageWithCacheCreation = message.usage as typeof message.usage & {
+        cache_creation_input_tokens?: number;
+      };
+      const derived =
+        (message.usage.input_tokens ?? 0) +
+        (usageWithCacheCreation.cache_creation_input_tokens ?? 0) +
+        (message.usage.cache_read_input_tokens ?? 0) +
+        (message.usage.output_tokens ?? 0);
+      if (Number.isFinite(derived) && derived > 0) {
+        usage.contextWindowUsedTokens = derived;
+      }
+    }
+    return usage;
   }
 
   private handlePermissionRequest: CanUseTool = async (
@@ -2820,6 +2968,8 @@ class ClaudeAgentSession implements AgentSession {
       input,
       detail: toolDetail,
       suggestions: options.suggestions?.map((suggestion) => ({ ...suggestion })),
+      actions:
+        kind === "plan" ? buildClaudePlanPermissionActions(this.planResumeMode) : undefined,
       metadata: Object.keys(metadata).length ? metadata : undefined,
     };
 

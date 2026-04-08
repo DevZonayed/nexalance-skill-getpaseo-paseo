@@ -80,6 +80,8 @@ export interface MessageInputProps {
   isInputActive?: boolean;
   /** Content to render on the left side of the button row (e.g., AgentStatusBar) */
   leftContent?: React.ReactNode;
+  /** Content to render on the right side before the voice button (e.g., context window meter) */
+  beforeVoiceContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
   rightContent?: React.ReactNode;
   voiceServerId?: string;
@@ -207,6 +209,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     disabled = false,
     isInputActive = true,
     leftContent,
+    beforeVoiceContent,
     rightContent,
     voiceServerId,
     voiceAgentId,
@@ -1024,6 +1027,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
           {/* Right: voice button, contextual button (realtime/send/cancel) */}
           <View style={styles.rightButtonGroup}>
+            {beforeVoiceContent}
             <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
               <TooltipTrigger
                 onPress={handleVoicePress}

@@ -49,6 +49,7 @@ import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceGitActions } from "@/screens/workspace/workspace-git-actions";
+import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
@@ -2098,6 +2099,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
             }
             right={
               <View style={styles.headerRight}>
+                {!isMobile ? (
+                  <WorkspaceOpenInEditorButton
+                    serverId={normalizedServerId}
+                    cwd={normalizedWorkspaceId}
+                  />
+                ) : null}
                 {!isMobile && isGitCheckout ? (
                   <>
                     {workspaceDirectory ? (

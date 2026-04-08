@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
+
 import type { DaemonClient } from "@server/client/daemon-client";
 import type { WorkspaceDescriptorPayload } from "@server/shared/messages";
+
 import {
+  mergeWorkspaceSnapshotWithExisting,
   normalizeWorkspaceDescriptor,
   useSessionStore,
   type WorkspaceDescriptor,
 } from "./session-store";
 
-function workspace(
+function createWorkspace(
   input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
 ): WorkspaceDescriptor {
   return {
@@ -17,7 +20,7 @@ function workspace(
     projectRootPath: input.projectRootPath ?? "/repo",
     workspaceDirectory: input.workspaceDirectory ?? "/repo",
     projectKind: input.projectKind ?? "git",
-    workspaceKind: input.workspaceKind ?? "checkout",
+    workspaceKind: input.workspaceKind ?? "local_checkout",
     name: input.name ?? "main",
     status: input.status ?? "done",
     activityAt: input.activityAt ?? null,
@@ -99,11 +102,11 @@ describe("mergeWorkspaces", () => {
     store.initializeSession("test-server", null as unknown as DaemonClient);
     store.setWorkspaces(
       "test-server",
-      new Map([["/repo/main", workspace({ id: "/repo/main", services: [] })]]),
+      new Map([["/repo/main", createWorkspace({ id: "/repo/main", services: [] })]]),
     );
 
     store.mergeWorkspaces("test-server", [
-      workspace({
+      createWorkspace({
         id: "/repo/main",
         services: [
           {
@@ -128,5 +131,36 @@ describe("mergeWorkspaces", () => {
         health: "healthy",
       },
     ]);
+  });
+});
+
+describe("mergeWorkspaceSnapshotWithExisting", () => {
+  it("preserves the last known diff stat when a snapshot only has baseline null data", () => {
+    const existing = createWorkspace({
+      id: "/tmp/repo",
+      diffStat: { additions: 4, deletions: 2 },
+    });
+    const incoming = createWorkspace({
+      id: "/tmp/repo",
+      diffStat: null,
+    });
+
+    expect(mergeWorkspaceSnapshotWithExisting({ incoming, existing })).toEqual({
+      ...incoming,
+      diffStat: { additions: 4, deletions: 2 },
+    });
+  });
+
+  it("uses the incoming diff stat when the server provides a known value", () => {
+    const existing = createWorkspace({
+      id: "/tmp/repo",
+      diffStat: { additions: 4, deletions: 2 },
+    });
+    const incoming = createWorkspace({
+      id: "/tmp/repo",
+      diffStat: { additions: 0, deletions: 0 },
+    });
+
+    expect(mergeWorkspaceSnapshotWithExisting({ incoming, existing })).toEqual(incoming);
   });
 });
