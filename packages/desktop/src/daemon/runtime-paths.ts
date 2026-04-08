@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { spawnProcess } from "@getpaseo/server";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { app } from "electron";
@@ -234,6 +235,7 @@ export function runCliPassthroughCommand(args: string[]): number {
   const result = spawnSync(invocation.command, invocation.args, {
     env: invocation.env,
     stdio: "inherit",
+    windowsHide: true,
   });
   if (result.error) {
     throw result.error;
@@ -252,7 +254,7 @@ function spawnAsync(
   options: { env: NodeJS.ProcessEnv },
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawnProcess(command, args, {
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -260,10 +262,10 @@ function spawnAsync(
     let stdout = "";
     let stderr = "";
 
-    child.stdout.on("data", (data: Buffer) => {
+    child.stdout!.on("data", (data: Buffer) => {
       stdout += data.toString();
     });
-    child.stderr.on("data", (data: Buffer) => {
+    child.stderr!.on("data", (data: Buffer) => {
       stderr += data.toString();
     });
 

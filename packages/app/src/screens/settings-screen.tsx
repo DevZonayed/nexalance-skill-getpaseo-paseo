@@ -22,6 +22,7 @@ import {
   Shield,
   Puzzle,
   Blocks,
+  Smartphone,
 } from "lucide-react-native";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import type { HostProfile, HostConnection } from "@/types/host-connection";
@@ -54,6 +55,7 @@ import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-mod
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { IntegrationsSection } from "@/desktop/components/integrations-section";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
+import { PairDeviceSection } from "@/desktop/components/pair-device-section";
 import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
@@ -82,7 +84,8 @@ type SettingsSectionId =
   | "diagnostics"
   | "about"
   | "permissions"
-  | "daemon";
+  | "daemon"
+  | "pair-device";
 
 interface SettingsSectionDef {
   id: SettingsSectionId;
@@ -101,6 +104,7 @@ function getSettingsSections(context: { isDesktopApp: boolean }): SettingsSectio
   if (context.isDesktopApp) {
     sections.push(
       { id: "integrations", label: "Integrations", icon: Puzzle },
+      { id: "pair-device", label: "Pair device", icon: Smartphone },
       { id: "daemon", label: "Daemon", icon: Settings },
     );
   }
@@ -647,6 +651,8 @@ function SettingsSectionContent({
       return isDesktopApp ? <IntegrationsSection /> : null;
     case "permissions":
       return isDesktopApp ? <DesktopPermissionsSection /> : null;
+    case "pair-device":
+      return isDesktopApp ? <PairDeviceSection /> : null;
     case "daemon":
       return isDesktopApp ? (
         <LocalDaemonSection appVersion={appVersion} showLifecycleControls={isLocalDaemon} />
