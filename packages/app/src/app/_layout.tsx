@@ -577,7 +577,7 @@ function OfferLinkListener({
           if (cancelled) return;
           const serverId = (profile as any)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
-          router.replace(buildHostRootRoute(serverId) as any);
+          router.replace(buildHostRootRoute(serverId));
         })
         .catch((error) => {
           if (cancelled) return;
@@ -695,7 +695,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
     if (hosts.some((host) => host.serverId === activeServerId)) {
       return;
     }
-    router.replace(mapPathnameToServer(pathname, hosts[0]!.serverId) as any);
+    router.replace(mapPathnameToServer(pathname, hosts[0]!.serverId));
   }, [activeServerId, hosts, pathname, router]);
 
   // Parse selectedAgentKey directly from pathname

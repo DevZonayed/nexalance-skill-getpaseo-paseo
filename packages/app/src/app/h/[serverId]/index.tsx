@@ -93,7 +93,7 @@ export default function HostIndexRoute() {
         return;
       }
 
-      router.replace(buildHostOpenProjectRoute(serverId) as any);
+      router.replace(buildHostOpenProjectRoute(serverId));
     }, HOST_ROOT_REDIRECT_DELAY_MS);
 
     return () => clearTimeout(timer);

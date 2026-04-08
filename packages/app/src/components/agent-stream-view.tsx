@@ -187,7 +187,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               workspaceId,
               target: { kind: "file", path: normalized.file },
             });
-            router.navigate(route as any);
+            router.navigate(route);
           }
           return;
         }

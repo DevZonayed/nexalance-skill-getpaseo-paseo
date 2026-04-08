@@ -256,7 +256,7 @@ export function AgentList({
         target: { kind: "agent", agentId },
         pin: Boolean(agent.archivedAt),
       });
-      router.navigate(route as any);
+      router.navigate(route);
     },
     [isActionSheetVisible, onAgentSelect],
   );

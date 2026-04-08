@@ -73,7 +73,7 @@ export default function HostAgentReadyRoute() {
     }
     if (!client || !isConnected) {
       redirectedRef.current = true;
-      router.replace(buildHostRootRoute(serverId) as any);
+      router.replace(buildHostRootRoute(serverId));
     }
   }, [agentCwd, agentId, client, hasHydratedWorkspaces, isConnected, router, serverId]);
 
@@ -111,14 +111,14 @@ export default function HostAgentReadyRoute() {
           );
           return;
         }
-        router.replace(buildHostRootRoute(serverId) as any);
+        router.replace(buildHostRootRoute(serverId));
       })
       .catch(() => {
         if (cancelled || redirectedRef.current) {
           return;
         }
         redirectedRef.current = true;
-        router.replace(buildHostRootRoute(serverId) as any);
+        router.replace(buildHostRootRoute(serverId));
       });
 
     return () => {
