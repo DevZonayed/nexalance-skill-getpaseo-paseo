@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import * as QRCode from "qrcode";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
@@ -12,7 +11,6 @@ import {
   RotateCw,
   Copy,
   FileText,
-  Smartphone,
   Activity,
 } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
@@ -24,7 +22,6 @@ import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import {
   getCliDaemonStatus,
   getDesktopDaemonLogs,
-  getDesktopDaemonPairing,
   getDesktopDaemonStatus,
   restartDesktopDaemon,
   shouldUseDesktopDaemon,
@@ -32,7 +29,6 @@ import {
   stopDesktopDaemon,
   type DesktopDaemonLogs,
   type DesktopDaemonStatus,
-  type DesktopPairingOffer,
 } from "@/desktop/daemon/desktop-daemon";
 
 export interface LocalDaemonSectionProps {
@@ -52,10 +48,6 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [daemonLogs, setDaemonLogs] = useState<DesktopDaemonLogs | null>(null);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
-  const [isPairingModalOpen, setIsPairingModalOpen] = useState(false);
-  const [isLoadingPairing, setIsLoadingPairing] = useState(false);
-  const [pairingOffer, setPairingOffer] = useState<DesktopPairingOffer | null>(null);
-  const [pairingStatusMessage, setPairingStatusMessage] = useState<string | null>(null);
   const [cliStatusOutput, setCliStatusOutput] = useState<string | null>(null);
   const [isCliStatusModalOpen, setIsCliStatusModalOpen] = useState(false);
   const [isLoadingCliStatus, setIsLoadingCliStatus] = useState(false);
@@ -238,46 +230,6 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
     setIsLogsModalOpen(true);
   }, [daemonLogs]);
 
-  const handleOpenPairingModal = useCallback(() => {
-    if (isLoadingPairing) {
-      return;
-    }
-
-    setIsPairingModalOpen(true);
-    setIsLoadingPairing(true);
-    setPairingStatusMessage(null);
-
-    void getDesktopDaemonPairing()
-      .then((pairing) => {
-        setPairingOffer(pairing);
-        if (!pairing.relayEnabled || !pairing.url) {
-          setPairingStatusMessage("Relay pairing is not available.");
-        }
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        setPairingOffer(null);
-        setPairingStatusMessage(`Unable to load pairing offer: ${message}`);
-      })
-      .finally(() => {
-        setIsLoadingPairing(false);
-      });
-  }, [isLoadingPairing]);
-
-  const handleCopyPairingLink = useCallback(() => {
-    if (!pairingOffer?.url) {
-      return;
-    }
-    void Clipboard.setStringAsync(pairingOffer.url)
-      .then(() => {
-        Alert.alert("Copied", "Pairing link copied.");
-      })
-      .catch((error) => {
-        console.error("[Settings] Failed to copy pairing link", error);
-        Alert.alert("Error", "Unable to copy pairing link.");
-      });
-  }, [pairingOffer?.url]);
-
   const handleOpenCliStatus = useCallback(async () => {
     setIsLoadingCliStatus(true);
     try {
@@ -420,20 +372,6 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Pair device</Text>
-            <Text style={settingsStyles.rowHint}>Connect your phone to this computer.</Text>
-          </View>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<Smartphone size={theme.iconSize.sm} color={theme.colors.foreground} />}
-            onPress={handleOpenPairingModal}
-          >
-            Pair device
-          </Button>
-        </View>
-        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-          <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Full status</Text>
             <Text style={settingsStyles.rowHint}>
               Runs `paseo daemon status` and shows the output.
@@ -459,20 +397,6 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
           </Text>
         </View>
       ) : null}
-
-      <AdaptiveModalSheet
-        visible={isPairingModalOpen}
-        onClose={() => setIsPairingModalOpen(false)}
-        title="Pair device"
-        testID="managed-daemon-pairing-dialog"
-      >
-        <PairingOfferDialogContent
-          isLoading={isLoadingPairing}
-          pairingOffer={pairingOffer}
-          statusMessage={pairingStatusMessage}
-          onCopyLink={handleCopyPairingLink}
-        />
-      </AdaptiveModalSheet>
 
       <AdaptiveModalSheet
         visible={isLogsModalOpen}
@@ -516,107 +440,6 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
 
 const ADVANCED_DAEMON_SETTINGS_URL = "https://paseo.sh/docs/configuration";
 
-function PairingOfferDialogContent(input: {
-  isLoading: boolean;
-  pairingOffer: DesktopPairingOffer | null;
-  statusMessage: string | null;
-  onCopyLink: () => void;
-}) {
-  const { isLoading, pairingOffer, statusMessage, onCopyLink } = input;
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!pairingOffer?.url) {
-      setQrDataUrl(null);
-      setQrError(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setQrError(null);
-    setQrDataUrl(null);
-
-    void QRCode.toDataURL(pairingOffer.url, {
-      errorCorrectionLevel: "M",
-      margin: 1,
-      width: 480,
-    })
-      .then((dataUrl) => {
-        if (cancelled) {
-          return;
-        }
-        setQrDataUrl(dataUrl);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-        setQrError(error instanceof Error ? error.message : String(error));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pairingOffer?.url]);
-
-  if (isLoading) {
-    return (
-      <View style={styles.pairingState}>
-        <ActivityIndicator size="small" />
-        <Text style={settingsStyles.rowHint}>Loading pairing offer…</Text>
-      </View>
-    );
-  }
-
-  if (statusMessage) {
-    return (
-      <View style={styles.modalBody}>
-        <Text style={settingsStyles.rowHint}>{statusMessage}</Text>
-      </View>
-    );
-  }
-
-  if (!pairingOffer?.url) {
-    return (
-      <View style={styles.modalBody}>
-        <Text style={settingsStyles.rowHint}>Pairing offer unavailable.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.modalBody}>
-      <Text style={settingsStyles.rowHint}>
-        Scan this QR code in Paseo, or copy the pairing link below.
-      </Text>
-      <View style={styles.qrCard}>
-        {qrDataUrl ? (
-          <Image source={{ uri: qrDataUrl }} style={styles.qrImage} resizeMode="contain" />
-        ) : qrError ? (
-          <Text style={settingsStyles.rowHint}>QR unavailable: {qrError}</Text>
-        ) : (
-          <ActivityIndicator size="small" />
-        )}
-      </View>
-      <View style={styles.linkSection}>
-        <Text style={styles.linkLabel}>Pairing link</Text>
-        <Text style={styles.linkText} selectable>
-          {pairingOffer.url}
-        </Text>
-      </View>
-      <View style={styles.modalActions}>
-        <Button variant="outline" size="sm" onPress={onCopyLink}>
-          Copy link
-        </Button>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create((theme) => ({
   actionGroup: {
     flexDirection: "row",
@@ -658,40 +481,6 @@ const styles = StyleSheet.create((theme) => ({
   modalBody: {
     gap: theme.spacing[3],
     paddingBottom: theme.spacing[2],
-  },
-  pairingState: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[3],
-    paddingVertical: theme.spacing[6],
-  },
-  qrCard: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    aspectRatio: 1,
-    alignSelf: "stretch",
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
-  },
-  qrImage: {
-    width: "100%",
-    height: "100%",
-  },
-  linkSection: {
-    gap: theme.spacing[2],
-  },
-  linkLabel: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  linkText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: 18,
   },
   logOutput: {
     color: theme.colors.foregroundMuted,

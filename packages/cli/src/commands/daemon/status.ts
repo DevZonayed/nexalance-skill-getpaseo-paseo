@@ -1,12 +1,14 @@
 import type { Command } from "commander";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import {
   getOrCreateServerId,
   findExecutable,
-  quoteWindowsCommand,
   applyProviderEnv,
 } from "@getpaseo/server";
+
+const execFileAsync = promisify(execFile);
 import { tryConnectToDaemon } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema } from "../../output/index.js";
 import { resolveLocalDaemonState, resolveTcpHostFromListen } from "./local-daemon.js";
@@ -171,31 +173,33 @@ const PROVIDER_BINARIES: { label: string; binary: string }[] = [
   { label: "OpenCode", binary: "opencode" },
 ];
 
-function checkProviderBinary(binary: string): { path: string | null; version: string | null } {
-  const binaryPath = findExecutable(binary);
+async function checkProviderBinary(binary: string): Promise<{ path: string | null; version: string | null }> {
+  const binaryPath = await findExecutable(binary);
   if (!binaryPath) {
     return { path: null, version: null };
   }
   const env = applyProviderEnv(process.env);
   try {
-    const output = execFileSync(quoteWindowsCommand(binaryPath), ["--version"], {
+    const { stdout } = await execFileAsync(binaryPath, ["--version"], {
       encoding: "utf8",
       timeout: 5000,
-      stdio: ["ignore", "pipe", "pipe"],
       env,
-      shell: process.platform === "win32",
-    }).trim();
-    return { path: binaryPath, version: output || null };
+      windowsHide: true,
+    });
+    return { path: binaryPath, version: stdout.trim() || null };
   } catch {
     return { path: binaryPath, version: null };
   }
 }
 
-function checkProviderBinaries(): ProviderBinaryStatus[] {
-  return PROVIDER_BINARIES.map(({ label, binary }) => {
-    const result = checkProviderBinary(binary);
-    return { label, ...result };
-  });
+async function checkProviderBinaries(): Promise<ProviderBinaryStatus[]> {
+  const results = await Promise.all(
+    PROVIDER_BINARIES.map(async ({ label, binary }) => {
+      const result = await checkProviderBinary(binary);
+      return { label, ...result };
+    }),
+  );
+  return results;
 }
 
 function resolveOwnerLabel(uid: number | undefined, hostname: string | undefined): string | null {
@@ -295,7 +299,7 @@ export async function runStatusCommand(
     note = appendNote(note, `serverId unavailable: ${shortenMessage(normalizeError(error))}`);
   }
 
-  const providers = checkProviderBinaries();
+  const providers = await checkProviderBinaries();
 
   const daemonStatus: DaemonStatus = {
     serverId,
