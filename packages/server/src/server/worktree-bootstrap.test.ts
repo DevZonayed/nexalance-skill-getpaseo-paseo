@@ -11,6 +11,7 @@ import {
   spawnWorktreeScripts,
 } from "./worktree-bootstrap.js";
 import { ScriptRouteStore } from "./script-proxy.js";
+import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 
 describe("runAsyncWorktreeBootstrap", () => {
   let tempDir: string;
@@ -507,7 +508,56 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(terminalToolCall?.status).toBe("completed");
   });
 
-  it("spawns scripts without PASEO_SCRIPT_URL when the daemon has no TCP port", async () => {
+  function createStubTerminalManager(
+    createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }>,
+  ) {
+    return {
+      async getTerminals() {
+        return [];
+      },
+      async createTerminal(options: {
+        cwd: string;
+        name?: string;
+        env?: Record<string, string>;
+      }) {
+        createTerminalCalls.push(options);
+        return {
+          id: "term-service",
+          name: options.name ?? "Terminal",
+          cwd: options.cwd,
+          send: () => {},
+          subscribe: () => () => {},
+          onExit: () => () => {},
+          getState: () => ({
+            rows: 1,
+            cols: 1,
+            grid: [[{ char: "$" }]],
+            scrollback: [],
+            cursor: { row: 0, col: 0 },
+          }),
+          kill: () => {},
+          onTitleChange: () => () => {},
+          getSize: () => ({ rows: 1, cols: 1 }),
+          getTitle: () => undefined,
+          getExitInfo: () => null,
+        };
+      },
+      registerCwdEnv() {},
+      getTerminal() {
+        return undefined;
+      },
+      killTerminal() {},
+      listDirectories() {
+        return [];
+      },
+      killAll() {},
+      subscribeTerminalsChanged() {
+        return () => {};
+      },
+    };
+  }
+
+  it("spawns plain scripts without env injection or routes", async () => {
     writeFileSync(
       join(repoDir, "paseo.json"),
       JSON.stringify({
@@ -525,6 +575,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
 
     const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
     const createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }> = [];
 
     const results = await spawnWorktreeScripts({
@@ -533,42 +584,54 @@ describe("runAsyncWorktreeBootstrap", () => {
       branchName: "feature-socket-service",
       daemonPort: null,
       routeStore,
-      terminalManager: {
-        async getTerminals() {
-          return [];
+      runtimeStore,
+      terminalManager: createStubTerminalManager(createTerminalCalls) as any,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(routeStore.listRoutes()).toEqual([]);
+    expect(createTerminalCalls).toHaveLength(1);
+    expect(createTerminalCalls[0]?.cwd).toBe(repoDir);
+    expect(createTerminalCalls[0]?.name).toBe("web");
+    expect(createTerminalCalls[0]?.env).toBeUndefined();
+    expect(runtimeStore.get({ workspaceId: repoDir, scriptName: "web" })).toMatchObject({
+      type: "script",
+      lifecycle: "running",
+      exitCode: null,
+      terminalId: "term-service",
+    });
+  });
+
+  it("spawns services with route registration and injected service env vars", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          web: {
+            type: "service",
+            command: "npm run dev",
+          },
         },
-        async createTerminal(options) {
-          createTerminalCalls.push(options);
-          return {
-            id: "term-service",
-            name: options.name ?? "Terminal",
-            cwd: options.cwd,
-            send: () => {},
-            subscribe: () => () => {},
-            onExit: () => () => {},
-            getState: () => ({
-              rows: 1,
-              cols: 1,
-              grid: [[{ char: "$" }]],
-              scrollback: [],
-              cursor: { row: 0, col: 0 },
-            }),
-            kill: () => {},
-          };
-        },
-        registerCwdEnv() {},
-        getTerminal() {
-          return undefined;
-        },
-        killTerminal() {},
-        listDirectories() {
-          return [];
-        },
-        killAll() {},
-        subscribeTerminalsChanged() {
-          return () => {};
-        },
-      },
+      }),
+    );
+    execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
+    execSync("git -c commit.gpgsign=false commit -m 'add service script config'", {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+
+    const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    const createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }> = [];
+
+    const results = await spawnWorktreeScripts({
+      repoRoot: repoDir,
+      workspaceId: repoDir,
+      branchName: "feature-socket-service",
+      daemonPort: 6767,
+      routeStore,
+      runtimeStore,
+      terminalManager: createStubTerminalManager(createTerminalCalls) as any,
     });
 
     expect(results).toHaveLength(1);
@@ -585,6 +648,13 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.name).toBe("web");
     expect(createTerminalCalls[0]?.env?.PORT).toEqual(expect.any(String));
     expect(createTerminalCalls[0]?.env?.HOST).toBe("127.0.0.1");
-    expect(createTerminalCalls[0]?.env?.PASEO_SCRIPT_URL).toBeUndefined();
+    expect(createTerminalCalls[0]?.env?.PASEO_SCRIPT_URL).toBe(
+      "http://feature-socket-service.web.localhost:6767",
+    );
+    expect(runtimeStore.get({ workspaceId: repoDir, scriptName: "web" })).toMatchObject({
+      type: "service",
+      lifecycle: "running",
+      exitCode: null,
+    });
   });
 });

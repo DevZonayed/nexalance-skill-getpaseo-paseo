@@ -1,15 +1,10 @@
 import type { Logger } from "pino";
-import type { WorkspaceScriptPayload } from "../shared/messages.js";
 import { buildScriptHostname } from "../utils/script-hostname.js";
-import { buildWorkspaceScriptPayloads } from "./script-status-projection.js";
 import type { ScriptRouteEntry, ScriptRouteStore } from "./script-proxy.js";
 
 interface BranchChangeRouteHandlerOptions {
   routeStore: ScriptRouteStore;
-  emitScriptStatusUpdate: (
-    workspaceId: string,
-    scripts: WorkspaceScriptPayload[],
-  ) => void;
+  onRoutesChanged: (workspaceId: string) => void;
   logger?: Logger;
 }
 
@@ -23,6 +18,7 @@ export function createBranchChangeRouteHandler(
   options: BranchChangeRouteHandlerOptions,
 ): (workspaceId: string, oldBranch: string | null, newBranch: string | null) => void {
   return (workspaceId, _oldBranch, newBranch) => {
+    // Only service scripts register routes, so branch renames only touch services.
     const routes = options.routeStore.listRoutesForWorkspace(workspaceId);
     if (routes.length === 0) {
       return;
@@ -62,9 +58,6 @@ export function createBranchChangeRouteHandler(
       );
     }
 
-    options.emitScriptStatusUpdate(
-      workspaceId,
-      buildWorkspaceScriptPayloads(options.routeStore, workspaceId, null),
-    );
+    options.onRoutesChanged(workspaceId);
   };
 }

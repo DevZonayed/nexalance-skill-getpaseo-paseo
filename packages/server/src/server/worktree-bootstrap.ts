@@ -10,6 +10,7 @@ import {
   createWorktree,
   getScriptConfigs,
   getWorktreeTerminalSpecs,
+  isServiceScript,
   listPaseoWorktrees,
   processCarriageReturns,
   resolveWorktreeRuntimeEnv,
@@ -20,6 +21,7 @@ import {
   type WorktreeRuntimeEnv,
 } from "../utils/worktree.js";
 import { findFreePort, type ScriptRouteStore } from "./script-proxy.js";
+import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { AgentTimelineItem, ToolCallDetail } from "./agent/agent-sdk-types.js";
 
 export interface WorktreeBootstrapTerminalResult {
@@ -35,8 +37,6 @@ export interface RunAsyncWorktreeBootstrapOptions {
   worktree: WorktreeConfig;
   shouldBootstrap?: boolean;
   terminalManager: TerminalManager | null;
-  scriptRouteStore?: ScriptRouteStore;
-  daemonPort?: number | null;
   appendTimelineItem: (item: AgentTimelineItem) => Promise<boolean>;
   emitLiveTimelineItem?: (item: AgentTimelineItem) => Promise<boolean>;
   logger?: Logger;
@@ -734,27 +734,6 @@ export async function runAsyncWorktreeBootstrap(
   }
 
   await runWorktreeTerminalBootstrap(options, runtimeEnv);
-
-  if (!options.terminalManager || !options.scriptRouteStore) {
-    return;
-  }
-
-  try {
-    await spawnWorktreeScripts({
-      repoRoot: options.worktree.worktreePath,
-      workspaceId: options.worktree.worktreePath,
-      branchName: options.worktree.branchName,
-      daemonPort: options.daemonPort,
-      routeStore: options.scriptRouteStore,
-      terminalManager: options.terminalManager,
-      logger: options.logger,
-    });
-  } catch (error) {
-    options.logger?.warn(
-      { err: error, agentId: options.agentId, worktreePath: options.worktree.worktreePath },
-      "Failed to spawn worktree scripts",
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -763,8 +742,8 @@ export async function runAsyncWorktreeBootstrap(
 
 export interface WorktreeScriptResult {
   scriptName: string;
-  hostname: string;
-  port: number;
+  hostname: string | null;
+  port: number | null;
   terminalId: string;
 }
 
@@ -775,6 +754,7 @@ type SpawnWorkspaceScriptOptions = {
   scriptName: string;
   daemonPort?: number | null;
   routeStore: ScriptRouteStore;
+  runtimeStore: WorkspaceScriptRuntimeStore;
   terminalManager: TerminalManager;
   logger?: Logger;
   onLifecycleChanged?: () => void;
@@ -790,6 +770,7 @@ export async function spawnWorkspaceScript(
     scriptName,
     daemonPort,
     routeStore,
+    runtimeStore,
     terminalManager,
     logger,
     onLifecycleChanged,
@@ -800,44 +781,74 @@ export async function spawnWorkspaceScript(
     throw new Error(`Script '${scriptName}' is not configured in paseo.json`);
   }
 
-  let hostname: string | null = null;
+  const serviceScript = isServiceScript(config);
+  const hostname = serviceScript ? buildScriptHostname(branchName, scriptName) : null;
   let port: number | null = null;
+  let terminal: TerminalSession | null = null;
+  let runtimeRegistered = false;
 
   try {
-    hostname = buildScriptHostname(branchName, scriptName);
-    const resolvedHostname = hostname;
-    if (routeStore.getRouteEntry(resolvedHostname)) {
+    if (runtimeStore.isRunning({ workspaceId, scriptName })) {
       throw new Error(`Script '${scriptName}' is already running`);
     }
 
-    port = config.port ?? (await findFreePort());
-
-    routeStore.registerRoute({
-      hostname: resolvedHostname,
-      port,
-      workspaceId,
-      scriptName,
-    });
-
-    const env: Record<string, string> = {
-      PORT: String(port),
-      HOST: "127.0.0.1",
-    };
-    if (daemonPort !== null && daemonPort !== undefined) {
-      env.PASEO_SCRIPT_URL = `http://${resolvedHostname}:${daemonPort}`;
+    if (serviceScript) {
+      port = config.port ?? (await findFreePort());
+      routeStore.registerRoute({
+        hostname: hostname!,
+        port,
+        workspaceId,
+        scriptName,
+      });
     }
 
-    const terminal = await terminalManager.createTerminal({
+    const env = serviceScript
+      ? {
+          PORT: String(port),
+          HOST: "127.0.0.1",
+          ...(daemonPort !== null && daemonPort !== undefined
+            ? {
+                PASEO_SCRIPT_URL: `http://${hostname!}:${daemonPort}`,
+              }
+            : {}),
+        }
+      : undefined;
+
+    terminal = await terminalManager.createTerminal({
       cwd: repoRoot,
       name: scriptName,
       env,
     });
+    runtimeStore.set({
+      workspaceId,
+      scriptName,
+      type: serviceScript ? "service" : "script",
+      lifecycle: "running",
+      terminalId: terminal.id,
+      exitCode: null,
+    });
+    runtimeRegistered = true;
 
-    terminal.onExit(() => {
-      routeStore.removeRoute(resolvedHostname);
+    terminal.onExit((info) => {
+      if (hostname) {
+        routeStore.removeRoute(hostname);
+      }
+      runtimeStore.set({
+        workspaceId,
+        scriptName,
+        type: serviceScript ? "service" : "script",
+        lifecycle: "stopped",
+        terminalId: terminal!.id,
+        exitCode: info.exitCode,
+      });
       onLifecycleChanged?.();
       logger?.info(
-        { scriptName, hostname: resolvedHostname, terminalId: terminal.id },
+        {
+          scriptName,
+          hostname,
+          exitCode: info.exitCode,
+          terminalId: terminal!.id,
+        },
         "Stopped worktree script",
       );
     });
@@ -846,20 +857,25 @@ export async function spawnWorkspaceScript(
     terminal.send({ type: "input", data: `${config.command}\r` });
 
     logger?.info(
-      { scriptName, hostname: resolvedHostname, port, terminalId: terminal.id },
-      `Registered script proxy: ${resolvedHostname} -> 127.0.0.1:${port}`,
+      { scriptName, hostname, port, terminalId: terminal.id, type: serviceScript ? "service" : "script" },
+      serviceScript
+        ? `Registered script proxy: ${hostname} -> 127.0.0.1:${port}`
+        : "Started workspace script",
     );
 
     onLifecycleChanged?.();
     return {
       scriptName,
-      hostname: resolvedHostname,
+      hostname,
       port,
       terminalId: terminal.id,
     };
   } catch (error) {
     if (hostname && port !== null) {
       routeStore.removeRoute(hostname);
+    }
+    if (runtimeRegistered) {
+      runtimeStore.remove({ workspaceId, scriptName });
     }
     logger?.error(
       {
@@ -883,6 +899,7 @@ export async function spawnWorktreeScripts(options: {
   branchName: string | null;
   daemonPort?: number | null;
   routeStore: ScriptRouteStore;
+  runtimeStore: WorkspaceScriptRuntimeStore;
   terminalManager: TerminalManager;
   logger?: Logger;
   onLifecycleChanged?: () => void;

@@ -104,7 +104,24 @@ export function WorkspaceScriptsButton({
             <View style={styles.scriptList}>
               {scripts.map((script) => {
                 const isRunning = script.lifecycle === "running";
-                const isLinkable = isRunning && !!script.url;
+                const isService = (script.type ?? "service") === "service";
+                const isLinkable = isService && isRunning && !!script.url;
+                const exitCode = script.exitCode ?? null;
+
+                let dotColor: string;
+                if (isService) {
+                  dotColor = isRunning
+                    ? getScriptHealthColor(script.health, theme)
+                    : theme.colors.foregroundMuted;
+                } else if (isRunning) {
+                  dotColor = theme.colors.palette.green[500];
+                } else if (exitCode === 0) {
+                  dotColor = theme.colors.palette.green[500];
+                } else if (exitCode !== null) {
+                  dotColor = theme.colors.palette.red[500];
+                } else {
+                  dotColor = theme.colors.foregroundMuted;
+                }
 
                 return (
                   <Pressable
@@ -124,11 +141,7 @@ export function WorkspaceScriptsButton({
                         <View
                           style={[
                             styles.statusDot,
-                            {
-                              backgroundColor: isRunning
-                                ? getScriptHealthColor(script.health, theme)
-                                : theme.colors.foregroundMuted,
-                            },
+                            { backgroundColor: dotColor },
                           ]}
                         />
                         <Text
@@ -144,15 +157,19 @@ export function WorkspaceScriptsButton({
                         >
                           {script.scriptName}
                         </Text>
-                        {isRunning && script.url ? (
+                        {isService && isRunning && script.url ? (
                           <Text style={styles.scriptUrl} numberOfLines={1}>
                             {script.url.replace(/^https?:\/\//, "")}
+                          </Text>
+                        ) : !isService && !isRunning && exitCode !== null && exitCode !== 0 ? (
+                          <Text style={styles.scriptUrl} numberOfLines={1}>
+                            exit {exitCode}
                           </Text>
                         ) : (
                           <View style={styles.spacer} />
                         )}
                         {isRunning ? (
-                          script.url && hovered ? (
+                          isLinkable && hovered ? (
                             <View
                               style={[
                                 styles.externalLinkOverlay,

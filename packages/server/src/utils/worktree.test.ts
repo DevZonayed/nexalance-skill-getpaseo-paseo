@@ -3,7 +3,9 @@ import {
   createWorktree,
   deriveWorktreeProjectHash,
   deletePaseoWorktree,
+  getScriptConfigs,
   getWorktreeTerminalSpecs,
+  isServiceScript,
   isPaseoOwnedWorktreeCwd,
   listPaseoWorktrees,
   resolveWorktreeRuntimeEnv,
@@ -482,6 +484,91 @@ describe("createWorktree", () => {
       { name: "Watch", command: "npm run watch" },
       { command: "npm run test" },
     ]);
+  });
+
+  it("parses omitted script type as a plain script", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          typecheck: {
+            command: " npm run typecheck ",
+          },
+        },
+      }),
+    );
+
+    const scriptConfigs = getScriptConfigs(repoDir);
+    const typecheck = scriptConfigs.get("typecheck");
+
+    expect(typecheck).toEqual({
+      command: "npm run typecheck",
+    });
+    expect(typecheck).toBeDefined();
+    expect(isServiceScript(typecheck!)).toBe(false);
+  });
+
+  it("parses service scripts and preserves optional port", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          server: {
+            type: "service",
+            command: "npm run dev",
+            port: 4321,
+          },
+        },
+      }),
+    );
+
+    const scriptConfigs = getScriptConfigs(repoDir);
+    const server = scriptConfigs.get("server");
+
+    expect(server).toEqual({
+      type: "service",
+      command: "npm run dev",
+      port: 4321,
+    });
+    expect(server).toBeDefined();
+    expect(isServiceScript(server!)).toBe(true);
+  });
+
+  it("ignores invalid script entries gracefully", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          valid: {
+            command: "npm run valid",
+          },
+          invalidType: {
+            type: "worker",
+            command: "npm run worker",
+          },
+          missingCommand: {
+            type: "service",
+          },
+          blankCommand: {
+            command: "   ",
+          },
+          nonObject: "npm run nope",
+          invalidPort: {
+            type: "service",
+            command: "npm run dev",
+            port: "3000",
+          },
+        },
+      }),
+    );
+
+    expect(getScriptConfigs(repoDir)).toEqual(
+      new Map([
+        ["valid", { command: "npm run valid" }],
+        ["invalidType", { command: "npm run worker" }],
+        ["invalidPort", { type: "service", command: "npm run dev" }],
+      ]),
+    );
   });
 });
 

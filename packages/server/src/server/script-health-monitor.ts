@@ -1,15 +1,18 @@
 import net from "node:net";
 import type { ScriptRouteEntry, ScriptRouteStore } from "./script-proxy.js";
 
+export type ScriptHealthState = "pending" | "healthy" | "unhealthy";
+
 export interface ScriptHealthEntry {
   scriptName: string;
   hostname: string;
   port: number;
-  health: "healthy" | "unhealthy";
+  health: ScriptHealthState;
 }
 
 type RouteHealthState = {
-  health: ScriptHealthEntry["health"] | null;
+  workspaceId: string;
+  health: ScriptHealthState;
   consecutiveFailures: number;
   registeredAt: number;
 };
@@ -60,7 +63,7 @@ export class ScriptHealthMonitor {
 
     const now = Date.now();
     for (const route of this.routeStore.listRoutes()) {
-      this.getOrCreateState(route.hostname, now);
+      this.getOrCreateState(route, now);
     }
 
     this.intervalHandle = setInterval(() => {
@@ -73,6 +76,17 @@ export class ScriptHealthMonitor {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
     }
+  }
+
+  invalidateWorkspace(workspaceId: string): void {
+    const scripts = this.buildWorkspaceScriptList(workspaceId);
+    const snapshot = JSON.stringify(scripts);
+    if (snapshot === this.lastEmittedSnapshots.get(workspaceId)) {
+      return;
+    }
+
+    this.lastEmittedSnapshots.set(workspaceId, snapshot);
+    this.onChange(workspaceId, scripts);
   }
 
   private async poll(): Promise<void> {
@@ -88,7 +102,7 @@ export class ScriptHealthMonitor {
       const now = Date.now();
 
       for (const route of routes) {
-        const state = this.getOrCreateState(route.hostname, now);
+        const state = this.getOrCreateState(route, now);
         if (now - state.registeredAt < this.graceMs) {
           continue;
         }
@@ -106,7 +120,7 @@ export class ScriptHealthMonitor {
           }
         }
 
-        if (state.health !== null && state.health !== previousHealth) {
+        if (state.health !== previousHealth) {
           changedWorkspaceIds.add(route.workspaceId);
         }
       }
@@ -128,27 +142,32 @@ export class ScriptHealthMonitor {
     }
   }
 
-  private getOrCreateState(hostname: string, registeredAt: number): RouteHealthState {
-    const existing = this.routeStates.get(hostname);
+  private getOrCreateState(
+    route: Pick<ScriptRouteEntry, "hostname" | "workspaceId">,
+    registeredAt: number,
+  ): RouteHealthState {
+    const existing = this.routeStates.get(route.hostname);
     if (existing) {
       return existing;
     }
 
     const state: RouteHealthState = {
-      health: null,
+      workspaceId: route.workspaceId,
+      health: "pending",
       consecutiveFailures: 0,
       registeredAt,
     };
-    this.routeStates.set(hostname, state);
+    this.routeStates.set(route.hostname, state);
     return state;
   }
 
   private pruneRemovedRoutes(activeHostnames: Set<string>): void {
-    for (const hostname of this.routeStates.keys()) {
+    for (const [hostname, state] of this.routeStates.entries()) {
       if (activeHostnames.has(hostname)) {
         continue;
       }
       this.routeStates.delete(hostname);
+      this.lastEmittedSnapshots.delete(state.workspaceId);
     }
   }
 
@@ -157,15 +176,25 @@ export class ScriptHealthMonitor {
       .listRoutesForWorkspace(workspaceId)
       .flatMap((route) => {
         const state = this.routeStates.get(route.hostname);
-        if (!state?.health) {
+        if (!state) {
           return [];
         }
         return [this.toScriptHealthEntry(route, state.health)];
       });
   }
 
-  getHealthForHostname(hostname: string): ScriptHealthEntry["health"] | null {
-    return this.routeStates.get(hostname)?.health ?? null;
+  getHealthForHostname(hostname: string): ScriptHealthState | null {
+    const state = this.routeStates.get(hostname);
+    if (state) {
+      return state.health;
+    }
+
+    const route = this.routeStore.getRouteEntry(hostname);
+    if (!route) {
+      return null;
+    }
+
+    return this.getOrCreateState(route, Date.now()).health;
   }
 
   private toScriptHealthEntry(

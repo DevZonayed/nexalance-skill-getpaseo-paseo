@@ -1820,11 +1820,13 @@ export const WorkspaceScriptHealthSchema = z.enum(["healthy", "unhealthy"]);
 
 export const WorkspaceScriptPayloadSchema = z.object({
   scriptName: z.string(),
+  type: z.enum(["script", "service"]).optional().default("service"),
   hostname: z.string(),
   port: z.number().int().positive().nullable(),
   url: z.string().nullable(),
   lifecycle: WorkspaceScriptLifecycleSchema,
   health: WorkspaceScriptHealthSchema.nullable(),
+  exitCode: z.number().nullable().optional().default(null),
 });
 
 export const WorkspaceDescriptorPayloadSchema = z.object({

@@ -125,6 +125,7 @@ import {
 } from "./script-proxy.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
+import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import {
   createVoiceMcpSocketBridgeManager,
   type VoiceMcpSocketBridgeManager,
@@ -209,6 +210,7 @@ export interface PaseoDaemon {
   agentStorage: AgentSnapshotStore;
   terminalManager: TerminalManager;
   scriptRouteStore: ScriptRouteStore;
+  scriptRuntimeStore: WorkspaceScriptRuntimeStore;
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
@@ -240,6 +242,7 @@ export async function createPaseoDaemon(
     let boundListenTarget: ListenTarget | null = null;
 
     const scriptRouteStore = new ScriptRouteStore();
+    const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
     let wsServer: VoiceAssistantWebSocketServer | null = null;
     const scriptHealthMonitor = new ScriptHealthMonitor({
       routeStore: scriptRouteStore,
@@ -249,20 +252,14 @@ export async function createPaseoDaemon(
             emit: (message) => session.emitServerMessage(message),
           })) ?? [],
         routeStore: scriptRouteStore,
+        runtimeStore: scriptRuntimeStore,
         daemonPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
       }),
     });
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore: scriptRouteStore,
-      emitScriptStatusUpdate: (workspaceId, scripts) => {
-        const message = {
-          type: "script_status_update" as const,
-          payload: { workspaceId, scripts },
-        };
-        const activeSessions = wsServer?.listActiveSessions() ?? [];
-        for (const session of activeSessions) {
-          session.emitServerMessage(message);
-        }
+      onRoutesChanged: (workspaceId) => {
+        scriptHealthMonitor.invalidateWorkspace(workspaceId);
       },
       logger,
     });
@@ -492,7 +489,6 @@ export async function createPaseoDaemon(
         agentManager,
         agentStorage,
         terminalManager,
-        scriptRouteStore,
         getDaemonTcpPort: () =>
           boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
         paseoHome: config.paseoHome,
@@ -521,7 +517,6 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
-          scriptRouteStore,
           getDaemonTcpPort: () =>
             boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
@@ -644,7 +639,6 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
-          scriptRouteStore,
           getDaemonTcpPort: () =>
             boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
@@ -711,6 +705,7 @@ export async function createPaseoDaemon(
       scheduleService,
       checkoutDiffManager,
       scriptRouteStore,
+      scriptRuntimeStore,
       handleBranchChange,
       () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
       (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
@@ -841,6 +836,7 @@ export async function createPaseoDaemon(
       agentStorage,
       terminalManager,
       scriptRouteStore,
+      scriptRuntimeStore,
       start,
       stop,
       getListenTarget: () => boundListenTarget,

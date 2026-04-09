@@ -1,6 +1,36 @@
+import { execSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ScriptRouteStore } from "./script-proxy.js";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
+
+function createWorkspaceRepo(options?: {
+  branchName?: string;
+  paseoConfig?: Record<string, unknown>;
+}): { tempDir: string; repoDir: string; cleanup: () => void } {
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "script-branch-handler-")));
+  const repoDir = path.join(tempDir, "repo");
+  execSync(`mkdir -p ${JSON.stringify(repoDir)}`);
+  execSync(`git init -b ${options?.branchName ?? "main"}`, { cwd: repoDir, stdio: "pipe" });
+  execSync("git config user.email 'test@test.com'", { cwd: repoDir, stdio: "pipe" });
+  execSync("git config user.name 'Test'", { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "README.md"), "hello\n");
+  if (options?.paseoConfig) {
+    writeFileSync(path.join(repoDir, "paseo.json"), JSON.stringify(options.paseoConfig, null, 2));
+  }
+  execSync("git add .", { cwd: repoDir, stdio: "pipe" });
+  execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoDir, stdio: "pipe" });
+
+  return {
+    tempDir,
+    repoDir,
+    cleanup: () => {
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
 
 function registerRoute(
   routeStore: ScriptRouteStore,
@@ -33,10 +63,10 @@ describe("script-route-branch-handler", () => {
       scriptName: "api",
     });
 
-    const emitScriptStatusUpdate = vi.fn();
+    const onRoutesChanged = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitScriptStatusUpdate,
+      onRoutesChanged,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
@@ -50,16 +80,16 @@ describe("script-route-branch-handler", () => {
 
   it("is a no-op when the workspace has no routes", () => {
     const routeStore = new ScriptRouteStore();
-    const emitScriptStatusUpdate = vi.fn();
+    const onRoutesChanged = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitScriptStatusUpdate,
+      onRoutesChanged,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
 
     expect(routeStore.listRoutes()).toEqual([]);
-    expect(emitScriptStatusUpdate).not.toHaveBeenCalled();
+    expect(onRoutesChanged).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the resolved hostnames do not change", () => {
@@ -70,10 +100,10 @@ describe("script-route-branch-handler", () => {
       scriptName: "api",
     });
 
-    const emitScriptStatusUpdate = vi.fn();
+    const onRoutesChanged = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitScriptStatusUpdate,
+      onRoutesChanged,
     });
 
     handleBranchChange("workspace-a", "main", "master");
@@ -86,10 +116,10 @@ describe("script-route-branch-handler", () => {
         scriptName: "api",
       },
     ]);
-    expect(emitScriptStatusUpdate).not.toHaveBeenCalled();
+    expect(onRoutesChanged).not.toHaveBeenCalled();
   });
 
-  it("emits a status update with the refreshed route payload after a route change", () => {
+  it("triggers shared reprojection after a route change", () => {
     const routeStore = new ScriptRouteStore();
     registerRoute(routeStore, {
       hostname: "feature-auth.api.localhost",
@@ -97,24 +127,15 @@ describe("script-route-branch-handler", () => {
       scriptName: "api",
     });
 
-    const emitScriptStatusUpdate = vi.fn();
+    const onRoutesChanged = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitScriptStatusUpdate,
+      onRoutesChanged,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
 
-    expect(emitScriptStatusUpdate).toHaveBeenCalledWith("workspace-a", [
-      {
-        scriptName: "api",
-        hostname: "feature-billing.api.localhost",
-        port: 3001,
-        url: null,
-        lifecycle: "running",
-        health: null,
-      },
-    ]);
+    expect(onRoutesChanged).toHaveBeenCalledWith("workspace-a");
   });
 
   it("updates all services for a workspace when multiple routes are registered", () => {
@@ -136,10 +157,10 @@ describe("script-route-branch-handler", () => {
       scriptName: "docs",
     });
 
-    const emitScriptStatusUpdate = vi.fn();
+    const onRoutesChanged = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitScriptStatusUpdate,
+      onRoutesChanged,
     });
 
     handleBranchChange("workspace-a", "feature/auth", "feature/billing");
@@ -176,14 +197,55 @@ describe("script-route-branch-handler", () => {
       scriptName: "web",
     });
 
-    const emitScriptStatusUpdate = vi.fn();
+    const onRoutesChanged = vi.fn();
     const handleBranchChange = createBranchChangeRouteHandler({
       routeStore,
-      emitScriptStatusUpdate,
+      onRoutesChanged,
     });
 
     handleBranchChange("workspace-a", null, "main");
 
-    expect(emitScriptStatusUpdate).not.toHaveBeenCalled();
+    expect(onRoutesChanged).not.toHaveBeenCalled();
+  });
+
+  it("renames only service routes and leaves plain scripts unaffected", () => {
+    const workspace = createWorkspaceRepo({
+      branchName: "feature/auth",
+      paseoConfig: {
+        scripts: {
+          api: { type: "service", command: "npm run api" },
+          typecheck: { command: "npm run typecheck" },
+        },
+      },
+    });
+    const routeStore = new ScriptRouteStore();
+    registerRoute(routeStore, {
+      hostname: "feature-auth.api.localhost",
+      port: 3001,
+      workspaceId: workspace.repoDir,
+      scriptName: "api",
+    });
+
+    const onRoutesChanged = vi.fn();
+    const handleBranchChange = createBranchChangeRouteHandler({
+      routeStore,
+      onRoutesChanged,
+    });
+
+    try {
+      handleBranchChange(workspace.repoDir, "feature/auth", "feature/billing");
+
+      expect(routeStore.listRoutesForWorkspace(workspace.repoDir)).toEqual([
+        {
+          hostname: "feature-billing.api.localhost",
+          port: 3001,
+          workspaceId: workspace.repoDir,
+          scriptName: "api",
+        },
+      ]);
+      expect(onRoutesChanged).toHaveBeenCalledWith(workspace.repoDir);
+    } finally {
+      workspace.cleanup();
+    }
   });
 });

@@ -155,11 +155,13 @@ describe("workspace message schemas", () => {
     expect(parsed.payload.workspace.scripts).toEqual([
       {
         scriptName: "web",
+        type: "service",
         hostname: "web.localhost",
         port: 3000,
         url: "http://web.localhost:6767",
         lifecycle: "running",
         health: "healthy",
+        exitCode: null,
       },
     ]);
   });
@@ -213,6 +215,10 @@ describe("workspace message schemas", () => {
 
     expect(parsed.type).toBe("script_status_update");
     expect(parsed.payload.workspaceId).toBe("/repo");
+    expect(parsed.payload.scripts[0]).toMatchObject({
+      type: "service",
+      exitCode: null,
+    });
   });
 
   test("parses workspace_setup_progress payload", () => {

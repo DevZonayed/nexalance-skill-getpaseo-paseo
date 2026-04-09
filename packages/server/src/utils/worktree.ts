@@ -24,7 +24,14 @@ interface PaseoConfig {
     teardown?: string[];
     terminals?: WorktreeTerminalConfig[];
   };
-  scripts?: Record<string, ScriptConfig>;
+  scripts?: Record<
+    string,
+    {
+      type?: unknown;
+      command?: unknown;
+      port?: unknown;
+    }
+  >;
 }
 
 const execAsync = promisify(exec);
@@ -90,9 +97,22 @@ export interface WorktreeTerminalConfig {
   command: string;
 }
 
-export interface ScriptConfig {
+export interface PlainScriptConfig {
+  type?: undefined;
+  command: string;
+  port?: undefined;
+}
+
+export interface ServiceScriptConfig {
+  type: "service";
   command: string;
   port?: number; // explicit port override, otherwise auto-assigned
+}
+
+export type ScriptConfig = PlainScriptConfig | ServiceScriptConfig;
+
+export function isServiceScript(config: ScriptConfig): config is ServiceScriptConfig {
+  return "type" in config && config.type === "service";
 }
 
 export class WorktreeSetupError extends Error {
@@ -227,9 +247,15 @@ export function getScriptConfigs(repoRoot: string): Map<string, ScriptConfig> {
       continue;
     }
 
-    const scriptConfig: ScriptConfig = { command };
+    const scriptConfig: ScriptConfig =
+      entry.type === "service"
+        ? {
+            type: "service",
+            command,
+          }
+        : { command };
 
-    if (typeof entry.port === "number" && Number.isFinite(entry.port)) {
+    if (isServiceScript(scriptConfig) && typeof entry.port === "number" && Number.isFinite(entry.port)) {
       scriptConfig.port = entry.port;
     }
 

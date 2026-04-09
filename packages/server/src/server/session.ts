@@ -68,9 +68,11 @@ import { experimental_createMCPClient } from "ai";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import { buildWorkspaceScriptPayloads } from "./script-status-projection.js";
+import type { ScriptHealthState } from "./script-health-monitor.js";
 import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import { readGitCommand } from "./workspace-git-metadata.js";
 import { BackgroundGitFetchManager } from "./background-git-fetch-manager.js";
+import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
 import { buildProviderRegistry } from "./agent/provider-registry.js";
@@ -430,13 +432,14 @@ export type SessionOptions = {
   terminalManager: TerminalManager | null;
   providerSnapshotManager?: ProviderSnapshotManager;
   scriptRouteStore?: ScriptRouteStore;
+  scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
     newBranch: string | null,
   ) => void;
   getDaemonTcpPort?: () => number | null;
-  resolveScriptHealth?: (hostname: string) => "healthy" | "unhealthy" | null;
+  resolveScriptHealth?: (hostname: string) => ScriptHealthState | null;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
@@ -614,6 +617,7 @@ export class Session {
   private readonly providerSnapshotManager: ProviderSnapshotManager | null;
   private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
   private readonly scriptRouteStore: ScriptRouteStore | null;
+  private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
@@ -621,7 +625,7 @@ export class Session {
   ) => void;
   private readonly getDaemonTcpPort: (() => number | null) | null;
   private readonly resolveScriptHealth:
-    | ((hostname: string) => "healthy" | "unhealthy" | null)
+    | ((hostname: string) => ScriptHealthState | null)
     | null;
   private readonly subscribedTerminalDirectories = new Set<string>();
   private unsubscribeTerminalsChanged: (() => void) | null = null;
@@ -681,6 +685,7 @@ export class Session {
       terminalManager,
       providerSnapshotManager,
       scriptRouteStore,
+      scriptRuntimeStore,
       onBranchChanged,
       getDaemonTcpPort,
       resolveScriptHealth,
@@ -725,6 +730,7 @@ export class Session {
     this.terminalManager = terminalManager;
     this.providerSnapshotManager = providerSnapshotManager ?? null;
     this.scriptRouteStore = scriptRouteStore ?? null;
+    this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.onBranchChanged = onBranchChanged;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.resolveScriptHealth = resolveScriptHealth ?? null;
@@ -2930,8 +2936,6 @@ export class Session {
               agentId: snapshot.id,
               item,
             }),
-          scriptRouteStore: this.scriptRouteStore ?? undefined,
-          daemonPort: this.getDaemonTcpPort?.() ?? null,
           logger: this.sessionLogger,
         });
       }
@@ -5363,13 +5367,14 @@ export class Session {
       status: "done",
       activityAt: null,
       diffStat,
-      scripts: this.scriptRouteStore
-        ? buildWorkspaceScriptPayloads(
-            this.scriptRouteStore,
-            workspace.directory,
-            this.getDaemonTcpPort?.() ?? null,
-            this.resolveScriptHealth ?? undefined,
-          )
+      scripts: this.scriptRouteStore && this.scriptRuntimeStore
+        ? buildWorkspaceScriptPayloads({
+            workspaceDirectory: workspace.directory,
+            routeStore: this.scriptRouteStore,
+            runtimeStore: this.scriptRuntimeStore,
+            daemonPort: this.getDaemonTcpPort?.() ?? null,
+            resolveHealth: this.resolveScriptHealth ?? undefined,
+          })
         : [],
     };
   }
@@ -5901,6 +5906,7 @@ export class Session {
     const nextArchivedAt = archivedAt ?? new Date().toISOString();
     await this.workspaceRegistry.archive(workspaceId, nextArchivedAt);
     await this.removeWorkspaceGitWatchTarget(existingWorkspace.directory);
+    this.scriptRuntimeStore?.removeForWorkspace(existingWorkspace.directory);
 
     const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
       (workspace) => workspace.projectId === existingWorkspace.projectId && !workspace.archivedAt,
@@ -6195,15 +6201,16 @@ export class Session {
   private buildWorkspaceScriptPayloadSnapshot(
     workspaceDirectory: string,
   ): WorkspaceDescriptorPayload["scripts"] {
-    if (!this.scriptRouteStore) {
+    if (!this.scriptRouteStore || !this.scriptRuntimeStore) {
       return [];
     }
-    return buildWorkspaceScriptPayloads(
-      this.scriptRouteStore,
+    return buildWorkspaceScriptPayloads({
       workspaceDirectory,
-      this.getDaemonTcpPort?.() ?? null,
-      this.resolveScriptHealth ?? undefined,
-    );
+      routeStore: this.scriptRouteStore,
+      runtimeStore: this.scriptRuntimeStore,
+      daemonPort: this.getDaemonTcpPort?.() ?? null,
+      resolveHealth: this.resolveScriptHealth ?? undefined,
+    });
   }
 
   private emitWorkspaceScriptStatusUpdate(workspaceDirectory: string): void {
@@ -6228,7 +6235,7 @@ export class Session {
     request: StartWorkspaceScriptRequest,
   ): Promise<void> {
     try {
-      if (!this.terminalManager || !this.scriptRouteStore) {
+      if (!this.terminalManager || !this.scriptRouteStore || !this.scriptRuntimeStore) {
         throw new Error("Workspace scripts are not available on this daemon");
       }
 
@@ -6244,6 +6251,7 @@ export class Session {
         scriptName: request.scriptName,
         daemonPort: this.getDaemonTcpPort?.() ?? null,
         routeStore: this.scriptRouteStore,
+        runtimeStore: this.scriptRuntimeStore,
         terminalManager: this.terminalManager,
         logger: this.sessionLogger,
         onLifecycleChanged: () => {
@@ -6384,8 +6392,6 @@ export class Session {
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
         archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
-        scriptRouteStore: this.scriptRouteStore,
-        daemonPort: this.getDaemonTcpPort?.() ?? null,
       },
       options,
     );

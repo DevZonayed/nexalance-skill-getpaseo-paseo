@@ -355,12 +355,43 @@ function WorkspaceHoverCardContent({
               <View style={styles.sectionList} testID="hover-card-script-list">
                 {workspace.scripts.map((script) => {
                   const isRunning = script.lifecycle === "running";
-                  const isLinkable = isRunning && !!script.url;
+                  const isService = (script.type ?? "service") === "service";
+                  const isLinkable = isService && isRunning && !!script.url;
+                  const exitCode = script.exitCode ?? null;
+
+                  let dotColor: string;
+                  if (isService) {
+                    dotColor = isRunning
+                      ? getScriptHealthColor({ health: script.health, theme })
+                      : theme.colors.foregroundMuted;
+                  } else if (isRunning) {
+                    dotColor = theme.colors.palette.green[500];
+                  } else if (exitCode === 0) {
+                    dotColor = theme.colors.palette.green[500];
+                  } else if (exitCode !== null) {
+                    dotColor = theme.colors.palette.red[500];
+                  } else {
+                    dotColor = theme.colors.foregroundMuted;
+                  }
+
+                  let accessibilityStatus: string;
+                  if (isService) {
+                    accessibilityStatus = isRunning ? getScriptHealthLabel(script.health) : "Stopped";
+                  } else if (isRunning) {
+                    accessibilityStatus = "Running";
+                  } else if (exitCode === 0) {
+                    accessibilityStatus = "Completed";
+                  } else if (exitCode !== null) {
+                    accessibilityStatus = `Failed (exit ${exitCode})`;
+                  } else {
+                    accessibilityStatus = "Stopped";
+                  }
+
                   return (
                     <Pressable
                       key={script.hostname}
                       accessibilityRole={isLinkable ? "link" : undefined}
-                      accessibilityLabel={`${script.scriptName} script — ${isRunning ? getScriptHealthLabel(script.health) : "Stopped"}`}
+                      accessibilityLabel={`${script.scriptName} script — ${accessibilityStatus}`}
                       testID={`hover-card-script-${script.scriptName}`}
                       style={({ hovered }) => [
                         styles.listRow,
@@ -375,11 +406,7 @@ function WorkspaceHoverCardContent({
                             testID={`hover-card-script-health-${script.scriptName}`}
                             style={[
                               styles.statusDot,
-                              {
-                                backgroundColor: isRunning
-                                  ? getScriptHealthColor({ health: script.health, theme })
-                                  : theme.colors.foregroundMuted,
-                              },
+                              { backgroundColor: dotColor },
                             ]}
                           />
                           <Text
@@ -395,15 +422,19 @@ function WorkspaceHoverCardContent({
                           >
                             {script.scriptName}
                           </Text>
-                          {isRunning && script.url ? (
+                          {isService && isRunning && script.url ? (
                             <Text style={styles.listRowSecondary} numberOfLines={1}>
                               {script.url.replace(/^https?:\/\//, "")}
+                            </Text>
+                          ) : !isService && !isRunning && exitCode !== null && exitCode !== 0 ? (
+                            <Text style={styles.listRowSecondary} numberOfLines={1}>
+                              exit {exitCode}
                             </Text>
                           ) : (
                             <View style={styles.listRowSpacer} />
                           )}
                           {isRunning ? (
-                            script.url && hovered ? (
+                            isLinkable && hovered ? (
                               <View
                                 style={[
                                   styles.externalLinkOverlay,

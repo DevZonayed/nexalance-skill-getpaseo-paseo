@@ -47,20 +47,24 @@ function workspace(
 
 const runningScript: WorkspaceScriptPayload = {
   scriptName: "web",
+  type: "service",
   hostname: "main.web.localhost",
   port: 3000,
   url: "http://main.web.localhost:6767",
   lifecycle: "running",
   health: "healthy",
+  exitCode: null,
 };
 
 const stoppedScript: WorkspaceScriptPayload = {
   scriptName: "api",
+  type: "service",
   hostname: "main.api.localhost",
   port: 3001,
   url: "http://main.api.localhost:6767",
   lifecycle: "stopped",
   health: null,
+  exitCode: null,
 };
 
 describe("applyStoredOrdering", () => {

@@ -38,11 +38,13 @@ describe("normalizeWorkspaceDescriptor", () => {
     const scripts = [
       {
         scriptName: "web",
+        type: "service" as const,
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
         lifecycle: "running" as const,
         health: "healthy" as const,
+        exitCode: null,
       },
     ];
     const workspace = normalizeWorkspaceDescriptor({
@@ -64,11 +66,13 @@ describe("normalizeWorkspaceDescriptor", () => {
     expect(workspace.scripts).toEqual([
       {
         scriptName: "web",
+        type: "service",
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
         lifecycle: "running",
         health: "healthy",
+        exitCode: null,
       },
     ]);
     expect(workspace.scripts).not.toBe(scripts);
@@ -111,11 +115,13 @@ describe("mergeWorkspaces", () => {
         scripts: [
           {
             scriptName: "web",
+            type: "service",
             hostname: "main.web.localhost",
             port: 3000,
             url: "http://main.web.localhost:6767",
             lifecycle: "running",
             health: "healthy",
+            exitCode: null,
           },
         ],
       }),
@@ -124,11 +130,13 @@ describe("mergeWorkspaces", () => {
     expect(store.getSession("test-server")?.workspaces.get("/repo/main")?.scripts).toEqual([
       {
         scriptName: "web",
+        type: "service",
         hostname: "main.web.localhost",
         port: 3000,
         url: "http://main.web.localhost:6767",
         lifecycle: "running",
         health: "healthy",
+        exitCode: null,
       },
     ]);
   });

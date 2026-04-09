@@ -36,7 +36,9 @@ import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { buildProviderRegistry } from "./agent/provider-registry.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
+import type { ScriptHealthState } from "./script-health-monitor.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
+import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import {
@@ -249,9 +251,10 @@ export class VoiceAssistantWebSocketServer {
   private readonly speech: SpeechService | null;
   private readonly terminalManager: TerminalManager | null;
   private readonly scriptRouteStore: ScriptRouteStore | null;
+  private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
   private readonly resolveScriptHealth:
-    | ((hostname: string) => "healthy" | "unhealthy" | null)
+    | ((hostname: string) => ScriptHealthState | null)
     | null;
   private readonly dictation: {
     finalTimeoutMs?: number;
@@ -324,13 +327,14 @@ export class VoiceAssistantWebSocketServer {
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
     scriptRouteStore?: ScriptRouteStore | null,
+    scriptRuntimeStore?: WorkspaceScriptRuntimeStore | null,
     onBranchChanged?: (
       workspaceId: string,
       oldBranch: string | null,
       newBranch: string | null,
     ) => void,
     getDaemonTcpPort?: () => number | null,
-    resolveScriptHealth?: (hostname: string) => "healthy" | "unhealthy" | null,
+    resolveScriptHealth?: (hostname: string) => ScriptHealthState | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -378,6 +382,7 @@ export class VoiceAssistantWebSocketServer {
     );
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.scriptRouteStore = scriptRouteStore ?? null;
+    this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.onBranchChanged = onBranchChanged ?? null;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     this.resolveScriptHealth = resolveScriptHealth ?? null;
@@ -700,6 +705,7 @@ export class VoiceAssistantWebSocketServer {
       terminalManager: this.terminalManager,
       providerSnapshotManager: this.providerSnapshotManager,
       scriptRouteStore: this.scriptRouteStore ?? undefined,
+      scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
       resolveScriptHealth: this.resolveScriptHealth ?? undefined,

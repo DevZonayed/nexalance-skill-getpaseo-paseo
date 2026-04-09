@@ -8,6 +8,8 @@ import {
   buildWorkspaceScriptPayloads,
   createScriptStatusEmitter,
 } from "./script-status-projection.js";
+import type { ScriptHealthState } from "./script-health-monitor.js";
+import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 
 function createWorkspaceRepo(options?: {
   branchName?: string;
@@ -35,35 +37,65 @@ function createWorkspaceRepo(options?: {
   };
 }
 
+function buildPayloads(input: {
+  workspaceDirectory: string;
+  routeStore: ScriptRouteStore;
+  runtimeStore: WorkspaceScriptRuntimeStore;
+  daemonPort: number | null;
+  resolveHealth?: (hostname: string) => ScriptHealthState | null;
+}) {
+  return buildWorkspaceScriptPayloads(input);
+}
+
 describe("script-status-projection", () => {
-  it("shows configured scripts even before they have routes", () => {
+  it("projects plain scripts and services differently", () => {
     const workspace = createWorkspaceRepo({
       paseoConfig: {
         scripts: {
-          api: { command: "npm run api" },
-          web: { command: "npm run web", port: 3000 },
+          typecheck: { command: "npm run typecheck" },
+          web: { type: "service", command: "npm run web", port: 3000 },
         },
       },
     });
     const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    runtimeStore.set({
+      workspaceId: workspace.repoDir,
+      scriptName: "typecheck",
+      type: "script",
+      lifecycle: "stopped",
+      terminalId: "term-script",
+      exitCode: 0,
+    });
 
     try {
-      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(
+        buildPayloads({
+          workspaceDirectory: workspace.repoDir,
+          routeStore,
+          runtimeStore,
+          daemonPort: 6767,
+        }),
+      ).toEqual([
         {
-          scriptName: "api",
-          hostname: "api.localhost",
+          scriptName: "typecheck",
+          type: "script",
+          hostname: "typecheck",
           port: null,
-          url: "http://api.localhost:6767",
+          url: null,
           lifecycle: "stopped",
           health: null,
+          exitCode: 0,
         },
         {
           scriptName: "web",
+          type: "service",
           hostname: "web.localhost",
           port: 3000,
           url: "http://web.localhost:6767",
           lifecycle: "stopped",
           health: null,
+          exitCode: null,
         },
       ]);
     } finally {
@@ -71,12 +103,12 @@ describe("script-status-projection", () => {
     }
   });
 
-  it("uses the active route port and branch-aware hostname for running scripts", () => {
+  it("overlays runtime, route, and health state for running services", () => {
     const workspace = createWorkspaceRepo({
       branchName: "feature/card",
       paseoConfig: {
         scripts: {
-          web: { command: "npm run web" },
+          web: { type: "service", command: "npm run web" },
         },
       },
     });
@@ -87,16 +119,35 @@ describe("script-status-projection", () => {
       workspaceId: workspace.repoDir,
       scriptName: "web",
     });
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    runtimeStore.set({
+      workspaceId: workspace.repoDir,
+      scriptName: "web",
+      type: "service",
+      lifecycle: "running",
+      terminalId: "term-web",
+      exitCode: null,
+    });
 
     try {
-      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(
+        buildPayloads({
+          workspaceDirectory: workspace.repoDir,
+          routeStore,
+          runtimeStore,
+          daemonPort: 6767,
+          resolveHealth: () => "healthy",
+        }),
+      ).toEqual([
         {
           scriptName: "web",
+          type: "service",
           hostname: "feature-card.web.localhost",
           port: 4321,
           url: "http://feature-card.web.localhost:6767",
           lifecycle: "running",
-          health: null,
+          health: "healthy",
+          exitCode: null,
         },
       ]);
     } finally {
@@ -104,7 +155,58 @@ describe("script-status-projection", () => {
     }
   });
 
-  it("includes orphaned active routes even if the current config no longer declares them", () => {
+  it("maps internal pending health to null on the wire", () => {
+    const workspace = createWorkspaceRepo({
+      paseoConfig: {
+        scripts: {
+          web: { type: "service", command: "npm run web" },
+        },
+      },
+    });
+    const routeStore = new ScriptRouteStore();
+    routeStore.registerRoute({
+      hostname: "web.localhost",
+      port: 4321,
+      workspaceId: workspace.repoDir,
+      scriptName: "web",
+    });
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    runtimeStore.set({
+      workspaceId: workspace.repoDir,
+      scriptName: "web",
+      type: "service",
+      lifecycle: "running",
+      terminalId: "term-web",
+      exitCode: null,
+    });
+
+    try {
+      expect(
+        buildPayloads({
+          workspaceDirectory: workspace.repoDir,
+          routeStore,
+          runtimeStore,
+          daemonPort: 6767,
+          resolveHealth: () => "pending",
+        }),
+      ).toEqual([
+        {
+          scriptName: "web",
+          type: "service",
+          hostname: "web.localhost",
+          port: 4321,
+          url: "http://web.localhost:6767",
+          lifecycle: "running",
+          health: null,
+          exitCode: null,
+        },
+      ]);
+    } finally {
+      workspace.cleanup();
+    }
+  });
+
+  it("includes orphaned running runtime entries even after config removal", () => {
     const workspace = createWorkspaceRepo();
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
@@ -113,16 +215,34 @@ describe("script-status-projection", () => {
       workspaceId: workspace.repoDir,
       scriptName: "docs",
     });
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    runtimeStore.set({
+      workspaceId: workspace.repoDir,
+      scriptName: "docs",
+      type: "service",
+      lifecycle: "running",
+      terminalId: "term-docs",
+      exitCode: null,
+    });
 
     try {
-      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
+      expect(
+        buildPayloads({
+          workspaceDirectory: workspace.repoDir,
+          routeStore,
+          runtimeStore,
+          daemonPort: 6767,
+        }),
+      ).toEqual([
         {
           scriptName: "docs",
+          type: "service",
           hostname: "docs.localhost",
           port: 3002,
           url: "http://docs.localhost:6767",
           lifecycle: "running",
           health: null,
+          exitCode: null,
         },
       ]);
     } finally {
@@ -130,12 +250,50 @@ describe("script-status-projection", () => {
     }
   });
 
-  it("createScriptStatusEmitter overlays health onto the full workspace script list", () => {
+  it("projects orphaned plain scripts as scripts instead of services", () => {
+    const workspace = createWorkspaceRepo();
+    const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    runtimeStore.set({
+      workspaceId: workspace.repoDir,
+      scriptName: "typecheck",
+      type: "script",
+      lifecycle: "running",
+      terminalId: "term-typecheck",
+      exitCode: null,
+    });
+
+    try {
+      expect(
+        buildPayloads({
+          workspaceDirectory: workspace.repoDir,
+          routeStore,
+          runtimeStore,
+          daemonPort: 6767,
+        }),
+      ).toEqual([
+        {
+          scriptName: "typecheck",
+          type: "script",
+          hostname: "typecheck",
+          port: null,
+          url: null,
+          lifecycle: "running",
+          health: null,
+          exitCode: null,
+        },
+      ]);
+    } finally {
+      workspace.cleanup();
+    }
+  });
+
+  it("createScriptStatusEmitter overlays health onto the projected workspace script list", () => {
     const workspace = createWorkspaceRepo({
       paseoConfig: {
         scripts: {
-          api: { command: "npm run api" },
-          web: { command: "npm run web" },
+          api: { type: "service", command: "npm run api" },
+          typecheck: { command: "npm run typecheck" },
         },
       },
     });
@@ -146,11 +304,21 @@ describe("script-status-projection", () => {
       workspaceId: workspace.repoDir,
       scriptName: "api",
     });
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    runtimeStore.set({
+      workspaceId: workspace.repoDir,
+      scriptName: "api",
+      type: "service",
+      lifecycle: "running",
+      terminalId: "term-api",
+      exitCode: null,
+    });
 
     const session = { emit: vi.fn() };
     const emitUpdate = createScriptStatusEmitter({
       sessions: () => [session],
       routeStore,
+      runtimeStore,
       daemonPort: 6767,
     });
 
@@ -171,60 +339,27 @@ describe("script-status-projection", () => {
           scripts: [
             {
               scriptName: "api",
+              type: "service",
               hostname: "api.localhost",
               port: 3001,
               url: "http://api.localhost:6767",
               lifecycle: "running",
               health: "healthy",
+              exitCode: null,
             },
             {
-              scriptName: "web",
-              hostname: "web.localhost",
+              scriptName: "typecheck",
+              type: "script",
+              hostname: "typecheck",
               port: null,
-              url: "http://web.localhost:6767",
+              url: null,
               lifecycle: "stopped",
               health: null,
+              exitCode: null,
             },
           ],
         },
       });
-    } finally {
-      workspace.cleanup();
-    }
-  });
-
-  it("computes URLs with and without a daemon port", () => {
-    const workspace = createWorkspaceRepo({
-      paseoConfig: {
-        scripts: {
-          api: { command: "npm run api" },
-        },
-      },
-    });
-    const routeStore = new ScriptRouteStore();
-
-    try {
-      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, 6767)).toEqual([
-        {
-          scriptName: "api",
-          hostname: "api.localhost",
-          port: null,
-          url: "http://api.localhost:6767",
-          lifecycle: "stopped",
-          health: null,
-        },
-      ]);
-
-      expect(buildWorkspaceScriptPayloads(routeStore, workspace.repoDir, null)).toEqual([
-        {
-          scriptName: "api",
-          hostname: "api.localhost",
-          port: null,
-          url: null,
-          lifecycle: "stopped",
-          health: null,
-        },
-      ]);
     } finally {
       workspace.cleanup();
     }

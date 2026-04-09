@@ -1,4 +1,8 @@
+import { execSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findFreePort, ScriptRouteStore } from "./script-proxy.js";
@@ -6,11 +10,88 @@ import {
   ScriptHealthMonitor,
   type ScriptHealthEntry,
 } from "./script-health-monitor.js";
+import { spawnWorktreeScripts } from "./worktree-bootstrap.js";
+import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 
 type TcpServerHandle = {
   port: number;
   server: net.Server;
 };
+
+function createWorkspaceRepo(options?: {
+  branchName?: string;
+  paseoConfig?: Record<string, unknown>;
+}): { tempDir: string; repoDir: string; cleanup: () => void } {
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "script-health-monitor-")));
+  const repoDir = path.join(tempDir, "repo");
+  execSync(`mkdir -p ${JSON.stringify(repoDir)}`);
+  execSync(`git init -b ${options?.branchName ?? "main"}`, { cwd: repoDir, stdio: "pipe" });
+  execSync("git config user.email 'test@test.com'", { cwd: repoDir, stdio: "pipe" });
+  execSync("git config user.name 'Test'", { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "README.md"), "hello\n");
+  if (options?.paseoConfig) {
+    writeFileSync(path.join(repoDir, "paseo.json"), JSON.stringify(options.paseoConfig, null, 2));
+  }
+  execSync("git add .", { cwd: repoDir, stdio: "pipe" });
+  execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoDir, stdio: "pipe" });
+
+  return {
+    tempDir,
+    repoDir,
+    cleanup: () => {
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
+
+function createStubTerminalManager(
+  createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }>,
+) {
+  return {
+    async getTerminals() {
+      return [];
+    },
+    async createTerminal(options: {
+      cwd: string;
+      name?: string;
+      env?: Record<string, string>;
+    }) {
+      createTerminalCalls.push(options);
+      return {
+        id: `term-${options.name ?? "terminal"}`,
+        name: options.name ?? "Terminal",
+        cwd: options.cwd,
+        send: () => {},
+        subscribe: () => () => {},
+        onExit: () => () => {},
+        getState: () => ({
+          rows: 1,
+          cols: 1,
+          grid: [[{ char: "$" }]],
+          scrollback: [],
+          cursor: { row: 0, col: 0 },
+        }),
+        kill: () => {},
+        onTitleChange: () => () => {},
+        getSize: () => ({ rows: 1, cols: 1 }),
+        getTitle: () => undefined,
+        getExitInfo: () => null,
+      };
+    },
+    registerCwdEnv() {},
+    getTerminal() {
+      return undefined;
+    },
+    killTerminal() {},
+    listDirectories() {
+      return [];
+    },
+    killAll() {},
+    subscribeTerminalsChanged() {
+      return () => {};
+    },
+  };
+}
 
 async function startTcpServer(): Promise<TcpServerHandle> {
   const server = net.createServer((socket) => {
@@ -68,13 +149,23 @@ describe("ScriptHealthMonitor", () => {
     servers.clear();
   });
 
-  it("marks a healthy port as running after successful TCP connect", async () => {
+  it("starts new service routes in pending and transitions to healthy after the grace period", async () => {
     vi.useFakeTimers();
 
     const healthy = await startTcpServer();
     servers.add(healthy.server);
 
     const routeStore = new ScriptRouteStore();
+    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+    const monitor = new ScriptHealthMonitor({
+      routeStore,
+      onChange,
+      pollIntervalMs: 1_000,
+      probeTimeoutMs: 100,
+      graceMs: 5_000,
+    });
+
+    monitor.start();
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: healthy.port,
@@ -82,19 +173,16 @@ describe("ScriptHealthMonitor", () => {
       scriptName: "api",
     });
 
-    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
-    const monitor = new ScriptHealthMonitor({
-      routeStore,
-      onChange,
-      pollIntervalMs: 1_000,
-      probeTimeoutMs: 100,
-      graceMs: 0,
-    });
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
 
-    monitor.start();
+    await advancePoll(4_000);
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
+    expect(onChange).not.toHaveBeenCalled();
+
     await advancePoll(1_000);
     monitor.stop();
 
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
@@ -106,7 +194,7 @@ describe("ScriptHealthMonitor", () => {
     ]);
   });
 
-  it("marks an unreachable port as stopped after consecutive failures", async () => {
+  it("transitions pending services to unhealthy after the grace period and required failures", async () => {
     vi.useFakeTimers();
 
     const deadPort = await findFreePort();
@@ -124,17 +212,21 @@ describe("ScriptHealthMonitor", () => {
       onChange,
       pollIntervalMs: 1_000,
       probeTimeoutMs: 100,
-      graceMs: 0,
+      graceMs: 2_000,
       failuresBeforeStopped: 2,
     });
 
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
+
     monitor.start();
-    await advancePoll(1_000);
+    await advancePoll(2_000);
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("pending");
     expect(onChange).not.toHaveBeenCalled();
 
     await advancePoll(1_000);
     monitor.stop();
 
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("unhealthy");
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("workspace-a", [
       {
@@ -176,48 +268,7 @@ describe("ScriptHealthMonitor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it("respects startup grace period — does not probe newly registered routes for 5 seconds", async () => {
-    vi.useFakeTimers();
-
-    const healthy = await startTcpServer();
-    servers.add(healthy.server);
-
-    const routeStore = new ScriptRouteStore();
-    routeStore.registerRoute({
-      hostname: "api.localhost",
-      port: healthy.port,
-      workspaceId: "workspace-a",
-      scriptName: "api",
-    });
-
-    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
-    const monitor = new ScriptHealthMonitor({
-      routeStore,
-      onChange,
-      pollIntervalMs: 1_000,
-      probeTimeoutMs: 100,
-      graceMs: 5_000,
-    });
-
-    monitor.start();
-    await advancePoll(4_000);
-    expect(onChange).not.toHaveBeenCalled();
-
-    await advancePoll(1_000);
-    monitor.stop();
-
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith("workspace-a", [
-      {
-        scriptName: "api",
-        hostname: "api.localhost",
-        port: healthy.port,
-        health: "healthy",
-      },
-    ]);
-  });
-
-  it("requires 2 consecutive failures before marking stopped (debounce)", async () => {
+  it("requires 2 consecutive failures before marking a previously healthy service unhealthy", async () => {
     vi.useFakeTimers();
 
     const healthy = await startTcpServer();
@@ -249,11 +300,13 @@ describe("ScriptHealthMonitor", () => {
     servers.delete(healthy.server);
 
     await advancePoll(1_000);
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
     expect(onChange).toHaveBeenCalledTimes(1);
 
     await advancePoll(1_000);
     monitor.stop();
 
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("unhealthy");
     expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange).toHaveBeenLastCalledWith("workspace-a", [
       {
@@ -265,7 +318,7 @@ describe("ScriptHealthMonitor", () => {
     ]);
   });
 
-  it("stops probing routes that are removed from the store", async () => {
+  it("stops polling removed service routes and clears their health state", async () => {
     vi.useFakeTimers();
 
     const healthy = await startTcpServer();
@@ -291,6 +344,7 @@ describe("ScriptHealthMonitor", () => {
 
     monitor.start();
     await advancePoll(1_000);
+    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
     expect(onChange).toHaveBeenCalledTimes(1);
 
     routeStore.removeRoute("api.localhost");
@@ -300,10 +354,11 @@ describe("ScriptHealthMonitor", () => {
     await advancePoll(3_000);
     monitor.stop();
 
+    expect(monitor.getHealthForHostname("api.localhost")).toBeNull();
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onChange with workspaceId and full service list when status transitions", async () => {
+  it("calls onChange with the full service list when multiple services change in one workspace", async () => {
     vi.useFakeTimers();
 
     const api = await startTcpServer();
@@ -355,40 +410,75 @@ describe("ScriptHealthMonitor", () => {
     ]);
   });
 
-  it("getHealthForHostname returns current health after probe", async () => {
+  it("only probes service routes because plain scripts never register routes", async () => {
     vi.useFakeTimers();
 
-    const healthy = await startTcpServer();
-    servers.add(healthy.server);
+    const service = await startTcpServer();
+    servers.add(service.server);
 
+    const workspace = createWorkspaceRepo({
+      paseoConfig: {
+        scripts: {
+          typecheck: { command: "npm run typecheck" },
+          api: { type: "service", command: "npm run api", port: service.port },
+        },
+      },
+    });
     const routeStore = new ScriptRouteStore();
-    routeStore.registerRoute({
-      hostname: "api.localhost",
-      port: healthy.port,
-      workspaceId: "workspace-a",
-      scriptName: "api",
-    });
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    const createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }> =
+      [];
 
-    const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
-    const monitor = new ScriptHealthMonitor({
-      routeStore,
-      onChange,
-      pollIntervalMs: 1_000,
-      probeTimeoutMs: 100,
-      graceMs: 0,
-    });
+    try {
+      await spawnWorktreeScripts({
+        repoRoot: workspace.repoDir,
+        workspaceId: workspace.repoDir,
+        branchName: null,
+        daemonPort: null,
+        routeStore,
+        runtimeStore,
+        terminalManager: createStubTerminalManager(createTerminalCalls) as any,
+      });
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBeNull();
+      expect(createTerminalCalls).toHaveLength(2);
+      expect(routeStore.listRoutes()).toEqual([
+        {
+          hostname: "api.localhost",
+          port: service.port,
+          workspaceId: workspace.repoDir,
+          scriptName: "api",
+        },
+      ]);
 
-    monitor.start();
-    await advancePoll(1_000);
-    monitor.stop();
+      const onChange = vi.fn<(workspaceId: string, services: ScriptHealthEntry[]) => void>();
+      const monitor = new ScriptHealthMonitor({
+        routeStore,
+        onChange,
+        pollIntervalMs: 1_000,
+        probeTimeoutMs: 100,
+        graceMs: 0,
+      });
 
-    expect(monitor.getHealthForHostname("api.localhost")).toBe("healthy");
-    expect(monitor.getHealthForHostname("unknown.localhost")).toBeNull();
+      monitor.start();
+      await advancePoll(1_000);
+      monitor.stop();
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith(workspace.repoDir, [
+        {
+          scriptName: "api",
+          hostname: "api.localhost",
+          port: service.port,
+          health: "healthy",
+        },
+      ]);
+      expect(monitor.getHealthForHostname("typecheck")).toBeNull();
+    } finally {
+      workspace.cleanup();
+    }
   });
 
-  it("coalesces multiple service changes in same workspace into one onChange call per poll cycle", async () => {
+  it("coalesces multiple service changes in the same workspace into one onChange call per poll cycle", async () => {
     vi.useFakeTimers();
 
     const api = await startTcpServer();
