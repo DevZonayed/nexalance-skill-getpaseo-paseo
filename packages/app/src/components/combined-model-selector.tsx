@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
+  TextInput,
   Pressable,
   Platform,
   ActivityIndicator,
   type GestureResponderEvent,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import {
   ArrowLeft,
   ChevronDown,
@@ -22,7 +24,7 @@ import type {
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 const IS_WEB = Platform.OS === "web";
 
-import { Combobox, ComboboxItem, SearchInput } from "@/components/ui/combobox";
+import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { getProviderIcon } from "@/components/provider-icons";
 import type { FavoriteModelRow } from "@/hooks/use-form-preferences";
 import {
@@ -335,6 +337,47 @@ function GroupedProviderRows({
   );
 }
 
+function ProviderSearchInput({
+  value,
+  onChangeText,
+  autoFocus = false,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  autoFocus?: boolean;
+}) {
+  const { theme } = useUnistyles();
+  const inputRef = useRef<TextInput>(null);
+  const isMobile =
+    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const InputComponent = isMobile ? BottomSheetTextInput : TextInput;
+
+  useEffect(() => {
+    if (autoFocus && Platform.OS === "web" && inputRef.current) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
+
+  return (
+    <View style={styles.providerSearchContainer}>
+      <Search size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+      <InputComponent
+        ref={inputRef as any}
+        // @ts-expect-error - outlineStyle is web-only
+        style={[styles.providerSearchInput, Platform.OS === "web" && { outlineStyle: "none" }]}
+        placeholder="Search models..."
+        placeholderTextColor={theme.colors.foregroundMuted}
+        value={value}
+        onChangeText={onChangeText}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+    </View>
+  );
+}
 
 function SelectorContent({
   view,
@@ -633,8 +676,7 @@ export function CombinedModelSelector({
                   }}
                 />
               ) : null}
-              <SearchInput
-                placeholder="Search models..."
+              <ProviderSearchInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoFocus={Platform.OS === "web"}
@@ -804,6 +846,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   sheetLoadingText: {
     color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  providerSearchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[3],
+    gap: theme.spacing[2],
+    ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
+  },
+  providerSearchInput: {
+    flex: 1,
+    paddingVertical: theme.spacing[3],
+    color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },
 }));
