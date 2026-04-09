@@ -1287,15 +1287,22 @@ export class HostRuntimeStore {
     });
   }
 
-  async upsertConnectionFromOffer(offer: ConnectionOffer): Promise<HostProfile> {
+  async upsertConnectionFromOffer(
+    offer: ConnectionOffer,
+    label?: string,
+  ): Promise<HostProfile> {
     return this.upsertRelayConnection({
       serverId: offer.serverId,
       relayEndpoint: offer.relay.endpoint,
       daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      label,
     });
   }
 
-  async upsertConnectionFromOfferUrl(offerUrlOrFragment: string): Promise<HostProfile> {
+  async upsertConnectionFromOfferUrl(
+    offerUrlOrFragment: string,
+    label?: string,
+  ): Promise<HostProfile> {
     const marker = "#offer=";
     const idx = offerUrlOrFragment.indexOf(marker);
     if (idx === -1) {
@@ -1307,7 +1314,7 @@ export class HostRuntimeStore {
     }
     const payload = decodeOfferFragmentPayload(encoded);
     const offer = ConnectionOfferSchema.parse(payload);
-    return this.upsertConnectionFromOffer(offer);
+    return this.upsertConnectionFromOffer(offer, label);
   }
 
   async addConnectionFromListenAndWaitForOnline(input: {
@@ -1956,8 +1963,11 @@ export interface HostMutations {
     daemonPublicKeyB64: string;
     label?: string;
   }) => Promise<HostProfile>;
-  upsertConnectionFromOffer: (offer: ConnectionOffer) => Promise<HostProfile>;
-  upsertConnectionFromOfferUrl: (offerUrlOrFragment: string) => Promise<HostProfile>;
+  upsertConnectionFromOffer: (offer: ConnectionOffer, label?: string) => Promise<HostProfile>;
+  upsertConnectionFromOfferUrl: (
+    offerUrlOrFragment: string,
+    label?: string,
+  ) => Promise<HostProfile>;
   renameHost: (serverId: string, label: string) => Promise<void>;
   removeHost: (serverId: string) => Promise<void>;
   removeConnection: (serverId: string, connectionId: string) => Promise<void>;
@@ -1969,8 +1979,8 @@ export function useHostMutations(): HostMutations {
     () => ({
       upsertDirectConnection: (input) => store.upsertDirectConnection(input),
       upsertRelayConnection: (input) => store.upsertRelayConnection(input),
-      upsertConnectionFromOffer: (offer) => store.upsertConnectionFromOffer(offer),
-      upsertConnectionFromOfferUrl: (url) => store.upsertConnectionFromOfferUrl(url),
+      upsertConnectionFromOffer: (offer, label) => store.upsertConnectionFromOffer(offer, label),
+      upsertConnectionFromOfferUrl: (url, label) => store.upsertConnectionFromOfferUrl(url, label),
       renameHost: (serverId, label) => store.renameHost(serverId, label),
       removeHost: (serverId) => store.removeHost(serverId),
       removeConnection: (serverId, connectionId) => store.removeConnection(serverId, connectionId),

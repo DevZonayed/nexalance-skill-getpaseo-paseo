@@ -146,7 +146,7 @@ export function PairLinkModal({
       await client.close().catch(() => undefined);
 
       const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
-      const profile = await upsertDaemonFromOfferUrl(raw);
+      const profile = await upsertDaemonFromOfferUrl(raw, hostname ?? undefined);
       onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
       handleClose();
     } catch (error) {

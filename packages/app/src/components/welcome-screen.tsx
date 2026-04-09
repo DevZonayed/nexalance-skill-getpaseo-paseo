@@ -8,14 +8,11 @@ import type { HostProfile } from "@/types/host-connection";
 import {
   getHostRuntimeStore,
   isHostRuntimeConnected,
-  useHostMutations,
   useHostRuntimeSnapshot,
   useHosts,
 } from "@/runtime/host-runtime";
-import { useSessionStore } from "@/stores/session-store";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
-import { NameHostModal } from "./name-host-modal";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { buildHostRootRoute } from "@/utils/host-routes";
@@ -237,31 +234,12 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { renameHost } = useHostMutations();
   const appVersion = resolveAppVersion();
   const appVersionText = formatVersionWithPrefix(appVersion);
   const [isDirectOpen, setIsDirectOpen] = useState(false);
   const [isPasteLinkOpen, setIsPasteLinkOpen] = useState(false);
-  const [pendingNameHost, setPendingNameHost] = useState<{
-    serverId: string;
-    hostname: string | null;
-  } | null>(null);
-  const [pendingRedirectServerId, setPendingRedirectServerId] = useState<string | null>(null);
   const hosts = useHosts();
   const anyOnlineServerId = useAnyHostOnline(hosts.map((h) => h.serverId));
-  const pendingNameHostname = useSessionStore(
-    useCallback(
-      (state) => {
-        if (!pendingNameHost) return null;
-        return (
-          state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ??
-          pendingNameHost.hostname ??
-          null
-        );
-      },
-      [pendingNameHost],
-    ),
-  );
 
   useEffect(() => {
     const currentPathname =
@@ -272,11 +250,8 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
     if (!anyOnlineServerId) {
       return;
     }
-    if (pendingNameHost) {
-      return;
-    }
     router.replace(buildHostRootRoute(anyOnlineServerId));
-  }, [anyOnlineServerId, pendingNameHost, router]);
+  }, [anyOnlineServerId, router]);
 
   const finishOnboarding = useCallback(
     (serverId: string) => {
@@ -401,13 +376,8 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
       <AddHostModal
         visible={isDirectOpen}
         onClose={() => setIsDirectOpen(false)}
-        onSaved={({ profile, serverId, hostname, isNewHost }) => {
+        onSaved={({ profile, serverId }) => {
           onHostAdded?.(profile);
-          setPendingRedirectServerId(serverId);
-          if (isNewHost) {
-            setPendingNameHost({ serverId, hostname });
-            return;
-          }
           finishOnboarding(serverId);
         }}
       />
@@ -415,38 +385,11 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
       <PairLinkModal
         visible={isPasteLinkOpen}
         onClose={() => setIsPasteLinkOpen(false)}
-        onSaved={({ profile, serverId, hostname, isNewHost }) => {
+        onSaved={({ profile, serverId }) => {
           onHostAdded?.(profile);
-          setPendingRedirectServerId(serverId);
-          if (isNewHost) {
-            setPendingNameHost({ serverId, hostname });
-            return;
-          }
           finishOnboarding(serverId);
         }}
       />
-
-      {pendingNameHost && pendingRedirectServerId ? (
-        <NameHostModal
-          visible
-          serverId={pendingNameHost.serverId}
-          hostname={pendingNameHostname}
-          onSkip={() => {
-            const serverId = pendingRedirectServerId;
-            setPendingNameHost(null);
-            setPendingRedirectServerId(null);
-            finishOnboarding(serverId);
-          }}
-          onSave={(label) => {
-            const serverId = pendingRedirectServerId;
-            void renameHost(pendingNameHost.serverId, label).finally(() => {
-              setPendingNameHost(null);
-              setPendingRedirectServerId(null);
-              finishOnboarding(serverId);
-            });
-          }}
-        />
-      ) : null}
     </ScrollView>
   );
 }

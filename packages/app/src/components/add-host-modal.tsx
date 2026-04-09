@@ -218,6 +218,7 @@ export function AddHostModal({
       const profile = await upsertDirectConnection({
         serverId,
         endpoint,
+        label: hostname ?? undefined,
       });
 
       onSaved?.({ profile, serverId, hostname, isNewHost });

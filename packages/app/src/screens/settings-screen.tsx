@@ -41,7 +41,6 @@ import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
-import { NameHostModal } from "@/components/name-host-modal";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
@@ -96,20 +95,20 @@ function getSettingsSections(context: { isDesktopApp: boolean }): SettingsSectio
   const sections: SettingsSectionDef[] = [
     { id: "hosts", label: "Hosts", icon: Server },
     { id: "general", label: "General", icon: Settings },
-    { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
     { id: "permissions", label: "Permissions", icon: Shield },
   ];
 
   if (context.isDesktopApp) {
     sections.push(
+      { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
       { id: "integrations", label: "Integrations", icon: Puzzle },
       { id: "pair-device", label: "Pair device", icon: Smartphone },
       { id: "daemon", label: "Daemon", icon: Settings },
+      { id: "providers", label: "Providers", icon: Blocks },
     );
   }
 
   sections.push(
-    { id: "providers", label: "Providers", icon: Blocks },
     { id: "diagnostics", label: "Diagnostics", icon: Stethoscope },
     { id: "about", label: "About", icon: Info },
   );
@@ -203,10 +202,6 @@ interface HostsSectionProps {
   goBackToAddConnectionMethods: () => void;
   setIsDirectHostVisible: (visible: boolean) => void;
   setIsPasteLinkVisible: (visible: boolean) => void;
-  pendingNameHost: { serverId: string; hostname: string | null } | null;
-  setPendingNameHost: (host: { serverId: string; hostname: string | null } | null) => void;
-  pendingNameHostname: string | null;
-  renameHost: (serverId: string, label: string) => Promise<void>;
   pendingRemoveHost: HostProfile | null;
   setPendingRemoveHost: (host: HostProfile | null) => void;
   isRemovingHost: boolean;
@@ -289,37 +284,13 @@ function HostsSection(props: HostsSectionProps) {
         visible={props.isDirectHostVisible}
         onClose={props.closeAddConnectionFlow}
         onCancel={props.goBackToAddConnectionMethods}
-        onSaved={({ serverId, hostname, isNewHost }) => {
-          if (isNewHost) {
-            props.setPendingNameHost({ serverId, hostname });
-          }
-        }}
       />
 
       <PairLinkModal
         visible={props.isPasteLinkVisible}
         onClose={props.closeAddConnectionFlow}
         onCancel={props.goBackToAddConnectionMethods}
-        onSaved={({ serverId, hostname, isNewHost }) => {
-          if (isNewHost) {
-            props.setPendingNameHost({ serverId, hostname });
-          }
-        }}
       />
-
-      {props.pendingNameHost ? (
-        <NameHostModal
-          visible
-          serverId={props.pendingNameHost.serverId}
-          hostname={props.pendingNameHostname}
-          onSkip={() => props.setPendingNameHost(null)}
-          onSave={(label) => {
-            void props.renameHost(props.pendingNameHost!.serverId, label).finally(() => {
-              props.setPendingNameHost(null);
-            });
-          }}
-        />
-      ) : null}
 
       {props.pendingRemoveHost ? (
         <AdaptiveModalSheet
@@ -883,10 +854,6 @@ export default function SettingsScreen() {
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
   const [isDirectHostVisible, setIsDirectHostVisible] = useState(false);
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
-  const [pendingNameHost, setPendingNameHost] = useState<{
-    serverId: string;
-    hostname: string | null;
-  } | null>(null);
   const [pendingRemoveHost, setPendingRemoveHost] = useState<HostProfile | null>(null);
   const [isRemovingHost, setIsRemovingHost] = useState(false);
   const [editingDaemon, setEditingDaemon] = useState<HostProfile | null>(null);
@@ -904,19 +871,6 @@ export default function SettingsScreen() {
   const editingDaemonLive = editingServerId
     ? (daemons.find((daemon) => daemon.serverId === editingServerId) ?? null)
     : null;
-  const pendingNameHostname = useSessionStore(
-    useCallback(
-      (state) => {
-        if (!pendingNameHost) return null;
-        return (
-          state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ??
-          pendingNameHost.hostname ??
-          null
-        );
-      },
-      [pendingNameHost],
-    ),
-  );
 
   useEffect(() => {
     return () => {
@@ -1076,10 +1030,6 @@ export default function SettingsScreen() {
     goBackToAddConnectionMethods,
     setIsDirectHostVisible,
     setIsPasteLinkVisible,
-    pendingNameHost,
-    setPendingNameHost,
-    pendingNameHostname,
-    renameHost,
     pendingRemoveHost,
     setPendingRemoveHost,
     isRemovingHost,
