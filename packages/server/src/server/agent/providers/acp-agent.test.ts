@@ -415,10 +415,39 @@ describe("transformPiModels", () => {
 });
 
 describe("ACPAgentSession slash commands", () => {
-  test("caches ACP available commands for listCommands", async () => {
+  test("returns immediately for ACP sessions that do not wait for async command discovery", async () => {
     const session = createSession();
 
-    expect(await session.listCommands()).toEqual([]);
+    await expect(session.listCommands()).resolves.toEqual([]);
+  });
+
+  test("waits for async available_commands_update when enabled", async () => {
+    const session = new ACPAgentSession(
+      {
+        provider: "pi",
+        cwd: "/tmp/paseo-acp-test",
+      },
+      {
+        provider: "pi",
+        logger: createTestLogger(),
+        defaultCommand: ["pi-acp"],
+        defaultModes: [],
+        modelTransformer: transformPiModels,
+        sessionResponseTransformer: transformPiSessionResponse,
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: false,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+        waitForInitialCommands: true,
+        initialCommandsWaitTimeoutMs: 1500,
+      },
+    );
+
+    const listCommandsPromise = session.listCommands();
 
     (session as any).translateSessionUpdate({
       sessionUpdate: "available_commands_update",
@@ -433,6 +462,19 @@ describe("ACPAgentSession slash commands", () => {
         },
       ],
     });
+
+    expect(await listCommandsPromise).toEqual([
+      {
+        name: "research_codebase",
+        description: "Search the workspace for relevant files",
+        argumentHint: "",
+      },
+      {
+        name: "create_plan",
+        description: "Draft a plan for the requested work",
+        argumentHint: "",
+      },
+    ]);
 
     expect(await session.listCommands()).toEqual([
       {
