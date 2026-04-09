@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.51 - 2026-04-09
+
+### Added
+- Image attachments for OpenCode — attach screenshots and images to OpenCode agent prompts.
+- WebStorm — added to the "Open in editor" list alongside Cursor, VS Code, and Zed.
+- Send behavior setting — choose whether pressing Enter while an agent is running interrupts immediately or queues your message.
+
+### Fixed
+- Model selector no longer crashes on iPad.
+- Pairing now uses the correct hostname, fixing connection failures on some network setups.
+- OpenCode agents show the correct terminal state and refresh models reliably.
+- Follow-up messages to agents that just finished a turn now work correctly.
+- Commands now load properly for Pi agents.
+- Internal debug output no longer appears in Claude agent timelines.
+- QR scan screen cleaned up with simpler visuals.
+
 ## 0.1.50 - 2026-04-07
 
 ### Added
