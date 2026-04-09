@@ -87,6 +87,9 @@ export interface MessageInputProps {
   voiceAgentId?: string;
   /** When true and there's sendable content, calls onQueue instead of onSubmit */
   isAgentRunning?: boolean;
+  /** Controls what the default send action (Enter, send button, dictation) does
+   *  when the agent is running. "interrupt" sends immediately, "queue" queues. */
+  defaultSendBehavior?: "interrupt" | "queue";
   /** Callback for queue button when agent is running */
   onQueue?: (payload: MessagePayload) => void;
   /** Optional handler used when submit button is in loading state. */
@@ -208,6 +211,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     voiceServerId,
     voiceAgentId,
     isAgentRunning = false,
+    defaultSendBehavior = "interrupt",
     onQueue,
     onSubmitLoadingPress,
     onKeyPress: onKeyPressCallback,
@@ -352,11 +356,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
       if (shouldAutoSend) {
         const imageAttachments = images.length > 0 ? images : undefined;
-        onSubmit({
-          text: nextValue,
-          images: imageAttachments,
-          forceSend: isAgentRunning || undefined,
-        });
+        // Respect send behavior setting: when "queue", dictation queues too.
+        if (defaultSendBehavior === "queue" && isAgentRunning && onQueue) {
+          onQueue({ text: nextValue, images: imageAttachments });
+          onChangeText("");
+        } else {
+          onSubmit({
+            text: nextValue,
+            images: imageAttachments,
+            forceSend: isAgentRunning || undefined,
+          });
+        }
       } else {
         onChangeText(nextValue);
       }
@@ -367,7 +377,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
         });
       }
     },
-    [onChangeText, onSubmit, images, isAgentRunning],
+    [onChangeText, onSubmit, onQueue, images, isAgentRunning, defaultSendBehavior],
   );
 
   const handleDictationError = useCallback(
@@ -577,6 +587,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     setInputHeight(MIN_INPUT_HEIGHT);
     onHeightChange?.(MIN_INPUT_HEIGHT);
   }, [value, images, onQueue, onChangeText, onHeightChange]);
+
+  // Default send action: respects the sendBehavior setting.
+  // When "interrupt" (default), primary action sends immediately (interrupts).
+  // When "queue", primary action queues when agent is running.
+  const handleDefaultSendAction = useCallback(() => {
+    if (defaultSendBehavior === "queue" && isAgentRunning && onQueue) {
+      handleQueueMessage();
+    } else {
+      handleSendMessage();
+    }
+  }, [defaultSendBehavior, isAgentRunning, onQueue, handleQueueMessage, handleSendMessage]);
+
+  // Alternate send action: always the opposite of the default.
+  const handleAlternateSendAction = useCallback(() => {
+    if (defaultSendBehavior === "queue") {
+      handleSendMessage(); // interrupt
+    } else if (onQueue) {
+      handleQueueMessage(); // queue
+    }
+  }, [defaultSendBehavior, handleSendMessage, handleQueueMessage, onQueue]);
 
   // Web input height measurement
   function isTextAreaLike(v: unknown): v is TextAreaHandle {
@@ -872,18 +902,18 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     // Shift+Enter: add newline (default behavior, don't intercept)
     if (shiftKey) return;
 
-    // Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux): queue when agent is running
+    // Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux): alternate action
     if ((metaKey || ctrlKey) && isAgentRunning && onQueue) {
       if (isSubmitDisabled || isSubmitLoading || disabled) return;
       event.preventDefault();
-      handleQueueMessage();
+      handleAlternateSendAction();
       return;
     }
 
-    // Enter: send (interrupts agent if running)
+    // Enter: default send action (interrupt or queue, based on setting)
     if (isSubmitDisabled || isSubmitLoading || disabled) return;
     event.preventDefault();
-    handleSendMessage();
+    handleDefaultSendAction();
   }
 
   const hasImages = images.length > 0;
@@ -892,11 +922,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const canPressLoadingButton = isSubmitLoading && typeof onSubmitLoadingPress === "function";
   const isSendButtonDisabled =
     disabled || (!canPressLoadingButton && (isSubmitDisabled || isSubmitLoading));
+  const defaultActionQueues = defaultSendBehavior === "queue" && isAgentRunning;
   const submitAccessibilityLabel = canPressLoadingButton
     ? "Interrupt agent"
-    : isAgentRunning
-      ? "Send and interrupt"
-      : "Send message";
+    : defaultActionQueues
+      ? "Queue message"
+      : isAgentRunning
+        ? "Send and interrupt"
+        : "Send message";
 
   const handleInputChange = useCallback(
     (nextValue: string) => {
@@ -1071,10 +1104,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               </TooltipContent>
             </Tooltip>
             {rightContent}
-            {hasSendableContent && isAgentRunning && onQueue && (
+            {hasSendableContent && isAgentRunning && onQueue && !defaultActionQueues && (
               <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                 <TooltipTrigger
-                  onPress={handleQueueMessage}
+                  onPress={handleAlternateSendAction}
                   disabled={!isConnected || disabled}
                   accessibilityLabel="Queue message"
                   accessibilityRole="button"
@@ -1099,7 +1132,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             {shouldShowSendButton && (
               <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                 <TooltipTrigger
-                  onPress={canPressLoadingButton ? onSubmitLoadingPress : handleSendMessage}
+                  onPress={canPressLoadingButton ? onSubmitLoadingPress : handleDefaultSendAction}
                   disabled={isSendButtonDisabled}
                   accessibilityLabel={submitAccessibilityLabel}
                   accessibilityRole="button"
@@ -1113,7 +1146,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
-                    <Text style={styles.tooltipText}>Send</Text>
+                    <Text style={styles.tooltipText}>{defaultActionQueues ? "Queue" : "Send"}</Text>
                     {sendKeys ? <Shortcut chord={sendKeys} style={styles.tooltipShortcut} /> : null}
                   </View>
                 </TooltipContent>

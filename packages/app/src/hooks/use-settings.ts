@@ -6,14 +6,18 @@ export const APP_SETTINGS_KEY = "@paseo:app-settings";
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
 const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 
+export type SendBehavior = "interrupt" | "queue";
+
 export interface AppSettings {
   theme: "dark" | "light" | "auto";
   manageBuiltInDaemon: boolean;
+  sendBehavior: SendBehavior;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: "auto",
   manageBuiltInDaemon: true,
+  sendBehavior: "interrupt",
 };
 
 export interface UseAppSettingsReturn {
