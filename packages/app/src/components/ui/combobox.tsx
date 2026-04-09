@@ -11,7 +11,8 @@ import {
   StatusBar,
   useWindowDimensions,
 } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
@@ -261,7 +262,7 @@ export function Combobox({
   anchorRef,
   children,
 }: ComboboxProps): ReactElement {
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const effectiveOptionsPosition = isMobile ? "below-search" : optionsPosition;
   const isDesktopAboveSearch =
     !isMobile && Platform.OS === "web" && effectiveOptionsPosition === "above-search";

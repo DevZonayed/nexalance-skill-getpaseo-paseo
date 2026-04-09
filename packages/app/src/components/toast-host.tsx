@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { Animated, Easing, Platform, Text, ToastAndroid, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { AlertTriangle, CheckCircle2 } from "lucide-react-native";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 import {
@@ -181,7 +182,7 @@ export function ToastViewport({
     return null;
   }
 
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const headerHeight = isMobile ? HEADER_INNER_HEIGHT_MOBILE : HEADER_INNER_HEIGHT;
   const headerTopPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
   const topOffset =

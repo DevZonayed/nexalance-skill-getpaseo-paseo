@@ -21,7 +21,7 @@ import {
 import { usePanelStore } from "@/stores/panel-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
-import { isCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -92,7 +92,7 @@ export function TerminalPane({
   const isAppVisible = useAppVisible();
   const { theme } = useUnistyles();
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme.colors.terminal]);
-  const isMobile = isCompactFormFactor();
+  const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const openAgentList = usePanelStore((state) => state.openAgentList);
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);

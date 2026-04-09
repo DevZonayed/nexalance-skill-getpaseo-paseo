@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { UnistylesRuntime } from "react-native-unistyles";
+import { useUnistyles } from "react-native-unistyles";
 import { isElectronRuntime, isElectronRuntimeMac } from "@/desktop/host";
 
 export const FOOTER_HEIGHT = 75;
@@ -62,16 +62,13 @@ export function getIsElectronRuntime(): boolean {
   return result;
 }
 
-export function isCompactFormFactor(): boolean {
-  return UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-}
-
-export function isDesktopFormFactor(): boolean {
-  return !isCompactFormFactor();
-}
-
-export function isTouchDesktopFormFactor(): boolean {
-  return Platform.OS !== "web" && isDesktopFormFactor();
+/**
+ * Reactive hook — re-renders the component when the breakpoint changes.
+ * Always use this instead of reading UnistylesRuntime.breakpoint directly.
+ */
+export function useIsCompactFormFactor(): boolean {
+  const { rt } = useUnistyles();
+  return rt.breakpoint === "xs" || rt.breakpoint === "sm";
 }
 
 // SplitContainer relies on dnd-kit and DOM-backed accessibility helpers.

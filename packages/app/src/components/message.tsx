@@ -41,7 +41,8 @@ import {
   Scissors,
   MicVocal,
 } from "lucide-react-native";
-import { StyleSheet, useUnistyles, UnistylesRuntime } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -1822,7 +1823,7 @@ export const ToolCall = memo(function ToolCall({
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Check if we're on mobile (use bottom sheet) or desktop (inline expand)
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
 
   const effectiveDetail = useMemo<ToolCallDetail | undefined>(() => {
     if (detail) {
