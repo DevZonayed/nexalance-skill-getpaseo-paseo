@@ -48,6 +48,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { submitAgentInput } from "@/components/agent-input-submit";
+import { useAppSettings } from "@/hooks/use-settings";
 
 type QueuedMessage = {
   id: string;
@@ -138,6 +139,8 @@ export function Composer({
     (agentDirectoryStatus === "ready" ||
       agentDirectoryStatus === "revalidating" ||
       agentDirectoryStatus === "error_after_ready");
+
+  const { settings: appSettings } = useAppSettings();
 
   const agentState = useSessionStore(
     useShallow((state) => {
@@ -760,6 +763,7 @@ export function Composer({
               voiceServerId={serverId}
               voiceAgentId={agentId}
               isAgentRunning={isAgentRunning}
+              defaultSendBehavior={appSettings.sendBehavior}
               onQueue={handleQueue}
               onSubmitLoadingPress={isAgentRunning ? handleCancelAgent : undefined}
               onKeyPress={handleCommandKeyPress}

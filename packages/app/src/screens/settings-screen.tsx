@@ -15,7 +15,6 @@ import {
   RotateCw,
   Trash2,
   Server,
-  Palette,
   Keyboard,
   Stethoscope,
   Info,
@@ -24,7 +23,7 @@ import {
   Blocks,
   Smartphone,
 } from "lucide-react-native";
-import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
+import { useAppSettings, type AppSettings, type SendBehavior } from "@/hooks/use-settings";
 import type { HostProfile, HostConnection } from "@/types/host-connection";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
@@ -77,7 +76,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 
 type SettingsSectionId =
   | "hosts"
-  | "appearance"
+  | "general"
   | "shortcuts"
   | "integrations"
   | "providers"
@@ -96,7 +95,7 @@ interface SettingsSectionDef {
 function getSettingsSections(context: { isDesktopApp: boolean }): SettingsSectionDef[] {
   const sections: SettingsSectionDef[] = [
     { id: "hosts", label: "Hosts", icon: Server },
-    { id: "appearance", label: "Appearance", icon: Palette },
+    { id: "general", label: "General", icon: Settings },
     { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
     { id: "permissions", label: "Permissions", icon: Shield },
   ];
@@ -386,15 +385,20 @@ function HostsSection(props: HostsSectionProps) {
   );
 }
 
-interface AppearanceSectionProps {
+interface GeneralSectionProps {
   settings: AppSettings;
   handleThemeChange: (theme: AppSettings["theme"]) => void;
+  handleSendBehaviorChange: (behavior: SendBehavior) => void;
 }
 
-function AppearanceSection({ settings, handleThemeChange }: AppearanceSectionProps) {
+function GeneralSection({
+  settings,
+  handleThemeChange,
+  handleSendBehaviorChange,
+}: GeneralSectionProps) {
   return (
     <View style={settingsStyles.section}>
-      <Text style={settingsStyles.sectionTitle}>Appearance</Text>
+      <Text style={settingsStyles.sectionTitle}>General</Text>
       <View style={[settingsStyles.card, styles.audioCard]}>
         <View style={styles.audioRow}>
           <View style={styles.audioRowContent}>
@@ -421,6 +425,23 @@ function AppearanceSection({ settings, handleThemeChange }: AppearanceSectionPro
                 label: "System",
                 icon: ({ color, size }) => <Monitor size={size} color={color} />,
               },
+            ]}
+          />
+        </View>
+        <View style={styles.audioRow}>
+          <View style={styles.audioRowContent}>
+            <Text style={styles.audioRowTitle}>Default send</Text>
+            <Text style={styles.audioRowSubtitle}>
+              What happens when you press Enter while the agent is running
+            </Text>
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={settings.sendBehavior}
+            onValueChange={handleSendBehaviorChange}
+            options={[
+              { value: "interrupt", label: "Interrupt" },
+              { value: "queue", label: "Queue" },
             ]}
           />
         </View>
@@ -613,7 +634,7 @@ function AboutSection({ appVersionText, isDesktopApp }: AboutSectionProps) {
 interface SettingsSectionContentProps {
   sectionId: SettingsSectionId;
   hostsProps: HostsSectionProps;
-  appearanceProps: AppearanceSectionProps;
+  generalProps: GeneralSectionProps;
   providersProps: ProvidersSectionProps;
   diagnosticsProps: DiagnosticsSectionProps;
   aboutProps: AboutSectionProps;
@@ -625,7 +646,7 @@ interface SettingsSectionContentProps {
 function SettingsSectionContent({
   sectionId,
   hostsProps,
-  appearanceProps,
+  generalProps,
   providersProps,
   diagnosticsProps,
   aboutProps,
@@ -636,8 +657,8 @@ function SettingsSectionContent({
   switch (sectionId) {
     case "hosts":
       return <HostsSection {...hostsProps} />;
-    case "appearance":
-      return <AppearanceSection {...appearanceProps} />;
+    case "general":
+      return <GeneralSection {...generalProps} />;
     case "shortcuts":
       return <KeyboardShortcutsSection />;
     case "providers":
@@ -1002,6 +1023,13 @@ export default function SettingsScreen() {
     [updateSettings],
   );
 
+  const handleSendBehaviorChange = useCallback(
+    (behavior: SendBehavior) => {
+      void updateSettings({ sendBehavior: behavior });
+    },
+    [updateSettings],
+  );
+
   const handlePlaybackTest = useCallback(async () => {
     if (!voiceAudioEngine || isPlaybackTestRunning) {
       return;
@@ -1068,9 +1096,10 @@ export default function SettingsScreen() {
     isMountedRef,
   };
 
-  const appearanceProps: AppearanceSectionProps = {
+  const generalProps: GeneralSectionProps = {
     settings,
     handleThemeChange,
+    handleSendBehaviorChange,
   };
 
   const providersProps: ProvidersSectionProps = {
@@ -1091,7 +1120,7 @@ export default function SettingsScreen() {
 
   const sectionContentProps: Omit<SettingsSectionContentProps, "sectionId"> = {
     hostsProps,
-    appearanceProps,
+    generalProps,
     providersProps,
     diagnosticsProps,
     aboutProps,
@@ -1899,6 +1928,11 @@ const styles = StyleSheet.create((theme) => ({
   audioRowTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
+  },
+  audioRowSubtitle: {
+    color: theme.colors.mutedForeground,
+    fontSize: theme.fontSize.sm,
+    marginTop: theme.spacing[1],
   },
   providerActions: {
     flexDirection: "row",
