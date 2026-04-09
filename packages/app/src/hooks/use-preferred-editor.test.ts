@@ -14,6 +14,12 @@ describe("resolvePreferredEditorId", () => {
     expect(resolvePreferredEditorId(["explorer", "vscode"], "finder")).toBe("explorer");
   });
 
+  it("keeps unknown editor ids when they are still available", () => {
+    expect(resolvePreferredEditorId(["unknown-editor", "cursor"], "unknown-editor")).toBe(
+      "unknown-editor",
+    );
+  });
+
   it("returns null when no editors are available", () => {
     expect(resolvePreferredEditorId([], "cursor")).toBeNull();
   });

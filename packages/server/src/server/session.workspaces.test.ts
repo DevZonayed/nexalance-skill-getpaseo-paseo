@@ -61,7 +61,7 @@ function makeAgent(input: {
   };
 }
 
-function createSessionForWorkspaceTests(): Session {
+function createSessionForWorkspaceTests(options: { appVersion?: string | null } = {}): Session {
   const logger = {
     child: () => logger,
     trace: vi.fn(),
@@ -73,6 +73,7 @@ function createSessionForWorkspaceTests(): Session {
 
   const session = new Session({
     clientId: "test-client",
+    appVersion: options.appVersion ?? null,
     onMessage: vi.fn(),
     logger: logger as any,
     downloadTokenStore: {} as any,
@@ -1246,17 +1247,50 @@ describe("workspace aggregation", () => {
 
   test("list_available_editors_request returns available targets", async () => {
     const emitted: Array<{ type: string; payload: unknown }> = [];
-    const session = createSessionForWorkspaceTests() as any;
+    const session = createSessionForWorkspaceTests({ appVersion: "0.1.50" }) as any;
 
     session.emit = (message: any) => emitted.push(message);
-    session.getAvailableEditorTargets = async () => [
-      { id: "cursor", label: "Cursor" },
-      { id: "finder", label: "Finder" },
-    ];
+    session.getAvailableEditorTargets = async () =>
+      session.filterEditorsForClient([
+        { id: "cursor", label: "Cursor" },
+        { id: "webstorm", label: "WebStorm" },
+        { id: "finder", label: "Finder" },
+        { id: "unknown-editor", label: "Unknown Editor" },
+      ]);
 
     await session.handleMessage({
       type: "list_available_editors_request",
       requestId: "req-editors",
+    });
+
+    const response = emitted.find(
+      (message) => message.type === "list_available_editors_response",
+    ) as any;
+    expect(response?.payload.error).toBeNull();
+    expect(response?.payload.editors).toEqual([
+      { id: "cursor", label: "Cursor" },
+      { id: "webstorm", label: "WebStorm" },
+      { id: "finder", label: "Finder" },
+      { id: "unknown-editor", label: "Unknown Editor" },
+    ]);
+  });
+
+  test("list_available_editors_request filters unsupported ids for legacy clients", async () => {
+    const emitted: Array<{ type: string; payload: unknown }> = [];
+    const session = createSessionForWorkspaceTests({ appVersion: "0.1.49" }) as any;
+
+    session.emit = (message: any) => emitted.push(message);
+    session.getAvailableEditorTargets = async () =>
+      session.filterEditorsForClient([
+        { id: "cursor", label: "Cursor" },
+        { id: "webstorm", label: "WebStorm" },
+        { id: "unknown-editor", label: "Unknown Editor" },
+        { id: "finder", label: "Finder" },
+      ]);
+
+    await session.handleMessage({
+      type: "list_available_editors_request",
+      requestId: "req-editors-legacy",
     });
 
     const response = emitted.find(

@@ -3,7 +3,7 @@ import { listAvailableEditorTargets, openInEditorTarget } from "./editor-targets
 
 describe("editor-targets", () => {
   it("lists available editors in deterministic order", async () => {
-    const available = new Set(["code", "cursor", "explorer"]);
+    const available = new Set(["code", "cursor", "explorer", "webstorm"]);
 
     const editors = await listAvailableEditorTargets({
       platform: "win32",
@@ -13,6 +13,7 @@ describe("editor-targets", () => {
     expect(editors).toEqual([
       { id: "cursor", label: "Cursor" },
       { id: "vscode", label: "VS Code" },
+      { id: "webstorm", label: "WebStorm" },
       { id: "explorer", label: "Explorer" },
     ]);
   });
@@ -96,5 +97,20 @@ describe("editor-targets", () => {
         },
       ),
     ).rejects.toThrow("Editor target unavailable: Finder");
+  });
+
+  it("rejects unknown editor ids", async () => {
+    await expect(
+      openInEditorTarget(
+        {
+          editorId: "unknown-editor",
+          path: "/tmp/repo",
+        },
+        {
+          existsSync: () => true,
+          findExecutable: () => null,
+        },
+      ),
+    ).rejects.toThrow("Unknown editor target: unknown-editor");
   });
 });

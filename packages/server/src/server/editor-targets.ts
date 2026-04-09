@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
-import type { EditorTargetDescriptorPayload, EditorTargetId } from "../shared/messages.js";
+import type {
+  EditorTargetDescriptorPayload,
+  EditorTargetId,
+  KnownEditorTargetId,
+} from "../shared/messages.js";
 import {
   findExecutable,
   quoteWindowsArgument,
@@ -9,7 +13,7 @@ import {
 } from "../utils/executable.js";
 
 type EditorTargetDefinition = {
-  id: EditorTargetId;
+  id: KnownEditorTargetId;
   label: string;
   command: string;
   platforms?: readonly NodeJS.Platform[];
@@ -29,6 +33,7 @@ type OpenInEditorTargetDependencies = ListAvailableEditorTargetsDependencies & {
 const EDITOR_TARGETS: readonly EditorTargetDefinition[] = [
   { id: "cursor", label: "Cursor", command: "cursor" },
   { id: "vscode", label: "VS Code", command: "code" },
+  { id: "webstorm", label: "WebStorm", command: "webstorm" },
   { id: "zed", label: "Zed", command: "zed" },
   { id: "finder", label: "Finder", command: "open", platforms: ["darwin"] },
   { id: "explorer", label: "Explorer", command: "explorer", platforms: ["win32"] },

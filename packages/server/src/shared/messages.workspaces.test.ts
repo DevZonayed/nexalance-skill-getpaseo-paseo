@@ -38,6 +38,24 @@ describe("workspace message schemas", () => {
     expect(parsed.type).toBe("list_available_editors_request");
   });
 
+  test("parses open_in_editor_request with flexible editor ids", () => {
+    const knownEditor = SessionInboundMessageSchema.parse({
+      type: "open_in_editor_request",
+      requestId: "req-open-webstorm",
+      editorId: "webstorm",
+      path: "/tmp/repo",
+    });
+    const unknownEditor = SessionInboundMessageSchema.parse({
+      type: "open_in_editor_request",
+      requestId: "req-open-custom",
+      editorId: "unknown-editor",
+      path: "/tmp/repo",
+    });
+
+    expect(knownEditor.type).toBe("open_in_editor_request");
+    expect(unknownEditor.type).toBe("open_in_editor_request");
+  });
+
   test("parses open_in_editor_response", () => {
     const parsed = SessionOutboundMessageSchema.parse({
       type: "open_in_editor_response",
@@ -48,6 +66,33 @@ describe("workspace message schemas", () => {
     });
 
     expect(parsed.type).toBe("open_in_editor_response");
+  });
+
+  test("parses list_available_editors_response with unknown editor ids", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "list_available_editors_response",
+      payload: {
+        requestId: "req-editors",
+        editors: [
+          { id: "cursor", label: "Cursor" },
+          { id: "unknown-editor", label: "Unknown Editor" },
+        ],
+        error: null,
+      },
+    });
+
+    expect(parsed.type).toBe("list_available_editors_response");
+  });
+
+  test("rejects empty editor ids", () => {
+    const result = SessionInboundMessageSchema.safeParse({
+      type: "open_in_editor_request",
+      requestId: "req-open-empty",
+      editorId: "",
+      path: "/tmp/repo",
+    });
+
+    expect(result.success).toBe(false);
   });
 
   test("rejects invalid workspace update payload", () => {
