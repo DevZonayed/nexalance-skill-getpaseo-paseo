@@ -196,6 +196,7 @@ interface ReorderPaneTabsInLayoutInput {
 export interface WorkspaceTabReconcileState {
   layout: WorkspaceLayout;
   pinnedAgentIds?: ReadonlySet<string> | null;
+  hiddenAgentIds?: ReadonlySet<string> | null;
 }
 
 export interface WorkspaceTabSnapshot {
@@ -1429,6 +1430,7 @@ export function reconcileWorkspaceTabs(
     findPaneById(nextLayout.root, nextLayout.focusedPaneId)?.focusedTabId ?? null;
   let reconciledFocusedTabId = originalFocusedTabId;
   const pinnedAgentIds = new Set(state.pinnedAgentIds ?? []);
+  const hiddenAgentIds = new Set(state.hiddenAgentIds ?? []);
   const activeAgentIds = normalizeStringSet(snapshot.activeAgentIds);
   const knownAgentIds = normalizeStringSet(snapshot.knownAgentIds);
   const standaloneTerminalIds = normalizeStringSet(snapshot.standaloneTerminalIds);
@@ -1437,6 +1439,9 @@ export function reconcileWorkspaceTabs(
     if (knownAgentIds.has(agentId)) {
       visibleAgentIds.add(agentId);
     }
+  }
+  for (const agentId of hiddenAgentIds) {
+    visibleAgentIds.delete(agentId);
   }
 
   const initialTabs = collectAllTabs(nextLayout.root);

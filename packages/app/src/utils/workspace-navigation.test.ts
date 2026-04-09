@@ -35,6 +35,7 @@ describe("prepareWorkspaceTab", () => {
       layoutByWorkspace: {},
       splitSizesByWorkspace: {},
       pinnedAgentIdsByWorkspace: {},
+      hiddenAgentIdsByWorkspace: {},
     });
   });
 

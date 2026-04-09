@@ -224,6 +224,7 @@ describe("workspace-layout-store actions", () => {
       layoutByWorkspace: {},
       splitSizesByWorkspace: {},
       pinnedAgentIdsByWorkspace: {},
+      hiddenAgentIdsByWorkspace: {},
     });
     vi.restoreAllMocks();
   });
@@ -837,6 +838,42 @@ describe("workspace-layout-store actions", () => {
     });
   });
 
+  it("keeps hidden agent intents in memory per workspace without persisting them", () => {
+    const workspaceKey = createWorkspaceKey();
+    const otherWorkspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: SERVER_ID,
+      workspaceId: "/repo/other-worktree",
+    });
+
+    expect(otherWorkspaceKey).toBeTruthy();
+
+    const store = useWorkspaceLayoutStore.getState();
+    store.hideAgent(workspaceKey, "agent-1");
+    store.hideAgent(workspaceKey, "agent-1");
+    store.hideAgent(otherWorkspaceKey as string, "agent-2");
+
+    let state = useWorkspaceLayoutStore.getState();
+    expect(Array.from(state.hiddenAgentIdsByWorkspace[workspaceKey] ?? [])).toEqual(["agent-1"]);
+    expect(Array.from(state.hiddenAgentIdsByWorkspace[otherWorkspaceKey as string] ?? [])).toEqual([
+      "agent-2",
+    ]);
+
+    store.unhideAgent(workspaceKey, "agent-1");
+
+    state = useWorkspaceLayoutStore.getState();
+    expect(state.hiddenAgentIdsByWorkspace[workspaceKey]).toBeUndefined();
+    expect(Array.from(state.hiddenAgentIdsByWorkspace[otherWorkspaceKey as string] ?? [])).toEqual([
+      "agent-2",
+    ]);
+
+    const partialize = useWorkspaceLayoutStore.persist.getOptions().partialize;
+    expect(partialize).toBeTypeOf("function");
+    expect(partialize?.(state)).toEqual({
+      layoutByWorkspace: {},
+      splitSizesByWorkspace: {},
+    });
+  });
+
   it("convertDraftToAgent removes the draft and focuses the existing canonical agent tab", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
       "67676767-6767-6767-6767-676767676767",
@@ -933,5 +970,39 @@ describe("workspace-layout-store actions", () => {
     });
     expect(layout.focusedPaneId).toBe("main");
     expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("agent_agent-1");
+  });
+
+  it("reconcileTabs does not re-add locally hidden agent tabs", () => {
+    const workspaceKey = createWorkspaceKey();
+
+    useWorkspaceLayoutStore.setState((state) => ({
+      ...state,
+      hiddenAgentIdsByWorkspace: {
+        [workspaceKey]: new Set<string>(["agent-1"]),
+      },
+    }));
+
+    useWorkspaceLayoutStore.getState().reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["agent-1"],
+      knownAgentIds: ["agent-1"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(useWorkspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey)).toEqual([]);
+  });
+
+  it("explicitly opening an agent tab clears hidden intent", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.hideAgent(workspaceKey, "agent-1");
+    store.openTab(workspaceKey, { kind: "agent", agentId: "agent-1" });
+
+    const state = useWorkspaceLayoutStore.getState();
+    expect(state.hiddenAgentIdsByWorkspace[workspaceKey]).toBeUndefined();
+    expect(state.getWorkspaceTabs(workspaceKey).map((tab) => tab.tabId)).toEqual(["agent_agent-1"]);
   });
 });
