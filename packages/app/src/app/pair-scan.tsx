@@ -6,8 +6,6 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import type { BarcodeScanningResult } from "expo-camera";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
-import { useSessionStore } from "@/stores/session-store";
-import { NameHostModal } from "@/components/name-host-modal";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
@@ -61,7 +59,7 @@ const styles = StyleSheet.create((theme) => ({
     position: "absolute",
     width: 36,
     height: 36,
-    borderColor: theme.colors.palette.blue[400],
+    borderColor: theme.colors.accent,
   },
   cornerTL: {
     left: 0,
@@ -148,28 +146,11 @@ export default function PairScanScreen() {
   const sourceServerId = typeof params.sourceServerId === "string" ? params.sourceServerId : null;
   const targetServerId = typeof params.targetServerId === "string" ? params.targetServerId : null;
   const daemons = useHosts();
-  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl, renameHost } = useHostMutations();
+  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
   const lastScannedRef = useRef<string | null>(null);
-  const [pendingNameHost, setPendingNameHost] = useState<{
-    serverId: string;
-    hostname: string | null;
-  } | null>(null);
-  const pendingNameHostname = useSessionStore(
-    useCallback(
-      (state) => {
-        if (!pendingNameHost) return null;
-        return (
-          state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ??
-          pendingNameHost.hostname ??
-          null
-        );
-      },
-      [pendingNameHost],
-    ),
-  );
 
   const returnToSource = useCallback(
     (serverId: string) => {
@@ -224,7 +205,6 @@ export default function PairScanScreen() {
 
   const handleScan = useCallback(
     async (result: BarcodeScanningResult) => {
-      if (pendingNameHost) return;
       if (isPairing) return;
       const offerUrl = extractOfferUrlFromScan(result);
       if (!offerUrl) return;
@@ -248,7 +228,7 @@ export default function PairScanScreen() {
           return;
         }
 
-        const { client } = await connectToDaemon(
+        const { client, hostname } = await connectToDaemon(
           {
             id: "probe",
             type: "relay",
@@ -259,13 +239,7 @@ export default function PairScanScreen() {
         );
         await client.close().catch(() => undefined);
 
-        const isNewHost = !daemons.some((daemon) => daemon.serverId === offer.serverId);
-        const profile = await upsertDaemonFromOfferUrl(offerUrl);
-
-        if (isNewHost) {
-          setPendingNameHost({ serverId: profile.serverId, hostname: null });
-          return;
-        }
+        const profile = await upsertDaemonFromOfferUrl(offerUrl, hostname ?? undefined);
 
         returnToSource(profile.serverId);
       } catch (error) {
@@ -276,7 +250,7 @@ export default function PairScanScreen() {
         setIsPairing(false);
       }
     },
-    [daemons, isPairing, pendingNameHost, returnToSource, targetServerId, upsertDaemonFromOfferUrl],
+    [daemons, isPairing, returnToSource, targetServerId, upsertDaemonFromOfferUrl],
   );
 
   if (Platform.OS === "web") {
@@ -307,25 +281,6 @@ export default function PairScanScreen() {
 
   return (
     <View style={styles.container}>
-      {pendingNameHost ? (
-        <NameHostModal
-          visible
-          serverId={pendingNameHost.serverId}
-          hostname={pendingNameHostname}
-          onSkip={() => {
-            const serverId = pendingNameHost.serverId;
-            setPendingNameHost(null);
-            returnToSource(serverId);
-          }}
-          onSave={(label) => {
-            const serverId = pendingNameHost.serverId;
-            void renameHost(serverId, label).finally(() => {
-              setPendingNameHost(null);
-              returnToSource(serverId);
-            });
-          }}
-        />
-      ) : null}
       <View style={[styles.header, { paddingTop: insets.top + theme.spacing[2] }]}>
         <Text style={styles.headerTitle}>Scan QR</Text>
         <Pressable onPress={closeToSource}>
@@ -359,7 +314,6 @@ export default function PairScanScreen() {
                 <View style={[styles.corner, styles.cornerBL]} />
                 <View style={[styles.corner, styles.cornerBR]} />
               </View>
-              <Text style={styles.helperText}>Point your camera at the pairing QR code.</Text>
               {isPairing ? (
                 <Text style={[styles.helperText, { color: theme.colors.foreground }]}>
                   Pairing…
