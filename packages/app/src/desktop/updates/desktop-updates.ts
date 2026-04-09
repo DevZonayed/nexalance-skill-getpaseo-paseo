@@ -4,6 +4,7 @@ import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 
 export interface DesktopAppUpdateCheckResult {
   hasUpdate: boolean;
+  readyToInstall: boolean;
   currentVersion: string | null;
   latestVersion: string | null;
   body: string | null;
@@ -76,6 +77,7 @@ export async function checkDesktopAppUpdate(): Promise<DesktopAppUpdateCheckResu
 
   return {
     hasUpdate: result.hasUpdate === true,
+    readyToInstall: result.readyToInstall === true,
     currentVersion: toStringOrNull(result.currentVersion),
     latestVersion: toStringOrNull(result.latestVersion),
     body: toStringOrNull(result.body),

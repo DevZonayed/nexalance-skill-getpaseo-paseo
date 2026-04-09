@@ -55,7 +55,7 @@ export function UpdateBanner() {
 
   function getSubtitle(): string {
     if (isInstalled) return "Restart to use the new version.";
-    if (isInstalling) return "Downloading and installing...";
+    if (isInstalling) return "Installing and restarting...";
     if (isError) return errorMessage ?? "Something went wrong.";
     return `${availableUpdate?.latestVersion ? `v${availableUpdate.latestVersion.replace(/^v/i, "")} is ready` : "A new version is ready"} to install.`;
   }

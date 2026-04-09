@@ -807,7 +807,7 @@ function DesktopAppUpdateRow() {
         <Text style={styles.aboutHintText}>{statusText}</Text>
         {availableUpdate?.latestVersion ? (
           <Text style={styles.aboutHintText}>
-            New version available: {formatVersionWithPrefix(availableUpdate.latestVersion)}
+            Ready to install: {formatVersionWithPrefix(availableUpdate.latestVersion)}
           </Text>
         ) : null}
         {errorMessage ? <Text style={styles.aboutErrorText}>{errorMessage}</Text> : null}
