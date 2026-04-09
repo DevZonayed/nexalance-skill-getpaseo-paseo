@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolSet } from "ai";
 import {
+  isLegacyEditorTargetId,
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
   type SessionInboundMessage,
@@ -29,6 +30,7 @@ import {
   type SubscribeCheckoutDiffRequest,
   type UnsubscribeCheckoutDiffRequest,
   type DirectorySuggestionsRequest,
+  type EditorTargetDescriptorPayload,
   type EditorTargetId,
   type ProjectPlacementPayload,
   type WorkspaceSetupSnapshot,
@@ -189,6 +191,30 @@ const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHAR
 const DEFAULT_AGENT_PROVIDER = AGENT_PROVIDER_IDS[0];
 const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
 const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
+const MIN_VERSION_FLEXIBLE_EDITOR_IDS = "0.1.50";
+
+function isAppVersionAtLeast(appVersion: string | null, minVersion: string): boolean {
+  if (!appVersion) return false;
+  // Strip RC/prerelease suffix: "0.1.45-rc.4" → "0.1.45"
+  const base = appVersion.replace(/-.*$/, "");
+  const parts = base.split(".").map(Number);
+  const minParts = minVersion.split(".").map(Number);
+  for (let i = 0; i < minParts.length; i++) {
+    const a = parts[i] ?? 0;
+    const b = minParts[i] ?? 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return true;
+}
+
+function clientSupportsAllProviders(appVersion: string | null): boolean {
+  return isAppVersionAtLeast(appVersion, MIN_VERSION_ALL_PROVIDERS);
+}
+
+function clientSupportsFlexibleEditorIds(appVersion: string | null): boolean {
+  return isAppVersionAtLeast(appVersion, MIN_VERSION_FLEXIBLE_EDITOR_IDS);
+}
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
 const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;
@@ -222,20 +248,6 @@ function deriveInitialAgentTitle(prompt: string): string | null {
   }
   const clamped = normalized.slice(0, MAX_INITIAL_AGENT_TITLE_CHARS).trim();
   return clamped.length > 0 ? clamped : null;
-}
-
-function clientSupportsAllProviders(appVersion: string | null): boolean {
-  if (!appVersion) return false;
-  const base = appVersion.replace(/-.*$/, "");
-  const parts = base.split(".").map(Number);
-  const minParts = MIN_VERSION_ALL_PROVIDERS.split(".").map(Number);
-  for (let i = 0; i < minParts.length; i++) {
-    const current = parts[i] ?? 0;
-    const minimum = minParts[i] ?? 0;
-    if (current > minimum) return true;
-    if (current < minimum) return false;
-  }
-  return true;
 }
 
 export function resolveCreateAgentTitles(options: {
@@ -1211,6 +1223,15 @@ export class Session {
       return true;
     }
     return LEGACY_PROVIDER_IDS.has(provider);
+  }
+
+  private filterEditorsForClient(
+    editors: EditorTargetDescriptorPayload[],
+  ): EditorTargetDescriptorPayload[] {
+    if (clientSupportsFlexibleEditorIds(this.appVersion)) {
+      return editors;
+    }
+    return editors.filter((editor) => isLegacyEditorTargetId(editor.id));
   }
 
   private matchesAgentFilter(options: {
@@ -6196,7 +6217,7 @@ export class Session {
   }
 
   async getAvailableEditorTargets() {
-    return listAvailableEditorTargets();
+    return this.filterEditorsForClient(await listAvailableEditorTargets());
   }
 
   async openEditorTarget(options: { editorId: EditorTargetId; path: string }): Promise<void> {
@@ -7670,7 +7691,9 @@ export class Session {
         listStoredAgents: () => this.agentStorage.list(),
         listLiveAgents: () => this.agentManager.listAgents(),
         resolveAgentIdentifier: (identifier) => this.resolveAgentIdentifier(identifier),
-        sendAgentMessage: (agentId, text) => this.handleSendAgentMessage(agentId, text),
+        sendAgentMessage: async (agentId, text) => {
+          await this.handleSendAgentMessage(agentId, text);
+        },
       });
     } catch (error) {
       this.emitChatRpcError(request, error);

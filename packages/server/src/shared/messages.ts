@@ -47,6 +47,7 @@ import {
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
 } from "../server/loop/rpc-schemas.js";
+import type { LiteralUnion } from "./literal-union.js";
 import type {
   AgentCapabilityFlags,
   AgentModelDefinition,
@@ -1129,14 +1130,32 @@ export const WorkspaceSetupStatusRequestSchema = z.object({
   requestId: z.string(),
 });
 
-export const EditorTargetIdSchema = z.enum([
+// TODO(2026-07): Remove once most clients are on >=0.1.50 and support arbitrary editor ids.
+export const LEGACY_EDITOR_TARGET_IDS = [
   "cursor",
   "vscode",
   "zed",
   "finder",
   "explorer",
   "file-manager",
-]);
+] as const;
+
+export const KNOWN_EDITOR_TARGET_IDS = [...LEGACY_EDITOR_TARGET_IDS, "webstorm"] as const;
+
+export const KnownEditorTargetIdSchema = z.enum(KNOWN_EDITOR_TARGET_IDS);
+export const LegacyEditorTargetIdSchema = z.enum(LEGACY_EDITOR_TARGET_IDS);
+export const EditorTargetIdSchema = z.string().trim().min(1);
+
+const KNOWN_EDITOR_TARGET_ID_SET = new Set<string>(KNOWN_EDITOR_TARGET_IDS);
+const LEGACY_EDITOR_TARGET_ID_SET = new Set<string>(LEGACY_EDITOR_TARGET_IDS);
+
+export function isKnownEditorTargetId(value: string): value is KnownEditorTargetId {
+  return KNOWN_EDITOR_TARGET_ID_SET.has(value);
+}
+
+export function isLegacyEditorTargetId(value: string): value is LegacyEditorTargetId {
+  return LEGACY_EDITOR_TARGET_ID_SET.has(value);
+}
 
 export const EditorTargetDescriptorPayloadSchema = z.object({
   id: EditorTargetIdSchema,
@@ -2799,7 +2818,9 @@ export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPaylo
 export type WorkspaceScriptLifecycle = z.infer<typeof WorkspaceScriptLifecycleSchema>;
 export type WorkspaceScriptHealth = z.infer<typeof WorkspaceScriptHealthSchema>;
 export type WorkspaceScriptPayload = z.infer<typeof WorkspaceScriptPayloadSchema>;
-export type EditorTargetId = z.infer<typeof EditorTargetIdSchema>;
+export type KnownEditorTargetId = z.infer<typeof KnownEditorTargetIdSchema>;
+export type LegacyEditorTargetId = z.infer<typeof LegacyEditorTargetIdSchema>;
+export type EditorTargetId = LiteralUnion<KnownEditorTargetId, string>;
 export type EditorTargetDescriptorPayload = z.infer<typeof EditorTargetDescriptorPayloadSchema>;
 export type FetchAgentsResponseMessage = z.infer<typeof FetchAgentsResponseMessageSchema>;
 export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>;
