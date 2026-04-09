@@ -298,6 +298,8 @@ export class PiACPAgentClient extends ACPAgentClient {
         await connection.setSessionMode({ sessionId, modeId: thinkingOptionId });
       },
       capabilities: PI_CAPABILITIES,
+      waitForInitialCommands: true,
+      initialCommandsWaitTimeoutMs: 1500,
     });
   }
 
