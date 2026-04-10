@@ -12,7 +12,7 @@ This means:
 - The maintainer may rewrite, split, cherry-pick from, or close any PR at their discretion.
 - There is no obligation to merge a PR as-submitted, regardless of code quality.
 
-This is not meant to discourage contributions — it is meant to set clear expectations so nobody wastes their time.
+This is not meant to discourage contributions. It is meant to set clear expectations so nobody wastes their time.
 
 ## How to contribute
 
@@ -35,7 +35,7 @@ Please read these first:
 
 ## What is most helpful
 
-The highest-signal contributions right now are:
+The most useful contributions right now are:
 
 - bug fixes
 - windows and linux specific fixes
@@ -109,7 +109,7 @@ Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for build-sync gotchas, local st
 
 ## Multi-platform testing
 
-Paseo ships to mobile (iOS/Android), web, and desktop (Electron). Every UI change must be tested on mobile and web at minimum, and desktop too if relevant. This is a multi-platform codebase and things that look fine on one surface regularly break on another.
+Paseo ships to mobile (iOS/Android), web, and desktop (Electron). Every UI change must be tested on mobile and web at minimum, and desktop if relevant. Things that look fine on one surface regularly break on another.
 
 Common checks:
 
@@ -130,7 +130,7 @@ If you touch protocol or shared client/server behavior, read the compatibility n
 
 ## Coding standards
 
-Paseo has explicit standards. Please follow them.
+Paseo has explicit standards. Follow them.
 
 The full guide lives in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 
@@ -139,7 +139,7 @@ The full guide lives in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 Before opening a PR, make sure:
 
 - there was prior discussion and alignment on scope (issue or conversation)
-- the change is focused — one idea per PR
+- the change is focused, one idea per PR
 - the PR description explains what changed and why
 - **UI changes include screenshots or videos** for every affected platform (mobile, web, desktop)
 - UI changes have been tested on mobile and web at minimum
@@ -159,7 +159,7 @@ That is especially true for:
 - new orchestration models
 - anything that would be hard to remove later
 
-Early alignment is much better than a large PR that is expensive for everyone to unwind.
+Early alignment saves everyone time.
 
 ## Forks are fine
 
