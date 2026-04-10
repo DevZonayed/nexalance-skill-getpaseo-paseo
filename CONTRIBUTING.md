@@ -2,6 +2,26 @@
 
 Thanks for taking the time to contribute.
 
+## How this project works
+
+Paseo is a BDFL project. Product direction, scope, and what ships are the maintainer's call.
+
+This means:
+
+- PRs submitted without prior discussion will likely be rejected, heavily modified, or scoped down.
+- The maintainer may rewrite, split, cherry-pick from, or close any PR at their discretion.
+- There is no obligation to merge a PR as-submitted, regardless of code quality.
+
+This is not meant to discourage contributions. It is meant to set clear expectations so nobody wastes their time.
+
+## How to contribute
+
+1. **Open an issue first.** Describe the problem or improvement. Get a thumbs up before writing code.
+2. **Keep it small.** One bug, one flow, one focused change.
+3. **Open a PR** once there is alignment on scope.
+
+If you want to propose a direction change, start a conversation.
+
 ## Before you start
 
 Please read these first:
@@ -15,25 +35,15 @@ Please read these first:
 
 ## What is most helpful
 
-The highest-signal contributions right now are:
+The most useful contributions right now are:
 
 - bug fixes
+- windows and linux specific fixes
 - regression fixes
-- docs improvements
+- doc improvements
 - packaging / platform fixes
 - focused UX improvements that fit the existing product direction
 - tests that lock down important behavior
-
-## Discuss large changes first
-
-If you want to add a major feature, change core UX, introduce a new surface, or bring in a new architectural concept, please open an issue or start a conversation first.
-
-Even if the code is good, large unsolicited PRs are unlikely to be merged if they set product direction without prior alignment.
-
-In short:
-
-- small, focused PRs: great
-- large product-shaping PRs without discussion: probably not
 
 ## Scope expectations
 
@@ -66,8 +76,10 @@ When reviewing contributions, the bar is not just:
 It is also:
 
 - does this fit Paseo?
+- does this add product surface that will be hard to maintain?
+- does the value justify the maintenance surface it adds?
+- does this solve a common need or over-serve an edge case?
 - does this preserve the product's current direction?
-- does this increase long-term complexity in a way that is worth it?
 
 ## Development setup
 
@@ -79,6 +91,7 @@ It is also:
 ### Start local development
 
 ```bash
+# runs both daemon and expo app
 npm run dev
 ```
 
@@ -94,9 +107,9 @@ npm run cli -- ls -a -g
 
 Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for build-sync gotchas, local state, ports, and daemon details.
 
-## Testing and verification
+## Multi-platform testing
 
-At minimum, run the checks relevant to your change.
+Paseo ships to mobile (iOS/Android), web, and desktop (Electron). Every UI change must be tested on mobile and web at minimum, and desktop if relevant. Things that look fine on one surface regularly break on another.
 
 Common checks:
 
@@ -117,16 +130,7 @@ If you touch protocol or shared client/server behavior, read the compatibility n
 
 ## Coding standards
 
-Paseo has explicit standards. Please follow them.
-
-Highlights:
-
-- keep complexity low
-- avoid "while I'm at it" cleanup
-- no `any`
-- prefer object parameters over positional argument lists
-- preserve behavior unless the change is explicitly meant to change behavior
-- collocate tests with implementation
+Paseo has explicit standards. Follow them.
 
 The full guide lives in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 
@@ -134,12 +138,14 @@ The full guide lives in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 
 Before opening a PR, make sure:
 
-- the change is focused
+- there was prior discussion and alignment on scope (issue or conversation)
+- the change is focused, one idea per PR
 - the PR description explains what changed and why
-- relevant docs were updated if needed
+- **UI changes include screenshots or videos** for every affected platform (mobile, web, desktop)
+- UI changes have been tested on mobile and web at minimum
 - typecheck passes
 - tests pass, or you clearly explain what could not be run
-- the change does not accidentally bundle unrelated product ideas
+- relevant docs were updated if needed
 
 ## Communication
 
@@ -153,7 +159,7 @@ That is especially true for:
 - new orchestration models
 - anything that would be hard to remove later
 
-Early alignment is much better than a large PR that is expensive for everyone to unwind.
+Early alignment saves everyone time.
 
 ## Forks are fine
 

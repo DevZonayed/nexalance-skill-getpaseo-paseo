@@ -39,7 +39,10 @@ echo "════════════════════════�
 # through the daemon's Portless URL instead of a fixed localhost port.
 APP_ORIGIN="$(portless get app)"
 DAEMON_ENDPOINT="$(portless get daemon | sed -E 's#^https?://##')"
-export PASEO_CORS_ORIGINS="${APP_ORIGIN}"
+# Allow any origin in dev so Electron on random ports and Portless URLs all work.
+# SECURITY: wildcard CORS is unsafe in production — only acceptable here because
+# the daemon binds to localhost and this script is never used for production.
+export PASEO_CORS_ORIGINS="*"
 
 # Run both with concurrently
 # BROWSER=none prevents auto-opening browser

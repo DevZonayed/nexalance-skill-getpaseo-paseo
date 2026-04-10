@@ -59,6 +59,7 @@ interface CombinedModelSelectorProps {
     disabled: boolean;
     isOpen: boolean;
   }) => React.ReactNode;
+  onOpen?: () => void;
   onClose?: () => void;
   disabled?: boolean;
 }
@@ -517,6 +518,7 @@ export function CombinedModelSelector({
   favoriteKeys = new Set<string>(),
   onToggleFavorite,
   renderTrigger,
+  onOpen,
   onClose,
   disabled = false,
 }: CombinedModelSelectorProps) {
@@ -553,12 +555,14 @@ export function CombinedModelSelector({
     (open: boolean) => {
       setIsOpen(open);
       setView(computeInitialView());
-      if (!open) {
+      if (open) {
+        onOpen?.();
+      } else {
         setSearchQuery("");
         onClose?.();
       }
     },
-    [onClose, computeInitialView],
+    [onOpen, onClose, computeInitialView],
   );
 
   const handleSelect = useCallback(
