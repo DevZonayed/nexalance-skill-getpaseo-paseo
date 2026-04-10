@@ -2445,6 +2445,22 @@ const styles = StyleSheet.create((theme) => ({
   sourceControlButtonHovered: {
     backgroundColor: theme.colors.surface2,
   },
+  diffStatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  diffStatAdditions: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.diffAddition,
+  },
+  diffStatDeletions: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.diffDeletion,
+  },
   newTabActions: {
     flexDirection: "row",
     alignItems: "center",

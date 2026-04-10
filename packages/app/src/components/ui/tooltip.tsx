@@ -550,9 +550,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.xl,
     backgroundColor: theme.colors.popover,
-    borderWidth: theme.borderWidth[2],
-    borderColor: theme.colors.border,
-    ...theme.shadow.sm,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    ...theme.shadow.md,
     zIndex: 1000,
   },
 }));
