@@ -105,6 +105,17 @@ export const baseColors = {
 
 export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty";
 
+// Diff stat colors — light uses muted tones, dark uses the brighter palette values
+const lightDiffColors = {
+  diffAddition: "#15803d", // green-700 — readable on white without screaming
+  diffDeletion: "#b91c1c", // red-700
+};
+
+const darkDiffColors = {
+  diffAddition: "#4ade80", // green-400
+  diffDeletion: "#ef4444", // red-500
+};
+
 // Semantic color tokens - Layer-based system
 const lightSemanticColors = {
   // Surfaces (layers) - shifted one step lighter
@@ -153,6 +164,8 @@ const lightSemanticColors = {
   accentBorder: "#ececf1",
   input: "#f4f4f5",
   ring: "#18181b",
+
+  ...lightDiffColors,
 
   terminal: {
     background: "#ffffff",
@@ -262,6 +275,8 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accentBorder: tint.borderAccent,
     input: tint.surface2,
     ring: "#d4d4d8",
+
+    ...darkDiffColors,
 
     terminal: {
       background: tint.surface0,

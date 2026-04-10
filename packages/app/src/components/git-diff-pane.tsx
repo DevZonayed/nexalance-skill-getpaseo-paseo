@@ -1724,7 +1724,7 @@ const styles = StyleSheet.create((theme) => ({
   newBadgeText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
+    color: theme.colors.diffAddition,
   },
   deletedBadge: {
     backgroundColor: "rgba(248, 81, 73, 0.2)",
@@ -1736,17 +1736,17 @@ const styles = StyleSheet.create((theme) => ({
   deletedBadgeText: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
+    color: theme.colors.diffDeletion,
   },
   additions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
+    color: theme.colors.diffAddition,
   },
   deletions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
+    color: theme.colors.diffDeletion,
   },
   diffContent: {
     borderTopWidth: theme.borderWidth[1],
@@ -1824,10 +1824,10 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   addLineNumberText: {
-    color: theme.colors.palette.green[400],
+    color: theme.colors.diffAddition,
   },
   removeLineNumberText: {
-    color: theme.colors.palette.red[500],
+    color: theme.colors.diffDeletion,
   },
   diffLineText: {
     flex: 1,

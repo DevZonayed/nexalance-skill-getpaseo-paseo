@@ -2371,12 +2371,12 @@ const styles = StyleSheet.create((theme) => ({
   diffStatAdditions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.green[400],
+    color: theme.colors.diffAddition,
   },
   diffStatDeletions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.palette.red[500],
+    color: theme.colors.diffDeletion,
   },
   newTabActions: {
     flexDirection: "row",
