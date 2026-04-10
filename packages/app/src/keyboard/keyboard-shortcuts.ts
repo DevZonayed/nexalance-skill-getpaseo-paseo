@@ -744,6 +744,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- Theme cycling ---
+  {
+    id: "theme-cycle-cmd-shift-t-mac",
+    action: "theme.cycle",
+    combo: "Cmd+Alt+T",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "cycle-theme",
+      section: "panels",
+      label: "Cycle theme",
+      keys: ["mod", "alt", "T"],
+    },
+  },
+  {
+    id: "theme-cycle-ctrl-alt-t-non-mac",
+    action: "theme.cycle",
+    combo: "Ctrl+Alt+T",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "cycle-theme",
+      section: "panels",
+      label: "Cycle theme",
+      keys: ["mod", "alt", "T"],
+    },
+  },
+
   // --- Message input ---
   {
     id: "message-input-voice-toggle-cmd-shift-d-mac",

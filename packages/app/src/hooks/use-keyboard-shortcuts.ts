@@ -35,6 +35,7 @@ export function useKeyboardShortcuts({
   toggleFileExplorer,
   toggleBothSidebars,
   toggleFocusMode,
+  cycleTheme,
 }: {
   enabled: boolean;
   isMobile: boolean;
@@ -43,6 +44,7 @@ export function useKeyboardShortcuts({
   toggleFileExplorer?: () => void;
   toggleBothSidebars?: () => void;
   toggleFocusMode?: () => void;
+  cycleTheme?: () => void;
 }) {
   const pathname = usePathname();
   const hosts = useHosts();
@@ -267,6 +269,11 @@ export function useKeyboardShortcuts({
             toggleFocusMode();
           }
           return true;
+        case "theme.cycle":
+          if (cycleTheme) {
+            cycleTheme();
+          }
+          return true;
         case "command-center.toggle": {
           const store = useKeyboardShortcutsStore.getState();
           if (!store.commandCenterOpen) {
@@ -413,6 +420,7 @@ export function useKeyboardShortcuts({
     };
   }, [
     bindings,
+    cycleTheme,
     enabled,
     isMobile,
     openProjectPickerAction,
