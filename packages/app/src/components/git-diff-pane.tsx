@@ -28,6 +28,7 @@ import {
   Archive,
   ChevronDown,
   Columns2,
+  Download,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -897,6 +898,9 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   const commitStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({ serverId, cwd, actionId: "commit" }),
   );
+  const pullStatus = useCheckoutGitActionsStore((state) =>
+    state.getStatus({ serverId, cwd, actionId: "pull" }),
+  );
   const pushStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({ serverId, cwd, actionId: "push" }),
   );
@@ -914,6 +918,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   );
 
   const runCommit = useCheckoutGitActionsStore((state) => state.commit);
+  const runPull = useCheckoutGitActionsStore((state) => state.pull);
   const runPush = useCheckoutGitActionsStore((state) => state.push);
   const runCreatePr = useCheckoutGitActionsStore((state) => state.createPr);
   const runMergeBranch = useCheckoutGitActionsStore((state) => state.mergeBranch);
@@ -944,6 +949,16 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
         toastActionError(err, "Failed to commit");
       });
   }, [cwd, runCommit, serverId, toastActionError, toastActionSuccess]);
+
+  const handlePull = useCallback(() => {
+    void runPull({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess("Pulled");
+      })
+      .catch((err) => {
+        toastActionError(err, "Failed to pull");
+      });
+  }, [cwd, runPull, serverId, toastActionError, toastActionSuccess]);
 
   const handlePush = useCallback(() => {
     void runPush({ serverId, cwd })
@@ -1071,6 +1086,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
         : "Unknown";
   const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
   const aheadCount = gitStatus?.aheadBehind?.ahead ?? 0;
+  const behindBaseCount = gitStatus?.aheadBehind?.behind ?? 0;
   const aheadOfOrigin = gitStatus?.aheadOfOrigin ?? 0;
   const behindOfOrigin = gitStatus?.behindOfOrigin ?? 0;
   const baseRefLabel = useMemo(() => {
@@ -1096,6 +1112,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     (postShipArchiveSuggested || isMergedPullRequest);
 
   const commitDisabled = actionsDisabled || commitStatus === "pending";
+  const pullDisabled = actionsDisabled || pullStatus === "pending";
   const prDisabled = actionsDisabled || prCreateStatus === "pending";
   const mergeDisabled = actionsDisabled || mergeStatus === "pending";
   const mergeFromBaseDisabled = actionsDisabled || mergeFromBaseStatus === "pending";
@@ -1202,6 +1219,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
       baseRefAvailable: Boolean(baseRef),
       baseRefLabel,
       aheadCount,
+      behindBaseCount,
       aheadOfOrigin,
       behindOfOrigin,
       shouldPromoteArchive,
@@ -1212,6 +1230,12 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
           status: commitStatus,
           icon: <GitCommitHorizontal size={16} color={theme.colors.foregroundMuted} />,
           handler: handleCommit,
+        },
+        pull: {
+          disabled: pullDisabled,
+          status: pullStatus,
+          icon: <Download size={16} color={theme.colors.foregroundMuted} />,
+          handler: handlePull,
         },
         push: {
           disabled: pushDisabled,
@@ -1257,6 +1281,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     hasPullRequest,
     prStatus?.url,
     aheadCount,
+    behindBaseCount,
     isPaseoOwnedWorktree,
     isOnBaseBranch,
     githubFeaturesEnabled,
@@ -1267,18 +1292,21 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
     baseRefLabel,
     shouldPromoteArchive,
     commitDisabled,
+    pullDisabled,
     pushDisabled,
     prDisabled,
     mergeDisabled,
     mergeFromBaseDisabled,
     archiveDisabled,
     commitStatus,
+    pullStatus,
     pushStatus,
     prCreateStatus,
     mergeStatus,
     mergeFromBaseStatus,
     archiveStatus,
     handleCommit,
+    handlePull,
     handlePush,
     handleCreatePr,
     handleMergeBranch,

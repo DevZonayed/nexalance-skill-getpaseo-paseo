@@ -20,6 +20,7 @@ interface UseGitActionsInput {
   cwd: string;
   icons: {
     commit: ReactElement;
+    pull: ReactElement;
     push: ReactElement;
     viewPr: ReactElement;
     createPr: ReactElement;
@@ -102,6 +103,9 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const commitStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({ serverId, cwd, actionId: "commit" }),
   );
+  const pullStatus = useCheckoutGitActionsStore((state) =>
+    state.getStatus({ serverId, cwd, actionId: "pull" }),
+  );
   const pushStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({ serverId, cwd, actionId: "push" }),
   );
@@ -119,6 +123,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   );
 
   const runCommit = useCheckoutGitActionsStore((state) => state.commit);
+  const runPull = useCheckoutGitActionsStore((state) => state.pull);
   const runPush = useCheckoutGitActionsStore((state) => state.push);
   const runCreatePr = useCheckoutGitActionsStore((state) => state.createPr);
   const runMergeBranch = useCheckoutGitActionsStore((state) => state.mergeBranch);
@@ -150,6 +155,16 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
         toastActionError(err, "Failed to commit");
       });
   }, [cwd, runCommit, serverId, toastActionError, toastActionSuccess]);
+
+  const handlePull = useCallback(() => {
+    void runPull({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess("Pulled");
+      })
+      .catch((err) => {
+        toastActionError(err, "Failed to pull");
+      });
+  }, [cwd, runPull, serverId, toastActionError, toastActionSuccess]);
 
   const handlePush = useCallback(() => {
     void runPush({ serverId, cwd })
@@ -230,6 +245,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   // Derived state
   const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
   const aheadCount = gitStatus?.aheadBehind?.ahead ?? 0;
+  const behindBaseCount = gitStatus?.aheadBehind?.behind ?? 0;
   const aheadOfOrigin = gitStatus?.aheadOfOrigin ?? 0;
   const behindOfOrigin = gitStatus?.behindOfOrigin ?? 0;
   const baseRefLabel = useMemo(() => {
@@ -249,6 +265,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     (postShipArchiveSuggested || isMergedPullRequest);
 
   const commitDisabled = actionsDisabled || commitStatus === "pending";
+  const pullDisabled = actionsDisabled || pullStatus === "pending";
   const prDisabled = actionsDisabled || prCreateStatus === "pending";
   const mergeDisabled = actionsDisabled || mergeStatus === "pending";
   const mergeFromBaseDisabled = actionsDisabled || mergeFromBaseStatus === "pending";
@@ -276,6 +293,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       baseRefAvailable: Boolean(baseRef),
       baseRefLabel,
       aheadCount,
+      behindBaseCount,
       aheadOfOrigin,
       behindOfOrigin,
       shouldPromoteArchive,
@@ -286,6 +304,12 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
           status: commitStatus,
           icon: icons.commit,
           handler: handleCommit,
+        },
+        pull: {
+          disabled: pullDisabled,
+          status: pullStatus,
+          icon: icons.pull,
+          handler: handlePull,
         },
         push: {
           disabled: pushDisabled,
@@ -331,6 +355,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasPullRequest,
     prStatus?.url,
     aheadCount,
+    behindBaseCount,
     isPaseoOwnedWorktree,
     isOnBaseBranch,
     githubFeaturesEnabled,
@@ -341,18 +366,21 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     baseRefLabel,
     shouldPromoteArchive,
     commitDisabled,
+    pullDisabled,
     pushDisabled,
     prDisabled,
     mergeDisabled,
     mergeFromBaseDisabled,
     archiveDisabled,
     commitStatus,
+    pullStatus,
     pushStatus,
     prCreateStatus,
     mergeStatus,
     mergeFromBaseStatus,
     archiveStatus,
     handleCommit,
+    handlePull,
     handlePush,
     handleCreatePr,
     handleMergeBranch,

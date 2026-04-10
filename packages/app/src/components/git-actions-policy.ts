@@ -4,6 +4,7 @@ import type { ActionStatus } from "@/components/ui/dropdown-menu";
 
 export type GitActionId =
   | "commit"
+  | "pull"
   | "push"
   | "pr"
   | "merge-branch"
@@ -47,6 +48,7 @@ export interface BuildGitActionsInput {
   baseRefAvailable: boolean;
   baseRefLabel: string;
   aheadCount: number;
+  behindBaseCount: number;
   aheadOfOrigin: number;
   behindOfOrigin: number;
   shouldPromoteArchive: boolean;
@@ -54,7 +56,8 @@ export interface BuildGitActionsInput {
   runtime: Record<GitActionId, GitActionRuntimeState>;
 }
 
-const SECONDARY_ACTION_IDS: GitActionId[] = ["merge-branch", "pr", "merge-from-base", "push"];
+const REMOTE_ACTION_IDS: GitActionId[] = ["pull", "push"];
+const FEATURE_ACTION_IDS: GitActionId[] = ["merge-from-base", "merge-branch", "pr"];
 
 export function buildGitActions(input: BuildGitActionsInput): GitActions {
   if (!input.isGit) {
@@ -74,14 +77,26 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime.commit.handler,
   });
 
+  allActions.set("pull", {
+    id: "pull",
+    label: "Pull",
+    pendingLabel: "Pulling...",
+    successLabel: "Pulled",
+    disabled: input.runtime.pull.disabled || !canPull(input),
+    status: input.runtime.pull.status,
+    description: getPullDescription(input),
+    icon: input.runtime.pull.icon,
+    handler: input.runtime.pull.handler,
+  });
+
   allActions.set("push", {
     id: "push",
     label: "Push",
     pendingLabel: "Pushing...",
     successLabel: "Pushed",
-    disabled: input.runtime.push.disabled || !input.hasRemote,
+    disabled: input.runtime.push.disabled || !canPush(input),
     status: input.runtime.push.status,
-    description: input.hasRemote ? undefined : "No remote configured",
+    description: getPushDescription(input),
     icon: input.runtime.push.icon,
     handler: input.runtime.push.handler,
   });
@@ -93,11 +108,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: `Merge into ${input.baseRefLabel}`,
     pendingLabel: "Merging...",
     successLabel: "Merged",
-    disabled:
-      input.runtime["merge-branch"].disabled ||
-      !input.baseRefAvailable ||
-      input.hasUncommittedChanges ||
-      input.aheadCount === 0,
+    disabled: input.runtime["merge-branch"].disabled || !canMergeBranch(input),
     status: input.runtime["merge-branch"].status,
     description: getMergeBranchDescription(input),
     icon: input.runtime["merge-branch"].icon,
@@ -106,7 +117,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
 
   allActions.set("merge-from-base", {
     id: "merge-from-base",
-    label: input.isOnBaseBranch ? "Sync" : `Update from ${input.baseRefLabel}`,
+    label: `Update from ${input.baseRefLabel}`,
     pendingLabel: "Updating...",
     successLabel: "Updated",
     disabled: input.runtime["merge-from-base"].disabled || !canMergeFromBase(input),
@@ -123,19 +134,27 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     successLabel: "Archived",
     disabled: input.runtime["archive-worktree"].disabled || !input.isPaseoOwnedWorktree,
     status: input.runtime["archive-worktree"].status,
-    description: input.isPaseoOwnedWorktree ? undefined : "Only available for Paseo worktrees",
+    description: input.isPaseoOwnedWorktree ? undefined : "Only for worktrees",
     icon: input.runtime["archive-worktree"].icon,
     handler: input.runtime["archive-worktree"].handler,
   });
 
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
-  const secondary = SECONDARY_ACTION_IDS.map((id) => allActions.get(id)!);
+
+  const secondaryIds = [...REMOTE_ACTION_IDS];
+  if (!input.isOnBaseBranch) {
+    secondaryIds.push(...FEATURE_ACTION_IDS);
+  }
   if (input.isPaseoOwnedWorktree) {
-    secondary.push(allActions.get("archive-worktree")!);
+    secondaryIds.push("archive-worktree");
   }
 
-  return { primary, secondary, menu: [] };
+  return {
+    primary,
+    secondary: secondaryIds.map((id) => allActions.get(id)!),
+    menu: [],
+  };
 }
 
 function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
@@ -145,20 +164,19 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (input.hasUncommittedChanges) {
     return "commit";
   }
-  if (input.aheadOfOrigin > 0 && input.hasRemote) {
+  if (canPull(input)) {
+    return "pull";
+  }
+  if (canPush(input)) {
     return "push";
+  }
+  if (!input.isOnBaseBranch && canMergeFromBase(input)) {
+    return "merge-from-base";
   }
   if (input.githubFeaturesEnabled && input.hasPullRequest && input.pullRequestUrl) {
     return "pr";
   }
-  if (
-    input.isOnBaseBranch &&
-    input.hasRemote &&
-    (input.aheadOfOrigin > 0 || input.behindOfOrigin > 0)
-  ) {
-    return "merge-from-base";
-  }
-  if (input.aheadCount > 0) {
+  if (!input.isOnBaseBranch && input.aheadCount > 0) {
     return input.shipDefault === "merge" ? "merge-branch" : "pr";
   }
   return null;
@@ -173,7 +191,7 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
       successLabel: "View PR",
       disabled: input.runtime.pr.disabled || !input.githubFeaturesEnabled,
       status: input.runtime.pr.status,
-      description: input.githubFeaturesEnabled ? undefined : "GitHub features unavailable",
+      description: input.githubFeaturesEnabled ? undefined : "GitHub unavailable",
       icon: input.runtime.pr.icon,
       handler: input.runtime.pr.handler,
     };
@@ -192,57 +210,94 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
   };
 }
 
+function canPull(input: BuildGitActionsInput): boolean {
+  return (
+    input.hasRemote &&
+    !input.hasUncommittedChanges &&
+    input.behindOfOrigin > 0
+  );
+}
+
+function canPush(input: BuildGitActionsInput): boolean {
+  return input.hasRemote && input.aheadOfOrigin > 0 && input.behindOfOrigin === 0;
+}
+
+function canMergeBranch(input: BuildGitActionsInput): boolean {
+  return (
+    !input.isOnBaseBranch &&
+    input.baseRefAvailable &&
+    !input.hasUncommittedChanges &&
+    input.aheadCount > 0
+  );
+}
+
 function canMergeFromBase(input: BuildGitActionsInput): boolean {
-  if (!input.baseRefAvailable || input.hasUncommittedChanges) {
-    return false;
-  }
-  if (!input.isOnBaseBranch) {
-    return true;
-  }
+  return (
+    !input.isOnBaseBranch &&
+    input.baseRefAvailable &&
+    !input.hasUncommittedChanges &&
+    input.behindBaseCount > 0
+  );
+}
+
+function getPullDescription(input: BuildGitActionsInput): string | undefined {
   if (!input.hasRemote) {
-    return false;
+    return "No remote";
   }
-  return input.aheadOfOrigin > 0 || input.behindOfOrigin > 0;
+  if (input.hasUncommittedChanges) {
+    return "Clean tree";
+  }
+  if (input.behindOfOrigin === 0) {
+    return "Nothing to pull";
+  }
+  return undefined;
+}
+
+function getPushDescription(input: BuildGitActionsInput): string | undefined {
+  if (!input.hasRemote) {
+    return "No remote";
+  }
+  if (input.behindOfOrigin > 0) {
+    return "Pull first";
+  }
+  if (input.aheadOfOrigin === 0) {
+    return "Nothing to push";
+  }
+  return undefined;
 }
 
 function getCreatePrDescription(input: BuildGitActionsInput): string | undefined {
   if (!input.githubFeaturesEnabled) {
-    return "GitHub features unavailable";
+    return "GitHub unavailable";
   }
   if (input.aheadCount === 0) {
-    return `Branch has no commits ahead of ${input.baseRefLabel}`;
+    return "No new commits";
   }
   return undefined;
 }
 
 function getMergeBranchDescription(input: BuildGitActionsInput): string | undefined {
   if (!input.baseRefAvailable) {
-    return "Base ref unavailable";
+    return "No base";
   }
   if (input.hasUncommittedChanges) {
-    return "Requires clean working tree";
+    return "Clean tree";
   }
   if (input.aheadCount === 0) {
-    return `No commits to merge into ${input.baseRefLabel}`;
+    return "No new commits";
   }
   return undefined;
 }
 
 function getMergeFromBaseDescription(input: BuildGitActionsInput): string | undefined {
   if (!input.baseRefAvailable) {
-    return "Base ref unavailable";
+    return "No base";
   }
   if (input.hasUncommittedChanges) {
-    return "Requires clean working tree";
+    return "Clean tree";
   }
-  if (!input.isOnBaseBranch) {
-    return undefined;
-  }
-  if (!input.hasRemote) {
-    return "No remote configured";
-  }
-  if (input.aheadOfOrigin === 0 && input.behindOfOrigin === 0) {
-    return "Already up to date";
+  if (input.behindBaseCount === 0) {
+    return "Up to date";
   }
   return undefined;
 }

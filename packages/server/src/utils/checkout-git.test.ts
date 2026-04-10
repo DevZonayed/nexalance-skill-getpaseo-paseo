@@ -28,6 +28,7 @@ import {
   MergeConflictError,
   MergeFromBaseConflictError,
   NotGitRepoError,
+  pullCurrentBranch,
   pushCurrentBranch,
   resolveRepositoryDefaultBranch,
   parseWorktreeList,
@@ -532,6 +533,28 @@ const x = 1;
     const porcelain = execSync("git status --porcelain", { cwd: repoDir }).toString().trim();
     expect(porcelain).toBe("");
     expect(() => execSync("git rev-parse -q --verify MERGE_HEAD", { cwd: repoDir })).toThrow();
+  });
+
+  it("pulls the current branch from origin", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    const otherClone = join(tempDir, "other-clone");
+    execSync(`git clone ${remoteDir} ${otherClone}`);
+    execSync("git config user.email 'test@test.com'", { cwd: otherClone });
+    execSync("git config user.name 'Test'", { cwd: otherClone });
+    writeFileSync(join(otherClone, "pulled.txt"), "remote\n");
+    execSync("git add pulled.txt", { cwd: otherClone });
+    execSync("git -c commit.gpgsign=false commit -m 'remote pull commit'", { cwd: otherClone });
+    const remoteCommit = execSync("git rev-parse HEAD", { cwd: otherClone }).toString().trim();
+    execSync("git push", { cwd: otherClone });
+
+    await pullCurrentBranch(repoDir);
+
+    execSync(`git merge-base --is-ancestor ${remoteCommit} HEAD`, { cwd: repoDir });
+    expect(readFileSync(join(repoDir, "pulled.txt"), "utf8")).toBe("remote\n");
   });
 
   it("pushes the current branch to origin", async () => {

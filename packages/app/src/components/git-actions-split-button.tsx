@@ -73,7 +73,8 @@ export function GitActionsSplitButton({ gitActions }: GitActionsSplitButtonProps
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" testID="changes-primary-cta-menu">
                 {gitActions.secondary.map((action, index) => {
-                  const needsSeparator = action.id === "merge-from-base" || action.id === "push";
+                  const needsSeparator =
+                    action.id === "merge-from-base" || action.id === "archive-worktree";
                   return (
                     <View key={action.id}>
                       {needsSeparator && index > 0 ? <DropdownMenuSeparator /> : null}

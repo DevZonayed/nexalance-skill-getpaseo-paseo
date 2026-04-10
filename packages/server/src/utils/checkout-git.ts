@@ -1757,6 +1757,19 @@ export async function mergeFromBase(
   }
 }
 
+export async function pullCurrentBranch(cwd: string): Promise<void> {
+  await requireGitRepo(cwd);
+  const currentBranch = await getCurrentBranch(cwd);
+  if (!currentBranch || currentBranch === "HEAD") {
+    throw new Error("Unable to determine current branch for pull");
+  }
+  const hasRemote = await hasOriginRemote(cwd);
+  if (!hasRemote) {
+    throw new Error("Remote 'origin' is not configured.");
+  }
+  await execAsync("git pull", { cwd });
+}
+
 export async function pushCurrentBranch(cwd: string): Promise<void> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
