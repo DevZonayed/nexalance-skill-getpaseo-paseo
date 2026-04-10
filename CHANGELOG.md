@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.52 - 2026-04-10
+
+### Added
+- Theme selector — choose from six themes including Midnight, Claude, and Ghostty dark variants.
+- Branch switching — switch git branches directly from the workspace header, with automatic stash and restore for uncommitted changes.
+- Auto-download updates — desktop updates download silently in the background so they're ready to install when you are.
+
+### Fixed
+- Layout now responds correctly when resizing the window or rotating a tablet — previously the app could get stuck in mobile layout on a large screen.
+- Terminal no longer causes massive memory spikes from snapshot thrashing during heavy output.
+- Typing in the terminal works reliably — special keys, Ctrl combos, and paste are handled natively by the terminal emulator.
+- Initializing agents no longer show a loading spinner as if they're running.
+- Reconnecting to a running agent now works even when session persistence is unavailable.
+- Error screens on desktop are now scrollable.
+- Model list refreshes in the background when you open the model selector.
+- Draft agent feature preferences (like thinking mode) are remembered across sessions.
+
 ## 0.1.51 - 2026-04-09
 
 ### Added
