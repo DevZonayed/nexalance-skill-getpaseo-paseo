@@ -5322,7 +5322,7 @@ export class Session {
     if (agent.status === "error" || agent.attentionReason === "error") {
       return "failed";
     }
-    if (agent.status === "running" || agent.status === "initializing") {
+    if (agent.status === "running") {
       return "running";
     }
     if (agent.requiresAttention) {
