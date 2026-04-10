@@ -88,12 +88,7 @@ export function shouldInterceptDomTerminalKey(args: {
   altKey: boolean;
   pendingModifiers: PendingTerminalModifiers;
 }): boolean {
-  return (
-    args.key.length > 1 ||
-    args.ctrlKey ||
-    args.altKey ||
-    hasPendingTerminalModifiers(args.pendingModifiers)
-  );
+  return hasPendingTerminalModifiers(args.pendingModifiers);
 }
 
 export function mergeTerminalModifiers(args: {

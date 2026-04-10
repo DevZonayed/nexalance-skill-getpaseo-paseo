@@ -52,7 +52,7 @@ describe("terminal key helpers", () => {
     });
   });
 
-  it("intercepts special keys and modifier combos", () => {
+  it("only intercepts when pending modifiers are active", () => {
     expect(
       shouldInterceptDomTerminalKey({
         key: "Escape",
@@ -60,7 +60,7 @@ describe("terminal key helpers", () => {
         altKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldInterceptDomTerminalKey({
         key: "c",
@@ -68,15 +68,23 @@ describe("terminal key helpers", () => {
         altKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldInterceptDomTerminalKey({
         key: "c",
         ctrlKey: false,
         altKey: false,
-        pendingModifiers: { ctrl: false, shift: false, alt: false },
+        pendingModifiers: { ctrl: true, shift: false, alt: false },
       }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      shouldInterceptDomTerminalKey({
+        key: "Escape",
+        ctrlKey: false,
+        altKey: false,
+        pendingModifiers: { ctrl: false, shift: false, alt: true },
+      }),
+    ).toBe(true);
   });
 
   it("detects pending modifier state", () => {
