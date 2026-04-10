@@ -3,7 +3,8 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, CircleDot, GitBranch, GitPullRequest, Plus, X } from "lucide-react-native";
+import { CircleDot, ChevronDown, ExternalLink, GitBranch, GitPullRequest } from "lucide-react-native";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { Composer } from "@/components/composer";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType } from "@/components/ui/combobox";
@@ -23,6 +24,7 @@ import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
+import { openExternalUrl } from "@/utils/open-external-url";
 import {
   requireWorkspaceExecutionAuthority,
 } from "@/utils/workspace-execution";
@@ -30,13 +32,13 @@ import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ImageAttachment, MessagePayload } from "@/components/message-input";
 import type { GitHubSearchItem } from "@server/shared/messages";
 
-function buildInitialPrompt(userText: string, githubItems: GitHubSearchItem[]): string {
+function buildInitialPrompt(userText: string, githubItem: GitHubSearchItem | null): string {
   const parts: string[] = [];
 
-  for (const item of githubItems) {
-    const kind = item.kind === "pr" ? "Pull Request" : "Issue";
-    const header = `GitHub ${kind} #${item.number}: ${item.title}`;
-    const body = item.body?.trim();
+  if (githubItem) {
+    const kind = githubItem.kind === "pr" ? "Pull Request" : "Issue";
+    const header = `GitHub ${kind} #${githubItem.number}: ${githubItem.title}`;
+    const body = githubItem.body?.trim();
     parts.push(body ? `${header}\n\n${body}` : header);
   }
 
@@ -70,7 +72,7 @@ export function NewWorkspaceScreen({
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const branchAnchorRef = useRef<View>(null);
-  const [githubContextItems, setGithubContextItems] = useState<GitHubSearchItem[]>([]);
+  const [selectedGithubItem, setSelectedGithubItem] = useState<GitHubSearchItem | null>(null);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
   const [githubSearchQuery, setGithubSearchQuery] = useState("");
   const githubAnchorRef = useRef<View>(null);
@@ -131,14 +133,13 @@ export function NewWorkspaceScreen({
         limit: 20,
       });
     },
-    enabled: isConnected && !!client && githubSearchQuery_trimmed.length >= 2,
+    enabled: isConnected && !!client,
+    staleTime: 30_000,
   });
 
   const githubSearchOptions: ComboboxOptionType[] = useMemo(() => {
     const items = githubSearchResultsQuery.data?.items ?? [];
-    const selectedNumbers = new Set(githubContextItems.map((i) => `${i.kind}:${i.number}`));
     return items
-      .filter((item) => !selectedNumbers.has(`${item.kind}:${item.number}`))
       .map((item) => ({
         id: `${item.kind}:${item.number}`,
         label: `#${item.number} ${item.title}`,
@@ -146,25 +147,19 @@ export function NewWorkspaceScreen({
         // discard server-searched results that match on body but not title.
         description: githubSearchQuery_trimmed,
       }));
-  }, [githubSearchResultsQuery.data?.items, githubContextItems, githubSearchQuery_trimmed]);
+  }, [githubSearchResultsQuery.data?.items, githubSearchQuery_trimmed]);
 
   const handleSelectGithubItem = useCallback(
     (id: string) => {
       const items = githubSearchResultsQuery.data?.items ?? [];
       const [kind, numberStr] = id.split(":");
       const item = items.find((i) => i.kind === kind && i.number === Number(numberStr));
-      if (item) {
-        setGithubContextItems((prev) => [...prev, item]);
-      }
+      setSelectedGithubItem(item ?? null);
       setGithubPickerOpen(false);
       setGithubSearchQuery("");
     },
     [githubSearchResultsQuery.data?.items],
   );
-
-  const handleRemoveGithubItem = useCallback((index: number) => {
-    setGithubContextItems((prev) => prev.filter((_, i) => i !== index));
-  }, []);
 
   const branchOptions: ComboboxOptionType[] = useMemo(
     () =>
@@ -213,7 +208,7 @@ export function NewWorkspaceScreen({
           throw new Error("Composer state is required");
         }
 
-        const initialPrompt = buildInitialPrompt(text.trim(), githubContextItems);
+        const initialPrompt = buildInitialPrompt(text.trim(), selectedGithubItem);
         const encodedImages = await encodeImages(images);
         const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
         const agent = await connectedClient.createAgent({
@@ -250,7 +245,7 @@ export function NewWorkspaceScreen({
         setPendingAction(null);
       }
     },
-    [composerState, ensureWorkspace, githubContextItems, serverId, setAgents, toast, withConnectedClient],
+    [composerState, ensureWorkspace, selectedGithubItem, serverId, setAgents, toast, withConnectedClient],
   );
 
   const workspaceTitle =
@@ -362,25 +357,6 @@ export function NewWorkspaceScreen({
                 )}
               />
             </View>
-            {githubContextItems.map((item, index) => (
-              <View key={`${item.kind}:${item.number}`} style={styles.githubChip}>
-                {item.kind === "pr" ? (
-                  <GitPullRequest size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                ) : (
-                  <CircleDot size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                )}
-                <Text style={styles.githubChipText} numberOfLines={1}>
-                  #{item.number} {item.title}
-                </Text>
-                <Pressable
-                  onPress={() => handleRemoveGithubItem(index)}
-                  accessibilityLabel={`Remove #${item.number}`}
-                  hitSlop={4}
-                >
-                  <X size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                </Pressable>
-              </View>
-            ))}
             <View>
               <Pressable
                 ref={githubAnchorRef}
@@ -391,16 +367,51 @@ export function NewWorkspaceScreen({
                   pressed && styles.badgePressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Add GitHub issue or PR"
+                accessibilityLabel={
+                  selectedGithubItem
+                    ? `#${selectedGithubItem.number} ${selectedGithubItem.title}`
+                    : "Add GitHub issue or PR"
+                }
               >
-                <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                <Text style={styles.badgeText} numberOfLines={1}>
-                  Issue or PR
-                </Text>
+                {selectedGithubItem ? (
+                  <>
+                    <View style={styles.badgeIcon}>
+                      {selectedGithubItem.kind === "pr" ? (
+                        <GitPullRequest size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                      ) : (
+                        <CircleDot size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                      )}
+                    </View>
+                    <Text style={styles.badgeText} numberOfLines={1}>
+                      #{selectedGithubItem.number} {selectedGithubItem.title}
+                    </Text>
+                    <Pressable
+                      onPress={() => openExternalUrl(selectedGithubItem.url)}
+                      accessibilityLabel="Open on GitHub"
+                      hitSlop={4}
+                    >
+                      {({ hovered }) => (
+                        <ExternalLink
+                          size={theme.iconSize.sm}
+                          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                        />
+                      )}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.badgeIcon}>
+                      <GitHubIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                    </View>
+                    <Text style={styles.badgeText} numberOfLines={1}>
+                      Issue or PR
+                    </Text>
+                  </>
+                )}
               </Pressable>
               <Combobox
                 options={githubSearchOptions}
-                value=""
+                value={selectedGithubItem ? `${selectedGithubItem.kind}:${selectedGithubItem.number}` : ""}
                 onSelect={handleSelectGithubItem}
                 searchable
                 searchPlaceholder="Search issues and PRs..."
@@ -414,11 +425,9 @@ export function NewWorkspaceScreen({
                 desktopPlacement="bottom-start"
                 anchorRef={githubAnchorRef}
                 emptyText={
-                  githubSearchQuery_trimmed.length < 2
-                    ? "Type to search..."
-                    : githubSearchResultsQuery.isFetching
-                      ? "Searching..."
-                      : "No results found."
+                  githubSearchResultsQuery.isFetching
+                    ? "Searching..."
+                    : "No results found."
                 }
                 renderOption={({ option, selected, active, onPress }) => {
                   const item = (githubSearchResultsQuery.data?.items ?? []).find(
@@ -443,6 +452,22 @@ export function NewWorkspaceScreen({
                             color={theme.colors.foregroundMuted}
                           />
                         )
+                      }
+                      trailingSlot={
+                        item?.url ? (
+                          <Pressable
+                            onPress={() => openExternalUrl(item.url)}
+                            hitSlop={8}
+                            accessibilityLabel="Open on GitHub"
+                          >
+                            {({ hovered }) => (
+                              <ExternalLink
+                                size={theme.iconSize.sm}
+                                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                              />
+                            )}
+                          </Pressable>
+                        ) : undefined
                       }
                     />
                   );
@@ -518,6 +543,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     height: 28,
+    maxWidth: 240,
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius["2xl"],
     gap: theme.spacing[1],
@@ -528,22 +554,10 @@ const styles = StyleSheet.create((theme) => ({
   badgePressed: {
     backgroundColor: theme.colors.surface0,
   },
+  badgeIcon: {
+    flexShrink: 0,
+  },
   badgeText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
-  },
-  githubChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    height: 28,
-    paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[1],
-    borderRadius: theme.borderRadius["2xl"],
-    backgroundColor: theme.colors.surface1,
-    gap: theme.spacing[1],
-    maxWidth: 240,
-  },
-  githubChipText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
