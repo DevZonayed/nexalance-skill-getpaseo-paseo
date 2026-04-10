@@ -322,7 +322,7 @@ export function Combobox({
 
   const middleware = useMemo(
     () => [
-      floatingOffset(Platform.OS === "web" ? 0 : 4),
+      floatingOffset(Platform.OS === "web" ? 5 : 4),
       ...(Platform.OS === "web" ? [] : [flip({ padding: collisionPadding })]),
       ...(isDesktopAboveSearch ? [] : [shift({ padding: collisionPadding })]),
       floatingSize({
