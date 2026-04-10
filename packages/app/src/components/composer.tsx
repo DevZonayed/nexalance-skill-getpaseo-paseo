@@ -1,6 +1,7 @@
 import { View, Pressable, Text, ActivityIndicator, Platform } from "react-native";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import { ArrowUp, Square, Pencil, AudioLines } from "lucide-react-native";
 import Animated from "react-native-reanimated";
@@ -162,10 +163,8 @@ export function Composer({
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
 
-  const isDesktopWebBreakpoint =
-    Platform.OS === "web" &&
-    UnistylesRuntime.breakpoint !== "xs" &&
-    UnistylesRuntime.breakpoint !== "sm";
+  const isMobile = useIsCompactFormFactor();
+  const isDesktopWebBreakpoint = Platform.OS === "web" && !isMobile;
   const messagePlaceholder = isDesktopWebBreakpoint
     ? DESKTOP_MESSAGE_PLACEHOLDER
     : MOBILE_MESSAGE_PLACEHOLDER;

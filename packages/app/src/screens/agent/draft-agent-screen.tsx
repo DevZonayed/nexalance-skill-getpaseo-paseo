@@ -40,7 +40,7 @@ import {
 } from "@/runtime/host-runtime";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
-import { MAX_CONTENT_WIDTH, isCompactFormFactor } from "@/constants/layout";
+import { MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { WelcomeScreen } from "@/components/welcome-screen";
 import type { Agent } from "@/contexts/session-context";
 import { encodeImages } from "@/utils/encode-images";
@@ -242,7 +242,7 @@ function DraftAgentScreenContent({
     commandDraftConfig,
     statusControls,
   } = composerState;
-  const isMobile = isCompactFormFactor();
+  const isMobile = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);

@@ -22,7 +22,8 @@ import {
   TextStyle,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   AlignJustify,
   Archive,
@@ -607,7 +608,7 @@ type DiffFlatItem =
 
 export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDiffPaneProps) {
   const { theme } = useUnistyles();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
   const canUseSplitLayout = Platform.OS === "web" && !isMobile;
   const router = useRouter();

@@ -10,7 +10,8 @@ import {
   Platform,
 } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -89,7 +90,7 @@ export function FileExplorerPane({
   onOpenFile,
 }: FileExplorerPaneProps) {
   const { theme } = useUnistyles();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
 
   const daemons = useHosts();

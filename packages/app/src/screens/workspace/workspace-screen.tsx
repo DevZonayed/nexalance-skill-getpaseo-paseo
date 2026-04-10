@@ -121,7 +121,7 @@ import {
   closeBulkWorkspaceTabs,
 } from "@/screens/workspace/workspace-bulk-close";
 import { findAdjacentPane } from "@/utils/split-navigation";
-import { isCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
+import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
@@ -599,7 +599,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const insets = useSafeAreaInsets();
   const mainBackgroundColor = theme.colors.surfaceWorkspace;
   const toast = useToast();
-  const isMobile = isCompactFormFactor();
+  const isMobile = useIsCompactFormFactor();
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";

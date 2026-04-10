@@ -217,6 +217,7 @@ function clientSupportsAllProviders(appVersion: string | null): boolean {
 function clientSupportsFlexibleEditorIds(appVersion: string | null): boolean {
   return isAppVersionAtLeast(appVersion, MIN_VERSION_FLEXIBLE_EDITOR_IDS);
 }
+
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
 const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;

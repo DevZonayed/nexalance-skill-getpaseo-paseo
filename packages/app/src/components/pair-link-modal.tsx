@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Alert, Text, View } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { Link } from "lucide-react-native";
 import type { HostProfile } from "@/types/host-connection";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
@@ -66,7 +67,7 @@ export function PairLinkModal({
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
 
   const [offerUrl, setOfferUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);

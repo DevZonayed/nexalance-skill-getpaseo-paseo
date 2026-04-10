@@ -57,7 +57,7 @@ import {
   HorizontalScrollProvider,
   useHorizontalScrollOptional,
 } from "@/contexts/horizontal-scroll-context";
-import { getIsElectronRuntime, isCompactFormFactor } from "@/constants/layout";
+import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
@@ -374,7 +374,7 @@ function AppContainer({
   const agentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
 
-  const isCompactLayout = isCompactFormFactor();
+  const isCompactLayout = useIsCompactFormFactor();
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
 
   useEffect(() => {

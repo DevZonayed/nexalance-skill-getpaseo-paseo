@@ -50,7 +50,7 @@ import { formatConnectionStatus } from "@/utils/daemons";
 import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
-  isCompactFormFactor,
+  useIsCompactFormFactor,
 } from "@/constants/layout";
 import {
   buildHostSessionsRoute,
@@ -118,7 +118,7 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const isCompactLayout = isCompactFormFactor();
+  const isCompactLayout = useIsCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const closeToAgent = usePanelStore((state) => state.closeToAgent);

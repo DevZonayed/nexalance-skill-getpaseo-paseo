@@ -47,7 +47,7 @@ import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runtime";
-import { getIsElectronRuntime, isCompactFormFactor } from "@/constants/layout";
+import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
 import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import { buildHostNewWorkspaceRoute, parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
@@ -763,7 +763,7 @@ function ProjectHeaderRow({
 }: ProjectHeaderRowProps) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
-  const isMobileBreakpoint = isCompactFormFactor();
+  const isMobileBreakpoint = useIsCompactFormFactor();
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!serverId) {
       return;
@@ -771,6 +771,8 @@ function ProjectHeaderRow({
     router.navigate(buildHostNewWorkspaceRoute(serverId, project.iconWorkingDir, { displayName }) as any);
     onWorkspacePress?.();
   }, [displayName, onWorkspacePress, project.iconWorkingDir, serverId]);
+  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
+  const toast = useToast();
 
   useKeyboardActionHandler({
     handlerId: `worktree-new-${project.projectKey}`,
@@ -1850,7 +1852,7 @@ export function SidebarWorkspaceList({
   listFooterComponent,
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
-  const isMobile = isCompactFormFactor();
+  const isMobile = useIsCompactFormFactor();
   const isNative = Platform.OS !== "web";
   const pathname = usePathname();
   const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection();

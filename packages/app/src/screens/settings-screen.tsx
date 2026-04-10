@@ -63,7 +63,7 @@ import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pc
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
-import { isCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
 import { getProviderIcon } from "@/components/provider-icons";
 import { ProviderDiagnosticSheet } from "@/components/provider-diagnostic-sheet";
@@ -806,7 +806,7 @@ function DesktopAppUpdateRow() {
         <Text style={styles.aboutHintText}>{statusText}</Text>
         {availableUpdate?.latestVersion ? (
           <Text style={styles.aboutHintText}>
-            New version available: {formatVersionWithPrefix(availableUpdate.latestVersion)}
+            Ready to install: {formatVersionWithPrefix(availableUpdate.latestVersion)}
           </Text>
         ) : null}
         {errorMessage ? <Text style={styles.aboutErrorText}>{errorMessage}</Text> : null}
@@ -1013,7 +1013,7 @@ export default function SettingsScreen() {
     }
   }, [isPlaybackTestRunning, voiceAudioEngine]);
 
-  const isCompactLayout = isCompactFormFactor();
+  const isCompactLayout = useIsCompactFormFactor();
   const sections = getSettingsSections({ isDesktopApp });
 
   const hostsProps: HostsSectionProps = {

@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
 import {
   BottomSheetModal,
@@ -136,7 +137,7 @@ export function AdaptiveModalSheet({
   onFilesDropped,
 }: AdaptiveModalSheetProps) {
   const { theme } = useUnistyles();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const sheetRef = useRef<BottomSheetModal>(null);
   const dismissingForVisibilityRef = useRef(false);
   const resolvedSnapPoints = useMemo(() => snapPoints ?? ["65%", "90%"], [snapPoints]);
@@ -285,7 +286,7 @@ export function AdaptiveModalSheet({
  */
 export const AdaptiveTextInput = forwardRef<TextInput, TextInputProps>(
   function AdaptiveTextInput(props, ref) {
-    const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+    const isMobile = useIsCompactFormFactor();
 
     if (isMobile) {
       return <BottomSheetTextInput ref={ref as any} {...props} />;

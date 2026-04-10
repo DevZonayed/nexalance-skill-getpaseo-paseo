@@ -8,7 +8,8 @@ import {
   View,
   Platform,
 } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { Fonts } from "@/constants/theme";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -241,7 +242,7 @@ export function FilePane({
   workspaceRoot: string;
   filePath: string;
 }) {
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
 
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);

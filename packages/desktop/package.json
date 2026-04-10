@@ -7,7 +7,7 @@
   "scripts": {
     "build": "npm --prefix ../.. run build:daemon && npm run build:main && electron-builder --config electron-builder.yml",
     "build:main": "tsc -p tsconfig.json",
-    "dev": "npm run build:main && wait-on tcp:8081 && electron .",
+    "dev": "./scripts/dev.sh",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

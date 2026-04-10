@@ -27,7 +27,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { Check, CheckCircle } from "lucide-react-native";
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -347,7 +348,7 @@ export function ContextMenuContent({
   testID?: string;
 }>): ReactElement | null {
   const context = useContextMenuContext("ContextMenuContent");
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
   const useMobileSheet = isMobile && mobileMode === "sheet";
   const { open, setOpen, triggerRef, anchorRect } = context;
   const bottomSheetRef = useRef<BottomSheetModal>(null);

@@ -1047,6 +1047,8 @@ export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
   };
 }
 
+const claudeDebug = process.env.PASEO_CLAUDE_DEBUG === "1";
+
 export class ClaudeAgentClient implements AgentClient {
   readonly provider: "claude" = "claude";
   readonly capabilities = CLAUDE_CAPABILITIES;
@@ -2453,15 +2455,17 @@ class ClaudeAgentSession implements AgentSession {
       while (!this.closed && this.query === activeQuery) {
         try {
           for await (const message of activeQuery) {
-            this.logger.trace(
-              {
-                claudeSessionId: this.claudeSessionId,
-                messageType: message.type,
-                messageSubtype: "subtype" in message ? message.subtype : undefined,
-                messageUuid: "uuid" in message ? message.uuid : undefined,
-              },
-              "Claude query pump: raw SDK message",
-            );
+            if (claudeDebug) {
+              this.logger.trace(
+                {
+                  claudeSessionId: this.claudeSessionId,
+                  messageType: message.type,
+                  messageSubtype: "subtype" in message ? message.subtype : undefined,
+                  messageUuid: "uuid" in message ? message.uuid : undefined,
+                },
+                "Claude query pump: raw SDK message",
+              );
+            }
             consecutiveInterruptAbortRecoveries = 0;
             if (await this.handleMissingResumedConversation(message, activeQuery)) {
               return;
@@ -2537,14 +2541,16 @@ class ClaudeAgentSession implements AgentSession {
     const turnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id ?? null;
     const identifiers = readEventIdentifiers(message);
 
-    this.logger.trace(
-      {
-        claudeSessionId: this.claudeSessionId,
-        messageType: message.type,
-        turnId,
-      },
-      "Claude query pump: SDK message",
-    );
+    if (claudeDebug) {
+      this.logger.trace(
+        {
+          claudeSessionId: this.claudeSessionId,
+          messageType: message.type,
+          turnId,
+        },
+        "Claude query pump: SDK message",
+      );
+    }
 
     const messageEvents = this.translateMessageToEvents(message, {
       suppressAssistantText: true,

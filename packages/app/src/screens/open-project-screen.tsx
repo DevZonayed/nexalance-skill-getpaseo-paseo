@@ -8,7 +8,7 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
-import { isCompactFormFactor, HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE, HEADER_TOP_PADDING_MOBILE } from "@/constants/layout";
+import { useIsCompactFormFactor, HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE, HEADER_TOP_PADDING_MOBILE } from "@/constants/layout";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
@@ -17,7 +17,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const hasHydrated = useSessionStore((s) => s.sessions[serverId]?.hasHydratedWorkspaces ?? false);
   const hasProjects = useSessionStore((s) => (s.sessions[serverId]?.workspaces?.size ?? 0) > 0);
 
-  const isCompactLayout = isCompactFormFactor();
+  const isCompactLayout = useIsCompactFormFactor();
 
   useEffect(() => {
     if (!isCompactLayout) {

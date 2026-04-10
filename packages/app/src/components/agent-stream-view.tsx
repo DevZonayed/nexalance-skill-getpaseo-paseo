@@ -9,7 +9,8 @@ import {
   useState,
 } from "react";
 import { View, Text, Pressable, Platform, ActivityIndicator } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import Animated, {
@@ -110,7 +111,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const viewportRef = useRef<StreamViewportHandle | null>(null);
     const { theme } = useUnistyles();
     const router = useRouter();
-    const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+    const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
       () =>
         resolveStreamRenderStrategy({
@@ -713,7 +714,7 @@ function PermissionRequestCard({
   client: DaemonClient | null;
 }) {
   const { theme } = useUnistyles();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = useIsCompactFormFactor();
 
   const { request } = permission;
   const isPlanRequest = request.kind === "plan";
