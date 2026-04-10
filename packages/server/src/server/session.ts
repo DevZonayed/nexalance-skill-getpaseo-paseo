@@ -231,8 +231,6 @@ function clientSupportsFlexibleEditorIds(appVersion: string | null): boolean {
 
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
-const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;
-const TERMINAL_STREAM_LOW_WATER_BYTES = 16 * 1024;
 const MAX_TERMINAL_STREAM_SLOTS = 256;
 
 function deriveInitialAgentTitle(prompt: string): string | null {
@@ -296,7 +294,6 @@ type ActiveTerminalStream = {
   slot: number;
   unsubscribe: () => void;
   needsSnapshot: boolean;
-  snapshotRetryTimer: ReturnType<typeof setTimeout> | null;
 };
 
 export type SessionRuntimeMetrics = {
@@ -8424,7 +8421,6 @@ export class Session {
       slot,
       unsubscribe: () => {},
       needsSnapshot: true,
-      snapshotRetryTimer: null,
     };
 
     this.activeTerminalStreams.set(slot, activeStream);
@@ -8441,10 +8437,6 @@ export class Session {
       if (activeStream.needsSnapshot || message.data.length === 0) {
         return;
       }
-      if (this.getCurrentBinaryBufferedAmount() >= TERMINAL_STREAM_HIGH_WATER_BYTES) {
-        this.markAllActiveTerminalStreamsForSnapshot();
-        return;
-      }
       this.emitBinary(
         encodeTerminalStreamFrame({
           opcode: TerminalStreamOpcode.Output,
@@ -8452,9 +8444,6 @@ export class Session {
           payload: new Uint8Array(Buffer.from(message.data, "utf8")),
         }),
       );
-      if (this.getCurrentBinaryBufferedAmount() >= TERMINAL_STREAM_HIGH_WATER_BYTES) {
-        this.markAllActiveTerminalStreamsForSnapshot();
-      }
     });
     return slot;
   }
@@ -8465,21 +8454,6 @@ export class Session {
       !activeStream.needsSnapshot
     ) {
       return;
-    }
-
-    if (this.getCurrentBinaryBufferedAmount() > TERMINAL_STREAM_LOW_WATER_BYTES) {
-      if (!activeStream.snapshotRetryTimer) {
-        activeStream.snapshotRetryTimer = setTimeout(() => {
-          activeStream.snapshotRetryTimer = null;
-          this.trySendTerminalSnapshot(activeStream);
-        }, 33);
-      }
-      return;
-    }
-
-    if (activeStream.snapshotRetryTimer) {
-      clearTimeout(activeStream.snapshotRetryTimer);
-      activeStream.snapshotRetryTimer = null;
     }
 
     const terminal = this.terminalManager?.getTerminal(activeStream.terminalId);
@@ -8496,13 +8470,6 @@ export class Session {
         payload: encodeTerminalSnapshotPayload(terminal.getState()),
       }),
     );
-  }
-
-  private markAllActiveTerminalStreamsForSnapshot(): void {
-    for (const activeStream of this.activeTerminalStreams.values()) {
-      activeStream.needsSnapshot = true;
-      this.trySendTerminalSnapshot(activeStream);
-    }
   }
 
   private allocateTerminalSlot(): number | null {
@@ -8529,10 +8496,6 @@ export class Session {
     }
     this.activeTerminalStreams.delete(slot);
     this.terminalIdToSlot.delete(terminalId);
-    if (activeStream.snapshotRetryTimer) {
-      clearTimeout(activeStream.snapshotRetryTimer);
-      activeStream.snapshotRetryTimer = null;
-    }
     try {
       activeStream.unsubscribe();
     } catch (error) {
