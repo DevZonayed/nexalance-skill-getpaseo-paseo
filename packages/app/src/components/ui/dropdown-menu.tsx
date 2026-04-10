@@ -460,6 +460,7 @@ export function DropdownMenuItem({
   description,
   onSelect,
   disabled,
+  muted = false,
   destructive,
   selected,
   showSelectedCheck = false,
@@ -477,6 +478,7 @@ export function DropdownMenuItem({
   description?: string;
   onSelect?: () => void;
   disabled?: boolean;
+  muted?: boolean;
   destructive?: boolean;
   selected?: boolean;
   showSelectedCheck?: boolean;
@@ -550,6 +552,7 @@ export function DropdownMenuItem({
           ? styles.itemSelectedInteractive
           : null,
         isDisabled ? styles.itemDisabled : null,
+        muted && !isDisabled ? styles.itemMuted : null,
         hovered && !pressed && !isDisabled ? styles.itemHovered : null,
         pressed && !isDisabled ? styles.itemPressed : null,
       ]}
@@ -568,6 +571,7 @@ export function DropdownMenuItem({
             destructive && !isSuccess ? styles.itemTextDestructive : null,
             isSuccess ? styles.itemTextSuccess : null,
             selected && selectedVariant === "accent" ? styles.itemTextSelectedAccent : null,
+            muted && !isDisabled ? styles.itemTextMuted : null,
           ]}
         >
           {label}
@@ -678,10 +682,16 @@ const styles = StyleSheet.create((theme) => ({
   itemDisabled: {
     opacity: 0.5,
   },
+  itemMuted: {
+    opacity: 0.72,
+  },
   itemText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
+  },
+  itemTextMuted: {
+    color: theme.colors.foregroundMuted,
   },
   itemTextDestructive: {
     color: theme.colors.destructive,

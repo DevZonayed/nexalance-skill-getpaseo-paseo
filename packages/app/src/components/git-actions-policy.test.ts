@@ -79,7 +79,7 @@ describe("git-actions-policy", () => {
     expect(actions.primary).toMatchObject({ id: "pull", label: "Pull" });
   });
 
-  it("disables push with a short pull-first message when the branch diverged", () => {
+  it("keeps push clickable with a clearer message when the branch diverged", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
@@ -90,8 +90,8 @@ describe("git-actions-policy", () => {
     const pushAction = actions.secondary.find((action) => action.id === "push");
 
     expect(pushAction).toMatchObject({
-      disabled: true,
-      description: "Pull first",
+      disabled: false,
+      unavailableMessage: "Push isn't available yet because there are newer changes to bring in first",
     });
   });
 
@@ -108,6 +108,17 @@ describe("git-actions-policy", () => {
     expect(updateAction).toMatchObject({
       label: "Update from main",
       disabled: false,
+      unavailableMessage: undefined,
+    });
+  });
+
+  it("uses a clear sentence when pull is unavailable", () => {
+    const actions = buildGitActions(createInput({ hasRemote: true }));
+    const pullAction = actions.secondary.find((action) => action.id === "pull");
+
+    expect(pullAction).toMatchObject({
+      disabled: false,
+      unavailableMessage: "Pull isn't available because this branch is already up to date",
     });
   });
 
