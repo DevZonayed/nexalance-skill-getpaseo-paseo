@@ -7,6 +7,7 @@ import { useCheckoutPrStatusQuery } from "@/hooks/use-checkout-pr-status-query";
 import { buildGitActions, type GitActions } from "@/components/git-actions-policy";
 import { buildNewAgentRoute, resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { useToast } from "@/contexts/toast-context";
 
 export type { GitActionId, GitAction, GitActions } from "@/components/git-actions-policy";
 
@@ -31,13 +32,12 @@ interface UseGitActionsInput {
 interface UseGitActionsResult {
   gitActions: GitActions;
   branchLabel: string;
-  actionError: string | null;
   isGit: boolean;
 }
 
 export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
   const router = useRouter();
-  const [actionError, setActionError] = useState<string | null>(null);
+  const toast = useToast();
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("merge");
 
@@ -125,78 +125,107 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const runMergeFromBase = useCheckoutGitActionsStore((state) => state.mergeFromBase);
   const runArchiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
 
+  const toastActionError = useCallback(
+    (error: unknown, fallback: string) => {
+      const message = error instanceof Error ? error.message : fallback;
+      toast.error(message);
+    },
+    [toast],
+  );
+
+  const toastActionSuccess = useCallback(
+    (message: string) => {
+      toast.show(message, { variant: "success" });
+    },
+    [toast],
+  );
+
   // Handlers
   const handleCommit = useCallback(() => {
-    setActionError(null);
-    void runCommit({ serverId, cwd }).catch((err) => {
-      const message = err instanceof Error ? err.message : "Failed to commit";
-      setActionError(message);
-    });
-  }, [runCommit, serverId, cwd]);
+    void runCommit({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess("Committed");
+      })
+      .catch((err) => {
+        toastActionError(err, "Failed to commit");
+      });
+  }, [cwd, runCommit, serverId, toastActionError, toastActionSuccess]);
 
   const handlePush = useCallback(() => {
-    setActionError(null);
-    void runPush({ serverId, cwd }).catch((err) => {
-      const message = err instanceof Error ? err.message : "Failed to push";
-      setActionError(message);
-    });
-  }, [runPush, serverId, cwd]);
+    void runPush({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess("Pushed");
+      })
+      .catch((err) => {
+        toastActionError(err, "Failed to push");
+      });
+  }, [cwd, runPush, serverId, toastActionError, toastActionSuccess]);
 
   const handleCreatePr = useCallback(() => {
     void persistShipDefault("pr");
-    setActionError(null);
-    void runCreatePr({ serverId, cwd }).catch((err) => {
-      const message = err instanceof Error ? err.message : "Failed to create PR";
-      setActionError(message);
-    });
-  }, [persistShipDefault, runCreatePr, serverId, cwd]);
+    void runCreatePr({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess("PR created");
+      })
+      .catch((err) => {
+        toastActionError(err, "Failed to create PR");
+      });
+  }, [cwd, persistShipDefault, runCreatePr, serverId, toastActionError, toastActionSuccess]);
 
   const handleMergeBranch = useCallback(() => {
     if (!baseRef) {
-      setActionError("Base ref unavailable");
+      toast.error("Base ref unavailable");
       return;
     }
     void persistShipDefault("merge");
-    setActionError(null);
     void runMergeBranch({ serverId, cwd, baseRef })
       .then(() => {
         setPostShipArchiveSuggested(true);
+        toastActionSuccess("Merged");
       })
       .catch((err) => {
-        const message = err instanceof Error ? err.message : "Failed to merge";
-        setActionError(message);
+        toastActionError(err, "Failed to merge");
       });
-  }, [baseRef, persistShipDefault, runMergeBranch, serverId, cwd]);
+  }, [
+    baseRef,
+    cwd,
+    persistShipDefault,
+    runMergeBranch,
+    serverId,
+    toast,
+    toastActionError,
+    toastActionSuccess,
+  ]);
 
   const handleMergeFromBase = useCallback(() => {
     if (!baseRef) {
-      setActionError("Base ref unavailable");
+      toast.error("Base ref unavailable");
       return;
     }
-    setActionError(null);
-    void runMergeFromBase({ serverId, cwd, baseRef }).catch((err) => {
-      const message = err instanceof Error ? err.message : "Failed to merge from base";
-      setActionError(message);
-    });
-  }, [baseRef, runMergeFromBase, serverId, cwd]);
+    void runMergeFromBase({ serverId, cwd, baseRef })
+      .then(() => {
+        toastActionSuccess("Updated");
+      })
+      .catch((err) => {
+        toastActionError(err, "Failed to merge from base");
+      });
+  }, [baseRef, cwd, runMergeFromBase, serverId, toast, toastActionError, toastActionSuccess]);
 
   const handleArchiveWorktree = useCallback(() => {
     const worktreePath = status?.cwd;
     if (!worktreePath) {
-      setActionError("Worktree path unavailable");
+      toast.error("Worktree path unavailable");
       return;
     }
-    setActionError(null);
     const targetWorkingDir = resolveNewAgentWorkingDir(cwd, status ?? null);
     void runArchiveWorktree({ serverId, cwd, worktreePath })
       .then(() => {
         router.replace(buildNewAgentRoute(serverId, targetWorkingDir));
       })
       .catch((err) => {
-        const message = err instanceof Error ? err.message : "Failed to archive worktree";
-        setActionError(message);
+        toastActionError(err, "Failed to archive worktree");
       });
-  }, [runArchiveWorktree, router, serverId, cwd, status]);
+  }, [cwd, router, runArchiveWorktree, serverId, status, toast, toastActionError]);
 
   // Derived state
   const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
@@ -333,5 +362,5 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     baseRef,
   ]);
 
-  return { gitActions, branchLabel, actionError, isGit };
+  return { gitActions, branchLabel, isGit };
 }
