@@ -673,16 +673,6 @@ export class VoiceAssistantWebSocketServer {
         }
         this.sendBinaryToConnection(connection, frame);
       },
-      getBinaryBufferedAmount: () => {
-        if (!connection) {
-          return 0;
-        }
-        let bufferedAmount = 0;
-        for (const socket of connection.sockets) {
-          bufferedAmount = Math.max(bufferedAmount, socket.bufferedAmount ?? 0);
-        }
-        return bufferedAmount;
-      },
       onLifecycleIntent: (intent) => {
         this.onLifecycleIntent?.(intent);
       },

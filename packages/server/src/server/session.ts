@@ -408,7 +408,6 @@ export type SessionOptions = {
   appVersion?: string | null;
   onMessage: (msg: SessionOutboundMessage) => void;
   onBinaryMessage?: (frame: Uint8Array) => void;
-  getBinaryBufferedAmount?: () => number;
   onLifecycleIntent?: (intent: SessionLifecycleIntent) => void;
   logger: pino.Logger;
   downloadTokenStore: DownloadTokenStore;
@@ -549,7 +548,6 @@ export class Session {
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
   private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
-  private readonly getBinaryBufferedAmount: (() => number) | null;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private readonly sessionLogger: pino.Logger;
   private readonly paseoHome: string;
@@ -661,7 +659,6 @@ export class Session {
       appVersion,
       onMessage,
       onBinaryMessage,
-      getBinaryBufferedAmount,
       onLifecycleIntent,
       logger,
       downloadTokenStore,
@@ -697,7 +694,6 @@ export class Session {
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
     this.onBinaryMessage = onBinaryMessage ?? null;
-    this.getBinaryBufferedAmount = getBinaryBufferedAmount ?? null;
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.downloadTokenStore = downloadTokenStore;
     this.pushTokenStore = pushTokenStore;
@@ -8713,11 +8709,4 @@ export class Session {
     }
   }
 
-  private getCurrentBinaryBufferedAmount(): number {
-    const bufferedAmount = this.getBinaryBufferedAmount?.() ?? 0;
-    if (!Number.isFinite(bufferedAmount) || bufferedAmount < 0) {
-      return 0;
-    }
-    return Math.floor(bufferedAmount);
-  }
 }
