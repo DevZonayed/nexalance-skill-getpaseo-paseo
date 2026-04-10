@@ -148,6 +148,7 @@ import {
   commitChanges,
   mergeToBase,
   mergeFromBase,
+  pullCurrentBranch,
   pushCurrentBranch,
   createPullRequest,
   getPullRequestStatus,
@@ -1683,6 +1684,10 @@ export class Session {
 
         case "checkout_merge_from_base_request":
           await this.handleCheckoutMergeFromBaseRequest(msg);
+          break;
+
+        case "checkout_pull_request":
+          await this.handleCheckoutPullRequest(msg);
           break;
 
         case "checkout_push_request":
@@ -4696,6 +4701,37 @@ export class Session {
     } catch (error) {
       this.emit({
         type: "checkout_merge_from_base_response",
+        payload: {
+          cwd,
+          success: false,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleCheckoutPullRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout_pull_request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+
+    try {
+      await pullCurrentBranch(cwd);
+      this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
+
+      this.emit({
+        type: "checkout_pull_response",
+        payload: {
+          cwd,
+          success: true,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout_pull_response",
         payload: {
           cwd,
           success: false,

@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
+import { useShallow } from "zustand/shallow";
 import { getIsElectronRuntimeMac } from "@/constants/layout";
 import { useAggregatedAgents } from "./use-aggregated-agents";
 import { getDesktopHost } from "@/desktop/host";
+import { useSessionStore } from "@/stores/session-store";
+import {
+  deriveMacDockBadgeCountFromWorkspaceStatuses,
+  type DesktopBadgeWorkspaceStatus,
+} from "@/utils/desktop-badge-state";
 
 type FaviconStatus = "none" | "running" | "attention";
 type ColorScheme = "dark" | "light";
@@ -35,21 +41,6 @@ function deriveFaviconStatus(
     return "attention";
   }
   return "none";
-}
-
-function deriveMacDockBadgeCount(
-  agents: ReturnType<typeof useAggregatedAgents>["agents"],
-): number | undefined {
-  const attentionCount = agents.filter(
-    (agent) =>
-      (agent.pendingPermissionCount ?? 0) > 0 ||
-      (agent.requiresAttention && agent.attentionReason === "finished"),
-  ).length;
-  if (attentionCount > 0) {
-    return attentionCount;
-  }
-
-  return undefined;
 }
 
 function getFaviconUri(status: FaviconStatus, colorScheme: ColorScheme): string {
@@ -112,6 +103,17 @@ async function updateMacDockBadge(count?: number) {
 
 export function useFaviconStatus() {
   const { agents } = useAggregatedAgents();
+  const workspaceStatuses = useSessionStore(
+    useShallow((state) => {
+      const statuses: DesktopBadgeWorkspaceStatus[] = [];
+      for (const session of Object.values(state.sessions)) {
+        for (const workspace of session.workspaces.values()) {
+          statuses.push(workspace.status);
+        }
+      }
+      return statuses;
+    }),
+  );
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);
 
@@ -135,10 +137,10 @@ export function useFaviconStatus() {
     const status = deriveFaviconStatus(agents);
     updateFavicon(status, colorScheme);
 
-    const dockBadgeCount = deriveMacDockBadgeCount(agents);
+    const dockBadgeCount = deriveMacDockBadgeCountFromWorkspaceStatuses(workspaceStatuses);
     if (dockBadgeCount !== lastDockBadgeCountRef.current) {
       lastDockBadgeCountRef.current = dockBadgeCount;
       void updateMacDockBadge(dockBadgeCount);
     }
-  }, [agents, colorScheme]);
+  }, [agents, colorScheme, workspaceStatuses]);
 }

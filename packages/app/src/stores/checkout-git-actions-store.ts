@@ -8,6 +8,7 @@ export type CheckoutGitActionStatus = "idle" | "pending" | "success";
 
 export type CheckoutGitAsyncActionId =
   | "commit"
+  | "pull"
   | "push"
   | "create-pr"
   | "merge-branch"
@@ -139,6 +140,7 @@ interface CheckoutGitActionsStoreState {
   }) => CheckoutGitActionStatus;
 
   commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   createPr: (params: { serverId: string; cwd: string }) => Promise<void>;
   mergeBranch: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
@@ -216,6 +218,21 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
       run: async () => {
         const client = resolveClient(serverId);
         const payload = await client.checkoutCommit(cwd, { addAll: true });
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  pull: async ({ serverId, cwd }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "pull",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutPull(cwd);
         if (payload.error) {
           throw new Error(payload.error.message);
         }

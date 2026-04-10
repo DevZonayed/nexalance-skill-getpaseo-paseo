@@ -911,6 +911,61 @@ describe("DaemonClient", () => {
     });
   });
 
+  test("requests checkout pull via RPC", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.checkoutPull("/tmp/project", "req-pull");
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "checkout_pull_request";
+        cwd: string;
+        requestId: string;
+      };
+    };
+    expect(request.message.type).toBe("checkout_pull_request");
+    expect(request.message.cwd).toBe("/tmp/project");
+    expect(request.message.requestId).toBe("req-pull");
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "checkout_pull_response",
+          payload: {
+            cwd: "/tmp/project",
+            requestId: "req-pull",
+            success: true,
+            error: null,
+          },
+        },
+      }),
+    );
+
+    await expect(promise).resolves.toEqual({
+      cwd: "/tmp/project",
+      requestId: "req-pull",
+      success: true,
+      error: null,
+    });
+  });
+
   test("resubscribes checkout diff streams after reconnect", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();

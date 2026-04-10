@@ -43,6 +43,7 @@ export type KeyboardActionId =
   | "worktree.new"
   | "worktree.archive"
   | "view.toggle.focus"
+  | "theme.cycle"
   | "message-input.action";
 
 export type KeyboardShortcutPayload =
