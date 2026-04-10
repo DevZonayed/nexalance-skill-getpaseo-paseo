@@ -1547,6 +1547,16 @@ export async function getCheckoutDiff(
         continue;
       }
 
+      // `git diff -w --name-status` can still surface paths whose only changes were
+      // whitespace. Skip those empty tracked entries so callers don't see phantom files.
+      if (
+        ignoreWhitespace &&
+        change.status.startsWith("M") &&
+        (!stat || (!stat.isBinary && stat.additions === 0 && stat.deletions === 0))
+      ) {
+        continue;
+      }
+
       structured.push({
         path: change.path,
         isNew: change.isNew,

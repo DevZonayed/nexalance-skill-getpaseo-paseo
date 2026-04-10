@@ -725,7 +725,8 @@ export class AgentManager {
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
     await agent.session.close();
     this.timelineStore.delete(agentId);
-    this.emitClosedAgent(closedAgent);
+    await this.persistSnapshot(closedAgent);
+    this.emitClosedAgent(closedAgent, { persist: false });
     this.logger.trace({ agentId }, "closeAgent: completed");
   }
 
@@ -1944,8 +1945,8 @@ export class AgentManager {
     };
   }
 
-  private emitClosedAgent(agent: ManagedAgentClosed): void {
-    this.emitState(agent);
+  private emitClosedAgent(agent: ManagedAgentClosed, options?: { persist?: boolean }): void {
+    this.emitState(agent, options);
   }
   private subscribeToSession(agent: ActiveManagedAgent): void {
     if (agent.unsubscribeSession) {

@@ -13,6 +13,7 @@ import { AgentManager } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import type {
   AgentClient,
+  AgentFeature,
   AgentLaunchContext,
   AgentPersistenceHandle,
   AgentRunResult,
@@ -46,6 +47,15 @@ const TEST_CAPABILITIES = {
   supportsReasoningStream: false,
   supportsToolInvocations: false,
 } as const;
+
+function createFeature(args: { id: string; label: string; value: boolean }): AgentFeature {
+  return {
+    type: "toggle",
+    id: args.id,
+    label: args.label,
+    value: args.value,
+  };
+}
 
 async function seedWorkspace(
   database: PaseoDatabaseHandle,

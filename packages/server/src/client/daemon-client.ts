@@ -2226,15 +2226,20 @@ export class DaemonClient {
     baseRef?: string;
     ignoreWhitespace?: boolean;
   }): { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean } {
-    const ignoreWhitespace = compare.ignoreWhitespace === true;
     if (compare.mode === "uncommitted") {
-      return { mode: "uncommitted", ignoreWhitespace };
+      return compare.ignoreWhitespace === true
+        ? { mode: "uncommitted", ignoreWhitespace: true }
+        : { mode: "uncommitted" };
     }
     const trimmedBaseRef = compare.baseRef?.trim();
     if (!trimmedBaseRef) {
-      return { mode: "base", ignoreWhitespace };
+      return compare.ignoreWhitespace === true
+        ? { mode: "base", ignoreWhitespace: true }
+        : { mode: "base" };
     }
-    return { mode: "base", baseRef: trimmedBaseRef, ignoreWhitespace };
+    return compare.ignoreWhitespace === true
+      ? { mode: "base", baseRef: trimmedBaseRef, ignoreWhitespace: true }
+      : { mode: "base", baseRef: trimmedBaseRef };
   }
 
   async getCheckoutDiff(
