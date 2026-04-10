@@ -38,6 +38,28 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-start",
     paddingTop: theme.spacing[16],
   },
+  errorScreen: {
+    position: "relative",
+    flex: 1,
+    backgroundColor: theme.colors.surface0,
+  },
+  errorScrollView: {
+    flex: 1,
+    ...(Platform.OS === "web"
+      ? {
+          overflowX: "auto",
+          overflowY: "auto",
+        }
+      : null),
+  },
+  errorScrollContent: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingHorizontal: theme.spacing[8],
+    paddingVertical: theme.spacing[8],
+    paddingTop: theme.spacing[16],
+  },
   centeredContent: {
     alignItems: "center",
     justifyContent: "center",
@@ -255,67 +277,73 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
   }
 
   return (
-    <View style={[styles.container, styles.containerError]}>
+    <View style={styles.errorScreen}>
       <TitlebarDragRegion />
-      <View style={styles.errorContent}>
-        <View style={styles.errorHeader}>
-          <PaseoLogo size={64} />
-          <Text style={[styles.title, styles.titleError]}>Something went wrong</Text>
+      <ScrollView
+        style={styles.errorScrollView}
+        contentContainerStyle={styles.errorScrollContent}
+        showsVerticalScrollIndicator
+      >
+        <View style={styles.errorContent}>
+          <View style={styles.errorHeader}>
+            <PaseoLogo size={64} />
+            <Text style={[styles.title, styles.titleError]}>Something went wrong</Text>
+          </View>
+
+          <Text style={styles.errorDescription}>
+            The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.
+          </Text>
+
+          <Text style={styles.errorMessage}>
+            {bootstrapState.error}
+          </Text>
+
+          {daemonLogs?.logPath ? <Text style={styles.logsMeta}>{daemonLogs.logPath}</Text> : null}
+
+          <View style={styles.logsContainer}>
+            <ScrollView
+              style={styles.logsScroll}
+              contentContainerStyle={styles.logsContent}
+              showsVerticalScrollIndicator
+            >
+              <Text selectable style={styles.logsText}>
+                {logsText}
+              </Text>
+            </ScrollView>
+          </View>
+
+          <View style={styles.actionRow}>
+            <Button
+              variant="secondary"
+              leftIcon={<Copy size={16} color={theme.colors.foreground} />}
+              onPress={handleCopyLogs}
+            >
+              Copy logs
+            </Button>
+            <Button
+              variant="outline"
+              leftIcon={<TriangleAlert size={16} color={theme.colors.foreground} />}
+              onPress={() => void openExternalUrl(GITHUB_ISSUE_URL)}
+            >
+              Open GitHub issue
+            </Button>
+            <Button
+              variant="outline"
+              leftIcon={<BookOpen size={16} color={theme.colors.foreground} />}
+              onPress={() => void openExternalUrl(DOCS_URL)}
+            >
+              Docs
+            </Button>
+            <Button
+              variant="default"
+              leftIcon={<RotateCw size={16} color={theme.colors.palette.white} />}
+              onPress={bootstrapState.retry}
+            >
+              Retry
+            </Button>
+          </View>
         </View>
-
-        <Text style={styles.errorDescription}>
-          The local server failed to start. If this keeps happening, please report the issue on GitHub and include the logs below.
-        </Text>
-
-        <Text style={styles.errorMessage}>
-          {bootstrapState.error}
-        </Text>
-
-        {daemonLogs?.logPath ? <Text style={styles.logsMeta}>{daemonLogs.logPath}</Text> : null}
-
-        <View style={styles.logsContainer}>
-          <ScrollView
-            style={styles.logsScroll}
-            contentContainerStyle={styles.logsContent}
-            showsVerticalScrollIndicator
-          >
-            <Text selectable style={styles.logsText}>
-              {logsText}
-            </Text>
-          </ScrollView>
-        </View>
-
-        <View style={styles.actionRow}>
-          <Button
-            variant="secondary"
-            leftIcon={<Copy size={16} color={theme.colors.foreground} />}
-            onPress={handleCopyLogs}
-          >
-            Copy logs
-          </Button>
-          <Button
-            variant="outline"
-            leftIcon={<TriangleAlert size={16} color={theme.colors.foreground} />}
-            onPress={() => void openExternalUrl(GITHUB_ISSUE_URL)}
-          >
-            Open GitHub issue
-          </Button>
-          <Button
-            variant="outline"
-            leftIcon={<BookOpen size={16} color={theme.colors.foreground} />}
-            onPress={() => void openExternalUrl(DOCS_URL)}
-          >
-            Docs
-          </Button>
-          <Button
-            variant="default"
-            leftIcon={<RotateCw size={16} color={theme.colors.palette.white} />}
-            onPress={bootstrapState.retry}
-          >
-            Retry
-          </Button>
-        </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
