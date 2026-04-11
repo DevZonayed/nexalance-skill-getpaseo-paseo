@@ -145,6 +145,89 @@ export function startAgentRun(
   })();
 }
 
+interface SetupFinishNotificationParams {
+  agentManager: AgentManager;
+  childAgentId: string;
+  callerAgentId: string;
+  logger: Logger;
+}
+
+export function setupFinishNotification(params: SetupFinishNotificationParams): void {
+  const { agentManager, childAgentId, callerAgentId, logger } = params;
+  let hasSeenRunning = false;
+  let fired = false;
+  let unsubscribe: (() => void) | null = null;
+
+  function notify(reason: "finished" | "errored" | "needs permission"): void {
+    if (fired) {
+      return;
+    }
+    fired = true;
+    unsubscribe?.();
+
+    if (!agentManager.getAgent(callerAgentId)) {
+      return;
+    }
+
+    const title = agentManager.getAgent(childAgentId)?.config?.title ?? childAgentId;
+    const prompt = `<paseo-system>\nAgent ${childAgentId} (${title}) ${reason}.\n</paseo-system>`;
+
+    startAgentRun(agentManager, callerAgentId, prompt, logger, {
+      replaceRunning: true,
+    });
+  }
+
+  unsubscribe = agentManager.subscribe(
+    (event) => {
+      if (fired) {
+        return;
+      }
+
+      if (event.type === "agent_state") {
+        if (event.agent.lifecycle === "running") {
+          hasSeenRunning = true;
+          return;
+        }
+        if (event.agent.lifecycle === "error") {
+          notify("errored");
+          return;
+        }
+        if (event.agent.lifecycle === "idle" && hasSeenRunning) {
+          notify("finished");
+          return;
+        }
+        if (event.agent.lifecycle === "closed") {
+          fired = true;
+          unsubscribe?.();
+          return;
+        }
+        return;
+      }
+
+      if (event.event.type === "permission_requested") {
+        notify("needs permission");
+      }
+    },
+    { agentId: childAgentId, replayState: false },
+  );
+
+  // Check if the child is already running (catches the case where
+  // the lifecycle flipped before our subscribe call was processed).
+  // Do NOT treat an immediate "idle" as "finished" — the agent may
+  // not have started yet (streamAgent sets a pending run before
+  // transitioning to "running").
+  const childSnapshot = agentManager.getAgent(childAgentId);
+  if (!childSnapshot || childSnapshot.lifecycle === "closed") {
+    unsubscribe();
+    return;
+  }
+  if (childSnapshot.lifecycle === "running") {
+    hasSeenRunning = true;
+  } else if (childSnapshot.lifecycle === "error") {
+    notify("errored");
+  }
+}
+
 export function sanitizePermissionRequest(
   permission: AgentPermissionRequest | null | undefined,
 ): AgentPermissionRequest | null {
