@@ -165,7 +165,7 @@ function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | nu
     {} as any,
     {} as any,
     "/tmp/paseo-test",
-    async () => ({}) as any,
+    null,
     { allowedOrigins: new Set() },
     speechReadiness
       ? {
@@ -173,7 +173,6 @@ function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | nu
           onReadinessChange: vi.fn(() => () => {}),
         }
       : undefined,
-    undefined,
     undefined,
     undefined,
     undefined,
