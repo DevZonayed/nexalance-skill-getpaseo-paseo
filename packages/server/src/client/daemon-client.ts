@@ -16,6 +16,7 @@ import type {
   AgentSnapshotPayload,
   ProjectPlacementPayload,
   AgentPermissionResolvedMessage,
+  AgentAttachment,
   CreateAgentRequestMessage,
   FileDownloadTokenResponse,
   FileExplorerResponse,
@@ -63,6 +64,7 @@ import type {
   TerminalInput,
   SessionInboundMessage,
   SessionOutboundMessage,
+  SendAgentMessageRequest,
   EditorTargetId,
 } from "../shared/messages.js";
 import type {
@@ -198,6 +200,7 @@ export type DaemonClientConfig = {
 export type SendMessageOptions = {
   messageId?: string;
   images?: Array<{ data: string; mimeType: string }>;
+  attachments?: SendAgentMessageRequest["attachments"];
 };
 
 type AgentConfigOverrides = Partial<Omit<AgentSessionConfig, "provider" | "cwd">>;
@@ -211,6 +214,7 @@ export type CreateAgentRequestOptions = {
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
   images?: CreateAgentRequestMessage["images"];
+  attachments?: CreateAgentRequestMessage["attachments"];
   git?: GitSetupOptions;
   worktreeName?: string;
   requestId?: string;
@@ -1494,6 +1498,9 @@ export class DaemonClient {
       ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
       ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),
       ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
+      ...(options.attachments && options.attachments.length > 0
+        ? { attachments: options.attachments }
+        : {}),
       ...(options.git ? { git: options.git } : {}),
       ...(options.worktreeName ? { worktreeName: options.worktreeName } : {}),
       ...(options.labels && Object.keys(options.labels).length > 0
@@ -1723,6 +1730,7 @@ export class DaemonClient {
       text,
       ...(messageId ? { messageId } : {}),
       ...(options?.images ? { images: options.images } : {}),
+      ...(options?.attachments ? { attachments: options.attachments } : {}),
     });
     const payload = await this.sendRequest({
       requestId,
@@ -2544,7 +2552,11 @@ export class DaemonClient {
   }
 
   async createPaseoWorktree(
-    input: { cwd: string; worktreeSlug?: string },
+    input: {
+      cwd: string;
+      worktreeSlug?: string;
+      attachments?: AgentAttachment[];
+    },
     requestId?: string,
   ): Promise<CreatePaseoWorktreePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2553,6 +2565,9 @@ export class DaemonClient {
         type: "create_paseo_worktree_request",
         cwd: input.cwd,
         worktreeSlug: input.worktreeSlug,
+        ...(input.attachments && input.attachments.length > 0
+          ? { attachments: input.attachments }
+          : {}),
       },
       responseType: "create_paseo_worktree_response",
       timeout: 60000,

@@ -475,4 +475,24 @@ describe("OpenCode adapter context-window normalization", () => {
 
     expect(onAssistantModelContextWindowResolved).toHaveBeenCalledWith(400_000);
   });
+
+  test("renders github issue attachments as text prompt parts", () => {
+    const parts = __openCodeInternals.buildOpenCodePromptParts([
+      {
+        type: "github_issue",
+        mimeType: "application/github-issue",
+        number: 55,
+        title: "Improve startup error details",
+        url: "https://github.com/getpaseo/paseo/issues/55",
+        body: "Issue body",
+      },
+    ]);
+
+    expect(parts).toEqual([
+      {
+        type: "text",
+        text: expect.stringContaining("GitHub Issue #55: Improve startup error details"),
+      },
+    ]);
+  });
 });

@@ -87,6 +87,7 @@ import {
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
+import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { findExecutable } from "../../../utils/executable.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 
@@ -1738,6 +1739,9 @@ function toACPContentBlocks(prompt: AgentPromptInput): ContentBlock[] {
   return prompt.map((block: AgentPromptContentBlock) => {
     if (block.type === "text") {
       return { type: "text", text: block.text };
+    }
+    if (block.type === "github_pr" || block.type === "github_issue") {
+      return { type: "text", text: renderPromptAttachmentAsText(block) };
     }
     return {
       type: "image",

@@ -13,6 +13,7 @@ import {
 } from "@/contexts/session-stream-reducers";
 import type {
   ActivityLogPayload,
+  AgentAttachment,
   AgentStreamEventPayload,
   SessionOutboundMessage,
 } from "@server/shared/messages";
@@ -300,7 +301,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
   const previousAgentStatusRef = useRef<Map<string, AgentLifecycleStatus>>(new Map());
   const sendAgentMessageRef = useRef<
-    ((agentId: string, message: string, images?: AttachmentMetadata[]) => Promise<void>) | null
+    ((
+      agentId: string,
+      message: string,
+      images?: AttachmentMetadata[],
+      attachments?: AgentAttachment[],
+    ) => Promise<void>) | null
   >(null);
   const sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attentionNotifiedRef = useRef<Map<string, number>>(new Map());
@@ -1584,7 +1590,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   ]);
 
   const sendAgentMessage = useCallback(
-    async (agentId: string, message: string, images?: AttachmentMetadata[]) => {
+    async (
+      agentId: string,
+      message: string,
+      images?: AttachmentMetadata[],
+      attachments?: AgentAttachment[],
+    ) => {
       const messageId = generateMessageId();
       const userMessage: StreamItem = {
         kind: "user_message",
@@ -1624,6 +1635,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         .sendAgentMessage(agentId, message, {
           messageId,
           ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
         })
         .catch((error) => {
           console.error("[Session] Failed to send agent message:", error);
@@ -1692,6 +1704,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       config,
       initialPrompt,
       images,
+      attachments,
       git,
       worktreeName,
       requestId,
@@ -1699,6 +1712,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       config: any;
       initialPrompt: string;
       images?: AttachmentMetadata[];
+      attachments?: AgentAttachment[];
       git?: any;
       worktreeName?: string;
       requestId?: string;
@@ -1718,6 +1732,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         config,
         ...(trimmedPrompt ? { initialPrompt: trimmedPrompt } : {}),
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
         ...(git ? { git } : {}),
         ...(worktreeName ? { worktreeName } : {}),
         ...(requestId ? { requestId } : {}),

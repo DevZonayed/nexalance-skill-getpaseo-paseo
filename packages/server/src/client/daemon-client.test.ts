@@ -344,6 +344,145 @@ describe("DaemonClient", () => {
     await expect(createPromise).rejects.toThrow("compat test sentinel");
   });
 
+  test("sends structured attachments with create_agent_request", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const createPromise = client.createAgent({
+      provider: "codex",
+      cwd: "/tmp/project",
+      initialPrompt: "Review this PR",
+      attachments: [
+        {
+          type: "github_pr",
+          mimeType: "application/github-pr",
+          number: 123,
+          title: "Fix race in worktree setup",
+          url: "https://github.com/getpaseo/paseo/pull/123",
+          baseRefName: "main",
+          headRefName: "fix/worktree-race",
+        },
+      ],
+    });
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(String(mock.sent[0])) as {
+      type: "session";
+      message: {
+        type: "create_agent_request";
+        requestId: string;
+        attachments: Array<{ type: string; mimeType: string; number: number }>;
+      };
+    };
+    expect(request.message.attachments).toEqual([
+      {
+        type: "github_pr",
+        mimeType: "application/github-pr",
+        number: 123,
+        title: "Fix race in worktree setup",
+        url: "https://github.com/getpaseo/paseo/pull/123",
+        baseRefName: "main",
+        headRefName: "fix/worktree-race",
+      },
+    ]);
+
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "status",
+        payload: {
+          status: "agent_create_failed",
+          requestId: request.message.requestId,
+          error: "attachment test sentinel",
+        },
+      }),
+    );
+
+    await expect(createPromise).rejects.toThrow("attachment test sentinel");
+  });
+
+  test("sends structured attachments with create_paseo_worktree_request", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const createPromise = client.createPaseoWorktree({
+      cwd: "/tmp/project",
+      worktreeSlug: "review-pr-123",
+      attachments: [
+        {
+          type: "github_pr",
+          mimeType: "application/github-pr",
+          number: 123,
+          title: "Fix race in worktree setup",
+          url: "https://github.com/getpaseo/paseo/pull/123",
+        },
+      ],
+    });
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(String(mock.sent[0])) as {
+      type: "session";
+      message: {
+        type: "create_paseo_worktree_request";
+        requestId: string;
+        attachments: Array<{ type: string; mimeType: string; number: number }>;
+      };
+    };
+    expect(request.message.attachments).toEqual([
+      {
+        type: "github_pr",
+        mimeType: "application/github-pr",
+        number: 123,
+        title: "Fix race in worktree setup",
+        url: "https://github.com/getpaseo/paseo/pull/123",
+      },
+    ]);
+
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "create_paseo_worktree_response",
+        payload: {
+          requestId: request.message.requestId,
+          workspace: null,
+          error: "worktree attachment sentinel",
+          setupTerminalId: null,
+        },
+      }),
+    );
+
+    await expect(createPromise).resolves.toEqual({
+      requestId: request.message.requestId,
+      workspace: null,
+      error: "worktree attachment sentinel",
+      setupTerminalId: null,
+    });
+  });
+
   test("sends explicit shutdown_server_request via shutdownServer", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();

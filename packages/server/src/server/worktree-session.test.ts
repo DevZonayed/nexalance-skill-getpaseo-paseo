@@ -8,6 +8,7 @@ import type { SessionOutboundMessage } from "./messages.js";
 import { ScriptRouteStore } from "./script-proxy.js";
 import * as worktreeBootstrap from "./worktree-bootstrap.js";
 import {
+  buildAgentSessionConfig,
   createPaseoWorktreeInBackground,
   handleCreatePaseoWorktreeRequest,
   handleWorkspaceSetupStatusRequest,
@@ -90,6 +91,35 @@ function createGitRepo(options?: { paseoConfig?: Record<string, unknown> }) {
   }
   execSync("git add .", { cwd: repoDir, stdio: "pipe" });
   execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoDir, stdio: "pipe" });
+  return { tempDir, repoDir };
+}
+
+function createGitHubPrRemoteRepo() {
+  const { tempDir, repoDir } = createGitRepo();
+  const featureBranch = "feature/review-pr";
+  execSync(`git checkout -b ${JSON.stringify(featureBranch)}`, { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "README.md"), "review branch\n");
+  execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
+  execSync("git -c commit.gpgsign=false commit -m 'review branch'", {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
+  const featureSha = execSync("git rev-parse HEAD", { cwd: repoDir, stdio: "pipe" })
+    .toString()
+    .trim();
+  execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
+  execSync(`git branch -D ${JSON.stringify(featureBranch)}`, { cwd: repoDir, stdio: "pipe" });
+
+  const remoteDir = path.join(tempDir, "remote.git");
+  execSync(`git clone --bare ${JSON.stringify(repoDir)} ${JSON.stringify(remoteDir)}`, {
+    stdio: "pipe",
+  });
+  execSync(`git --git-dir=${JSON.stringify(remoteDir)} update-ref refs/pull/123/head ${featureSha}`, {
+    stdio: "pipe",
+  });
+  execSync(`git remote add origin ${JSON.stringify(remoteDir)}`, { cwd: repoDir, stdio: "pipe" });
+  execSync("git fetch origin", { cwd: repoDir, stdio: "pipe" });
+
   return { tempDir, repoDir };
 }
 
@@ -685,6 +715,148 @@ describe("createPaseoWorktreeInBackground", () => {
     });
   });
 
+});
+
+describe("handleCreatePaseoWorktreeRequest", () => {
+  const cleanupPaths: string[] = [];
+
+  afterEach(() => {
+    for (const target of cleanupPaths.splice(0)) {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("checks out the GitHub PR branch when a github_pr attachment is present", async () => {
+    const { tempDir, repoDir } = createGitHubPrRemoteRepo();
+    cleanupPaths.push(tempDir);
+
+    const emitted: SessionOutboundMessage[] = [];
+    const logger = createLogger();
+    const paseoHome = path.join(tempDir, ".paseo");
+
+    await handleCreatePaseoWorktreeRequest(
+      {
+        paseoHome,
+        describeWorkspaceRecord: async (workspace) =>
+          ({
+            id: String(workspace.id),
+            projectId: String(workspace.projectId),
+            projectDisplayName: "repo",
+            projectRootPath: repoDir,
+            workspaceDirectory: workspace.directory,
+            workspaceKind: "worktree",
+            projectKind: "git",
+            name: workspace.displayName,
+            status: "done",
+            activityAt: null,
+            diffStat: null,
+            scripts: [],
+          }) as any,
+        emit: (message) => emitted.push(message),
+        registerPendingWorktreeWorkspace: async ({ worktreePath, branchName }) =>
+          ({
+            id: 1,
+            projectId: 1,
+            directory: worktreePath,
+            displayName: branchName,
+            kind: "worktree",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            archivedAt: null,
+          }) as any,
+        sessionLogger: logger,
+        createPaseoWorktreeInBackground: async () => {},
+      },
+      {
+        type: "create_paseo_worktree_request",
+        requestId: "req-pr-worktree",
+        cwd: repoDir,
+        worktreeSlug: "review-pr-123",
+        attachments: [
+          {
+            type: "github_pr",
+            mimeType: "application/github-pr",
+            number: 123,
+            title: "Review branch",
+            url: "https://github.com/getpaseo/paseo/pull/123",
+            baseRefName: "main",
+            headRefName: "feature/review-pr",
+          },
+        ],
+      },
+    );
+
+    const response = emitted.find(
+      (message): message is Extract<SessionOutboundMessage, { type: "create_paseo_worktree_response" }> =>
+        message.type === "create_paseo_worktree_response",
+    );
+
+    expect(response?.payload.error).toBeNull();
+    expect(response?.payload.workspace?.workspaceDirectory).toBeTruthy();
+
+    const worktreePath = response?.payload.workspace?.workspaceDirectory;
+    expect(worktreePath).toBeTruthy();
+    if (!worktreePath) {
+      return;
+    }
+
+    const branch = execSync("git branch --show-current", { cwd: worktreePath, stdio: "pipe" })
+      .toString()
+      .trim();
+    expect(branch).toBe("feature/review-pr");
+
+    const readme = readFileSync(path.join(worktreePath, "README.md"), "utf8");
+    expect(readme).toContain("review branch");
+  });
+
+  test("buildAgentSessionConfig checks out the GitHub PR branch for agent worktrees", async () => {
+    const { tempDir, repoDir } = createGitHubPrRemoteRepo();
+    cleanupPaths.push(tempDir);
+
+    const result = await buildAgentSessionConfig(
+      {
+        paseoHome: path.join(tempDir, ".paseo"),
+        sessionLogger: createLogger(),
+        checkoutExistingBranch: async () => {
+          throw new Error("should not checkout existing branch");
+        },
+        createBranchFromBase: async () => {
+          throw new Error("should not create a new branch from base");
+        },
+      },
+      {
+        provider: "codex",
+        cwd: repoDir,
+      },
+      {
+        createWorktree: true,
+        worktreeSlug: "agent-review-pr-123",
+      },
+      undefined,
+      [
+        {
+          type: "github_pr",
+          mimeType: "application/github-pr",
+          number: 123,
+          title: "Review branch",
+          url: "https://github.com/getpaseo/paseo/pull/123",
+          baseRefName: "main",
+          headRefName: "feature/review-pr",
+        },
+      ],
+    );
+
+    expect(result.worktreeBootstrap?.worktree.branchName).toBe("feature/review-pr");
+    expect(result.worktreeBootstrap?.worktree.worktreePath).toContain("agent-review-pr-123");
+
+    const branch = execSync("git branch --show-current", {
+      cwd: result.sessionConfig.cwd,
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
+    expect(branch).toBe("feature/review-pr");
+  });
 });
 
 describe("handleCreatePaseoWorktreeRequest", () => {

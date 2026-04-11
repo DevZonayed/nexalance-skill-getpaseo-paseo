@@ -25,29 +25,13 @@ import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { buildGitHubAttachmentFromSearchItem } from "@/utils/review-attachments";
 import {
   requireWorkspaceExecutionAuthority,
 } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { ImageAttachment, MessagePayload } from "@/components/message-input";
 import type { GitHubSearchItem } from "@server/shared/messages";
-
-function buildInitialPrompt(userText: string, githubItem: GitHubSearchItem | null): string {
-  const parts: string[] = [];
-
-  if (githubItem) {
-    const kind = githubItem.kind === "pr" ? "Pull Request" : "Issue";
-    const header = `GitHub ${kind} #${githubItem.number}: ${githubItem.title}`;
-    const body = githubItem.body?.trim();
-    parts.push(body ? `${header}\n\n${body}` : header);
-  }
-
-  if (userText) {
-    parts.push(userText);
-  }
-
-  return parts.join("\n\n---\n\n");
-}
 
 interface NewWorkspaceScreenProps {
   serverId: string;
@@ -176,9 +160,11 @@ export function NewWorkspaceScreen({
     }
 
     const connectedClient = withConnectedClient();
+    const reviewAttachment = buildGitHubAttachmentFromSearchItem(selectedGithubItem);
     const payload = await connectedClient.createPaseoWorktree({
       cwd: sourceDirectory,
       worktreeSlug: createNameId(),
+      ...(reviewAttachment ? { attachments: [reviewAttachment] } : {}),
     });
 
     if (payload.error || !payload.workspace) {
@@ -193,6 +179,7 @@ export function NewWorkspaceScreen({
     createdWorkspace,
     mergeWorkspaces,
     serverId,
+    selectedGithubItem,
     sourceDirectory,
     withConnectedClient,
   ]);
@@ -208,8 +195,9 @@ export function NewWorkspaceScreen({
           throw new Error("Composer state is required");
         }
 
-        const initialPrompt = buildInitialPrompt(text.trim(), selectedGithubItem);
+        const initialPrompt = text.trim();
         const encodedImages = await encodeImages(images);
+        const reviewAttachment = buildGitHubAttachmentFromSearchItem(selectedGithubItem);
         const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
         const agent = await connectedClient.createAgent({
           provider: composerState.selectedProvider,
@@ -224,6 +212,7 @@ export function NewWorkspaceScreen({
             : {}),
           ...(initialPrompt ? { initialPrompt } : {}),
           ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
+          ...(reviewAttachment ? { attachments: [reviewAttachment] } : {}),
         });
 
         setAgents(serverId, (previous) => {

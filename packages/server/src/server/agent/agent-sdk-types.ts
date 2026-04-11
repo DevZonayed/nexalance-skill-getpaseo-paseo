@@ -1,4 +1,5 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentAttachment } from "../../shared/messages.js";
 
 export type AgentProvider = string;
 
@@ -117,7 +118,8 @@ export type AgentPersistenceHandle = {
 
 export type AgentPromptContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };
+  | { type: "image"; data: string; mimeType: string }
+  | AgentAttachment;
 
 export type AgentPromptInput = string | AgentPromptContentBlock[];
 

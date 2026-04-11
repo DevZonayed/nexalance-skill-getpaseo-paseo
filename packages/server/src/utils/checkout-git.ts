@@ -2387,6 +2387,8 @@ export interface GitHubSearchResult {
     state: string;
     body: string | null;
     labels: string[];
+    baseRefName?: string | null;
+    headRefName?: string | null;
   }>;
   githubFeaturesEnabled: boolean;
 }
@@ -2428,7 +2430,7 @@ export async function searchGitHubIssuesAndPrs(
           "--search",
           query,
           "--json",
-          "number,title,url,state,body,labels",
+          "number,title,url,state,body,labels,baseRefName,headRefName",
           "--limit",
           String(limit),
         ],
@@ -2452,6 +2454,8 @@ export async function searchGitHubIssuesAndPrs(
             labels: Array.isArray(item.labels)
               ? item.labels.map((l: { name?: string }) => l.name ?? "").filter(Boolean)
               : [],
+            baseRefName: item.baseRefName ?? null,
+            headRefName: item.headRefName ?? null,
           });
         }
       }

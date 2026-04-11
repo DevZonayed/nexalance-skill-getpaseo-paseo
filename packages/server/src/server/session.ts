@@ -11,6 +11,7 @@ import {
   isLegacyEditorTargetId,
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
+  type AgentAttachment,
   type SessionInboundMessage,
   type SessionOutboundMessage,
   type FileExplorerRequest,
@@ -836,17 +837,23 @@ export class Session {
   private buildAgentPrompt(
     text: string,
     images?: Array<{ data: string; mimeType: string }>,
+    attachments?: AgentAttachment[],
   ): AgentPromptInput {
     const normalized = text?.trim() ?? "";
-    if (!images || images.length === 0) {
+    const hasImages = Boolean(images && images.length > 0);
+    const hasAttachments = Boolean(attachments && attachments.length > 0);
+    if (!hasImages && !hasAttachments) {
       return normalized;
     }
     const blocks: AgentPromptContentBlock[] = [];
     if (normalized.length > 0) {
       blocks.push({ type: "text", text: normalized });
     }
-    for (const image of images) {
+    for (const image of images ?? []) {
       blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
+    }
+    for (const attachment of attachments ?? []) {
+      blocks.push(attachment);
     }
     return blocks;
   }
@@ -2763,12 +2770,24 @@ export class Session {
     text: string,
     messageId?: string,
     images?: Array<{ data: string; mimeType: string }>,
+    attachments?: AgentAttachment[],
     runOptions?: AgentRunOptions,
     options?: { spokenInput?: boolean },
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     this.sessionLogger.info(
-      { agentId, textPreview: text.substring(0, 50), imageCount: images?.length ?? 0 },
-      `Sending text to agent ${agentId}${images && images.length > 0 ? ` with ${images.length} image attachment(s)` : ""}`,
+      {
+        agentId,
+        textPreview: text.substring(0, 50),
+        imageCount: images?.length ?? 0,
+        attachmentCount: attachments?.length ?? 0,
+      },
+      `Sending text to agent ${agentId}${
+        images && images.length > 0 ? ` with ${images.length} image attachment(s)` : ""
+      }${
+        attachments && attachments.length > 0
+          ? ` and ${attachments.length} structured attachment(s)`
+          : ""
+      }`,
     );
 
     await this.unarchiveAgentState(agentId);
@@ -2796,7 +2815,7 @@ export class Session {
     }
 
     const promptText = options?.spokenInput ? wrapSpokenInput(text) : text;
-    const prompt = this.buildAgentPrompt(promptText, images);
+    const prompt = this.buildAgentPrompt(promptText, images, attachments);
 
     return this.startAgentStream(agentId, prompt, runOptions);
   }
@@ -2816,6 +2835,7 @@ export class Session {
       outputSchema,
       git,
       images,
+      attachments,
       labels,
     } = msg;
     this.sessionLogger.info(
@@ -2840,7 +2860,7 @@ export class Session {
         resolvedConfig,
         git,
         worktreeName,
-        labels,
+        attachments,
       );
       const resolvedWorkspace =
         msg.workspaceId
@@ -2864,7 +2884,7 @@ export class Session {
       );
       await this.forwardAgentUpdate(snapshot);
 
-      if (trimmedPrompt) {
+      if (trimmedPrompt || (images?.length ?? 0) > 0 || (attachments?.length ?? 0) > 0) {
         scheduleAgentMetadataGeneration({
           agentManager: this.agentManager,
           agentId: snapshot.id,
@@ -2877,9 +2897,10 @@ export class Session {
 
         const started = await this.handleSendAgentMessage(
           snapshot.id,
-          trimmedPrompt,
+          trimmedPrompt ?? "",
           resolveClientMessageId(clientMessageId),
           images,
+          attachments,
           outputSchema ? { outputSchema } : undefined,
         );
         if (!started.ok) {
@@ -2903,7 +2924,7 @@ export class Session {
         });
       }
 
-      if (trimmedPrompt) {
+      if (trimmedPrompt || (images?.length ?? 0) > 0 || (attachments?.length ?? 0) > 0) {
         scheduleAgentMetadataGeneration({
           agentManager: this.agentManager,
           agentId: snapshot.id,
@@ -2916,9 +2937,10 @@ export class Session {
 
         void this.handleSendAgentMessage(
           snapshot.id,
-          trimmedPrompt,
+          trimmedPrompt ?? "",
           resolveClientMessageId(clientMessageId),
           images,
+          attachments,
           outputSchema ? { outputSchema } : undefined,
         ).catch((promptError) => {
           this.sessionLogger.error(
@@ -3100,7 +3122,7 @@ export class Session {
     config: AgentSessionConfig,
     gitOptions?: GitSetupOptions,
     legacyWorktreeName?: string,
-    _labels?: Record<string, string>,
+    attachments?: AgentAttachment[],
   ): Promise<{
     sessionConfig: AgentSessionConfig;
     worktreeBootstrap?: { worktree: WorktreeConfig; shouldBootstrap: boolean };
@@ -3115,7 +3137,7 @@ export class Session {
       config,
       gitOptions,
       legacyWorktreeName,
-      _labels,
+      attachments,
     );
   }
 
@@ -6824,7 +6846,7 @@ export class Session {
         );
       }
 
-      const prompt = this.buildAgentPrompt(msg.text, msg.images);
+      const prompt = this.buildAgentPrompt(msg.text, msg.images, msg.attachments);
       this.sessionLogger.trace(
         { agentId, messageId: msg.messageId },
         "send_agent_message_request: starting agent stream",
@@ -7384,6 +7406,7 @@ export class Session {
     await this.handleSendAgentMessage(
       agentId,
       result.text,
+      undefined,
       undefined,
       undefined,
       undefined,

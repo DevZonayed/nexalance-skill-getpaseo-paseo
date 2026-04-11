@@ -613,19 +613,59 @@ export const SetVoiceModeMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
+export const GitHubPrAttachmentSchema = z.object({
+  type: z.literal("github_pr"),
+  mimeType: z.literal("application/github-pr"),
+  number: z.number().int().positive(),
+  title: z.string(),
+  url: z.string(),
+  body: z.string().nullable().optional(),
+  baseRefName: z.string().nullable().optional(),
+  headRefName: z.string().nullable().optional(),
+});
+
+export const GitHubIssueAttachmentSchema = z.object({
+  type: z.literal("github_issue"),
+  mimeType: z.literal("application/github-issue"),
+  number: z.number().int().positive(),
+  title: z.string(),
+  url: z.string(),
+  body: z.string().nullable().optional(),
+});
+
+export const AgentAttachmentSchema = z.discriminatedUnion("type", [
+  GitHubPrAttachmentSchema,
+  GitHubIssueAttachmentSchema,
+]);
+
+function normalizeAgentAttachments(input: unknown): AgentAttachment[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const normalized: AgentAttachment[] = [];
+  for (const item of input) {
+    const parsed = AgentAttachmentSchema.safeParse(item);
+    if (parsed.success) {
+      normalized.push(parsed.data);
+    }
+  }
+  return normalized;
+}
+
+const AgentAttachmentsSchema = z.unknown().transform(normalizeAgentAttachments).optional();
+
+const ImageAttachmentSchema = z.object({
+  data: z.string(), // base64 encoded image
+  mimeType: z.string(), // e.g., "image/jpeg", "image/png"
+});
+
 export const SendAgentMessageSchema = z.object({
   type: z.literal("send_agent_message"),
   agentId: z.string(),
   text: z.string(),
   messageId: z.string().optional(), // Client-provided ID for deduplication
-  images: z
-    .array(
-      z.object({
-        data: z.string(), // base64 encoded image
-        mimeType: z.string(), // e.g., "image/jpeg", "image/png"
-      }),
-    )
-    .optional(),
+  images: z.array(ImageAttachmentSchema).optional(),
+  attachments: AgentAttachmentsSchema,
 });
 
 // ============================================================================
@@ -710,14 +750,8 @@ export const SendAgentMessageRequestSchema = z.object({
   agentId: z.string(),
   text: z.string(),
   messageId: z.string().optional(), // Client-provided ID for deduplication
-  images: z
-    .array(
-      z.object({
-        data: z.string(), // base64 encoded image
-        mimeType: z.string(), // e.g., "image/jpeg", "image/png"
-      }),
-    )
-    .optional(),
+  images: z.array(ImageAttachmentSchema).optional(),
+  attachments: AgentAttachmentsSchema,
 });
 
 export const WaitForFinishRequestSchema = z.object({
@@ -775,14 +809,8 @@ export const CreateAgentRequestMessageSchema = z.object({
   initialPrompt: z.string().optional(),
   clientMessageId: z.string().optional(),
   outputSchema: z.record(z.unknown()).optional(),
-  images: z
-    .array(
-      z.object({
-        data: z.string(), // base64 encoded image
-        mimeType: z.string(), // e.g., "image/jpeg", "image/png"
-      }),
-    )
-    .optional(),
+  images: z.array(ImageAttachmentSchema).optional(),
+  attachments: AgentAttachmentsSchema,
   git: GitSetupOptionsSchema.optional(),
   labels: z.record(z.string()).default({}),
   requestId: z.string(),
@@ -1119,6 +1147,8 @@ export const GitHubSearchItemSchema = z.object({
   state: z.string(),
   body: z.string().nullable(),
   labels: z.array(z.string()),
+  baseRefName: z.string().nullable().optional(),
+  headRefName: z.string().nullable().optional(),
 });
 
 export const GitHubSearchRequestSchema = z.object({
@@ -1158,6 +1188,7 @@ export const CreatePaseoWorktreeRequestSchema = z.object({
   type: z.literal("create_paseo_worktree_request"),
   cwd: z.string(),
   worktreeSlug: z.string().optional(),
+  attachments: AgentAttachmentsSchema,
   requestId: z.string(),
 });
 
@@ -3012,6 +3043,7 @@ export type DictationStreamChunkMessage = z.infer<typeof DictationStreamChunkMes
 export type DictationStreamFinishMessage = z.infer<typeof DictationStreamFinishMessageSchema>;
 export type DictationStreamCancelMessage = z.infer<typeof DictationStreamCancelMessageSchema>;
 export type CreateAgentRequestMessage = z.infer<typeof CreateAgentRequestMessageSchema>;
+export type AgentAttachment = z.infer<typeof AgentAttachmentSchema>;
 export type ListProviderModelsRequestMessage = z.infer<
   typeof ListProviderModelsRequestMessageSchema
 >;
@@ -3096,6 +3128,7 @@ export type BranchSuggestionsResponse = z.infer<typeof BranchSuggestionsResponse
 export type GitHubSearchItem = z.infer<typeof GitHubSearchItemSchema>;
 export type GitHubSearchRequest = z.infer<typeof GitHubSearchRequestSchema>;
 export type GitHubSearchResponse = z.infer<typeof GitHubSearchResponseSchema>;
+export type CreatePaseoWorktreeRequest = z.infer<typeof CreatePaseoWorktreeRequestSchema>;
 export type DirectorySuggestionsRequest = z.infer<typeof DirectorySuggestionsRequestSchema>;
 export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsResponseSchema>;
 export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSchema>;
