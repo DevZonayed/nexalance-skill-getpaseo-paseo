@@ -6,11 +6,10 @@ import {
   type PropsWithChildren,
   type ReactElement,
 } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Dimensions, Platform, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ExternalLink, Globe, LoaderCircle, Play, SquareTerminal } from "lucide-react-native";
+import { ExternalLink } from "lucide-react-native";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { DiffStat } from "@/components/diff-stat";
 import { Pressable } from "react-native";
@@ -18,10 +17,7 @@ import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { PrHint } from "@/hooks/use-checkout-pr-status-query";
-import { useToast } from "@/contexts/toast-context";
-import { useSessionStore } from "@/stores/session-store";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 
 interface Rect {
@@ -108,8 +104,7 @@ function WorkspaceHoverCardDesktop({
   const triggerHoveredRef = useRef(false);
   const contentHoveredRef = useRef(false);
 
-  const hasScripts = workspace.scripts.length > 0;
-  const hasContent = hasScripts || prHint !== null;
+  const hasContent = prHint !== null || !!workspace.diffStat;
 
   const clearGraceTimer = useCallback(() => {
     if (graceTimerRef.current) {
@@ -195,32 +190,6 @@ function WorkspaceHoverCardDesktop({
   );
 }
 
-function getScriptHealthColor(input: {
-  health: SidebarWorkspaceEntry["scripts"][number]["health"];
-  theme: ReturnType<typeof useUnistyles>["theme"];
-}): string {
-  if (input.health === "healthy") {
-    return input.theme.colors.palette.blue[500];
-  }
-  if (input.health === "unhealthy") {
-    return input.theme.colors.palette.red[500];
-  }
-  return input.theme.colors.foregroundMuted;
-}
-
-function getScriptHealthLabel(
-  health: SidebarWorkspaceEntry["scripts"][number]["health"],
-): "Healthy" | "Unhealthy" | "Unknown" {
-  if (health === "healthy") {
-    return "Healthy";
-  }
-  if (health === "unhealthy") {
-    return "Unhealthy";
-  }
-  return "Unknown";
-}
-
-
 function WorkspaceHoverCardContent({
   workspace,
   prHint,
@@ -235,39 +204,10 @@ function WorkspaceHoverCardContent({
   onContentLeave: () => void;
 }): ReactElement | null {
   const { theme } = useUnistyles();
-  const toast = useToast();
-  const client = useSessionStore((state) => state.sessions[workspace.serverId]?.client ?? null);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const startScriptMutation = useMutation({
-    mutationFn: async (scriptName: string) => {
-      if (!client) {
-        throw new Error("Daemon client not available");
-      }
-      const result = await client.startWorkspaceScript(workspace.workspaceId, scriptName);
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      return result;
-    },
-    onSuccess: (data) => {
-      if (data.terminalId) {
-        navigateToPreparedWorkspaceTab({
-          serverId: workspace.serverId,
-          workspaceId: workspace.workspaceId,
-          target: { kind: "terminal", terminalId: data.terminalId },
-        });
-      }
-    },
-    onError: (error, scriptName) => {
-      toast.show(
-        error instanceof Error ? error.message : `Failed to start ${scriptName}`,
-        { variant: "error" },
-      );
-    },
-  });
 
   // Measure trigger — same pattern as tooltip.tsx
   useEffect(() => {
@@ -344,167 +284,6 @@ function WorkspaceHoverCardContent({
               ) : null}
               {prHint ? <PrBadge hint={prHint} /> : null}
             </View>
-          ) : null}
-          {workspace.scripts.length > 0 ? (
-            <>
-              <View style={styles.separator} />
-              <View style={styles.sectionLabelRow}>
-                <Play size={12} color={theme.colors.foregroundMuted} fill="transparent" />
-                <Text style={styles.sectionLabel}>Scripts</Text>
-              </View>
-              <View style={styles.sectionList} testID="hover-card-script-list">
-                {workspace.scripts.map((script) => {
-                  const isRunning = script.lifecycle === "running";
-                  const isService = (script.type ?? "service") === "service";
-                  const isLinkable = isService && isRunning && !!script.url;
-                  const exitCode = script.exitCode ?? null;
-
-                  let dotColor: string;
-                  if (isService) {
-                    dotColor = isRunning
-                      ? getScriptHealthColor({ health: script.health, theme })
-                      : theme.colors.foregroundMuted;
-                  } else if (isRunning) {
-                    dotColor = theme.colors.palette.blue[500];
-                  } else if (exitCode === 0) {
-                    dotColor = theme.colors.palette.green[500];
-                  } else if (exitCode !== null) {
-                    dotColor = theme.colors.palette.red[500];
-                  } else {
-                    dotColor = theme.colors.foregroundMuted;
-                  }
-
-                  let accessibilityStatus: string;
-                  if (isService) {
-                    accessibilityStatus = isRunning ? getScriptHealthLabel(script.health) : "Stopped";
-                  } else if (isRunning) {
-                    accessibilityStatus = "Running";
-                  } else if (exitCode === 0) {
-                    accessibilityStatus = "Completed";
-                  } else if (exitCode !== null) {
-                    accessibilityStatus = `Failed (exit ${exitCode})`;
-                  } else {
-                    accessibilityStatus = "Stopped";
-                  }
-
-                  return (
-                    <Pressable
-                      key={script.hostname}
-                      accessibilityRole={isLinkable ? "link" : undefined}
-                      accessibilityLabel={`${script.scriptName} script — ${accessibilityStatus}`}
-                      testID={`hover-card-script-${script.scriptName}`}
-                      style={({ hovered }) => [
-                        styles.listRow,
-                        hovered && isLinkable && styles.listRowHovered,
-                      ]}
-                      onPress={isLinkable ? () => void openExternalUrl(script.url!) : undefined}
-                      disabled={!isLinkable}
-                    >
-                      {({ hovered }) => (
-                        <>
-                          {isService ? (
-                            <Globe
-                              size={14}
-                              color={dotColor}
-                              testID={`hover-card-script-health-${script.scriptName}`}
-                              style={styles.scriptIcon}
-                            />
-                          ) : (
-                            <SquareTerminal
-                              size={14}
-                              color={dotColor}
-                              testID={`hover-card-script-health-${script.scriptName}`}
-                              style={styles.scriptIcon}
-                            />
-                          )}
-                          <Text
-                            style={[
-                              styles.listRowLabel,
-                              {
-                                color: isRunning
-                                  ? theme.colors.foreground
-                                  : theme.colors.foregroundMuted,
-                              },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {script.scriptName}
-                          </Text>
-                          {isService && isRunning && script.url ? (
-                            <Text style={styles.listRowSecondary} numberOfLines={1}>
-                              {script.url.replace(/^https?:\/\//, "")}
-                            </Text>
-                          ) : !isService && !isRunning && exitCode !== null && exitCode !== 0 ? (
-                            <Text style={styles.listRowSecondary} numberOfLines={1}>
-                              exit {exitCode}
-                            </Text>
-                          ) : (
-                            <View style={styles.listRowSpacer} />
-                          )}
-                          {isRunning ? (
-                            isLinkable && hovered ? (
-                              <View
-                                style={[
-                                  styles.externalLinkOverlay,
-                                  {
-                                    backgroundImage: `linear-gradient(to right, transparent, ${theme.colors.surface2} 40%)`,
-                                  },
-                                ]}
-                              >
-                                <ExternalLink
-                                  size={12}
-                                  color={theme.colors.foreground}
-                                />
-                              </View>
-                            ) : null
-                          ) : (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Run ${script.scriptName} script`}
-                              testID={`hover-card-script-start-${script.scriptName}`}
-                              hitSlop={4}
-                              disabled={startScriptMutation.isPending}
-                              onPress={(event) => {
-                                event.stopPropagation();
-                                startScriptMutation.mutate(script.scriptName);
-                              }}
-                              style={styles.startButton}
-                            >
-                              {({ hovered: actionHovered }) =>
-                                startScriptMutation.isPending &&
-                                startScriptMutation.variables === script.scriptName ? (
-                                  <LoaderCircle size={12} color={theme.colors.foregroundMuted} />
-                                ) : (
-                                  <>
-                                    <Play
-                                      size={10}
-                                      color={actionHovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                                      fill="transparent"
-                                    />
-                                    <Text
-                                      style={[
-                                        styles.startButtonLabel,
-                                        {
-                                          color: actionHovered
-                                            ? theme.colors.foreground
-                                            : theme.colors.foregroundMuted,
-                                        },
-                                      ]}
-                                    >
-                                      Run
-                                    </Text>
-                                  </>
-                                )
-                              }
-                            </Pressable>
-                          )}
-                        </>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
           ) : null}
           {prHint?.checks && prHint.checks.length > 0 ? (
             <>
@@ -619,30 +398,6 @@ const styles = StyleSheet.create((theme) => ({
     height: 1,
     backgroundColor: theme.colors.border,
   },
-  sectionLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1.5],
-    paddingHorizontal: theme.spacing[3],
-    paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[1],
-  },
-  sectionLabel: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.foregroundMuted,
-  },
-  sectionList: {
-    paddingBottom: theme.spacing[1],
-  },
-  listRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: 6,
-    minHeight: 28,
-  },
   listRowHovered: {
     backgroundColor: theme.colors.surface2,
   },
@@ -655,27 +410,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[3],
     alignItems: "center",
     justifyContent: "center",
-  },
-  listRowLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
-    lineHeight: 18,
-    flexShrink: 0,
-  },
-  listRowSecondary: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: 18,
-    flex: 1,
-    minWidth: 0,
-    textAlign: "right",
-  },
-  listRowSpacer: {
-    flex: 1,
-    minWidth: 0,
-  },
-  scriptIcon: {
-    flexShrink: 0,
   },
   checksSummaryRow: {
     flexDirection: "row",
@@ -703,15 +437,6 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 3,
   },
   checksStatusText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-  },
-  startButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  startButtonLabel: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
