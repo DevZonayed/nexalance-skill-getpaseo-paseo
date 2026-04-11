@@ -708,6 +708,7 @@ export async function createPaseoDaemon(
       scriptRuntimeStore,
       handleBranchChange,
       () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
+      () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
       (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
     );
 

@@ -28,7 +28,7 @@ const runningScript: WorkspaceScriptPayload = {
   type: "service",
   hostname: "main.web.localhost",
   port: 3000,
-  url: "http://main.web.localhost:6767",
+  proxyUrl: "http://main.web.localhost:6767",
   lifecycle: "running",
   health: "healthy",
   exitCode: null,

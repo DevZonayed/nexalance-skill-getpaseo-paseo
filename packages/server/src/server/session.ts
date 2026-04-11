@@ -437,6 +437,7 @@ export type SessionOptions = {
     newBranch: string | null,
   ) => void;
   getDaemonTcpPort?: () => number | null;
+  getDaemonTcpHost?: () => string | null;
   resolveScriptHealth?: (hostname: string) => ScriptHealthState | null;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
@@ -621,6 +622,7 @@ export class Session {
     newBranch: string | null,
   ) => void;
   private readonly getDaemonTcpPort: (() => number | null) | null;
+  private readonly getDaemonTcpHost: (() => string | null) | null;
   private readonly resolveScriptHealth:
     | ((hostname: string) => ScriptHealthState | null)
     | null;
@@ -684,6 +686,7 @@ export class Session {
       scriptRuntimeStore,
       onBranchChanged,
       getDaemonTcpPort,
+      getDaemonTcpHost,
       resolveScriptHealth,
       voice,
       voiceBridge,
@@ -728,6 +731,7 @@ export class Session {
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.onBranchChanged = onBranchChanged;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
+    this.getDaemonTcpHost = getDaemonTcpHost ?? null;
     this.resolveScriptHealth = resolveScriptHealth ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged((event) =>
@@ -6429,6 +6433,7 @@ export class Session {
         branchName: readGitCommand(workspace.directory, "git symbolic-ref --short HEAD"),
         scriptName: request.scriptName,
         daemonPort: this.getDaemonTcpPort?.() ?? null,
+        daemonListenHost: this.getDaemonTcpHost?.() ?? null,
         routeStore: this.scriptRouteStore,
         runtimeStore: this.scriptRuntimeStore,
         terminalManager: this.terminalManager,

@@ -753,12 +753,31 @@ type SpawnWorkspaceScriptOptions = {
   branchName: string | null;
   scriptName: string;
   daemonPort?: number | null;
+  daemonListenHost?: string | null;
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
   terminalManager: TerminalManager;
   logger?: Logger;
   onLifecycleChanged?: () => void;
 };
+
+function isLoopbackListenHost(host: string | null | undefined): boolean {
+  if (!host) {
+    return true;
+  }
+
+  const normalizedHost = host.trim().toLowerCase();
+  return (
+    normalizedHost === "localhost" ||
+    normalizedHost === "127.0.0.1" ||
+    normalizedHost === "::1" ||
+    normalizedHost === "[::1]"
+  );
+}
+
+export function resolveServiceBindHost(daemonListenHost: string | null | undefined): string {
+  return isLoopbackListenHost(daemonListenHost) ? "127.0.0.1" : "0.0.0.0";
+}
 
 export async function spawnWorkspaceScript(
   options: SpawnWorkspaceScriptOptions,
@@ -769,6 +788,7 @@ export async function spawnWorkspaceScript(
     branchName,
     scriptName,
     daemonPort,
+    daemonListenHost,
     routeStore,
     runtimeStore,
     terminalManager,
@@ -805,7 +825,7 @@ export async function spawnWorkspaceScript(
     const env = serviceScript
       ? {
           PORT: String(port),
-          HOST: "127.0.0.1",
+          HOST: resolveServiceBindHost(daemonListenHost),
           ...(daemonPort !== null && daemonPort !== undefined
             ? {
                 PASEO_SCRIPT_URL: `http://${hostname!}:${daemonPort}`,
@@ -898,6 +918,7 @@ export async function spawnWorktreeScripts(options: {
   workspaceId: string;
   branchName: string | null;
   daemonPort?: number | null;
+  daemonListenHost?: string | null;
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
   terminalManager: TerminalManager;

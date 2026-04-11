@@ -253,6 +253,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly scriptRouteStore: ScriptRouteStore | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
+  private readonly getDaemonTcpHost: (() => string | null) | null;
   private readonly resolveScriptHealth:
     | ((hostname: string) => ScriptHealthState | null)
     | null;
@@ -334,6 +335,7 @@ export class VoiceAssistantWebSocketServer {
       newBranch: string | null,
     ) => void,
     getDaemonTcpPort?: () => number | null,
+    getDaemonTcpHost?: () => string | null,
     resolveScriptHealth?: (hostname: string) => ScriptHealthState | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
@@ -385,6 +387,7 @@ export class VoiceAssistantWebSocketServer {
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.onBranchChanged = onBranchChanged ?? null;
     this.getDaemonTcpPort = getDaemonTcpPort ?? null;
+    this.getDaemonTcpHost = getDaemonTcpHost ?? null;
     this.resolveScriptHealth = resolveScriptHealth ?? null;
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
@@ -698,6 +701,7 @@ export class VoiceAssistantWebSocketServer {
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
+      getDaemonTcpHost: this.getDaemonTcpHost ?? undefined,
       resolveScriptHealth: this.resolveScriptHealth ?? undefined,
       voice: {
         ...(this.voice ?? {}),

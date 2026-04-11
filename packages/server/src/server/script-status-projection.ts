@@ -33,7 +33,7 @@ function resolveWorkspaceBranchName(workspaceDirectory: string): string | null {
   return readGitCommand(workspaceDirectory, "git symbolic-ref --short HEAD");
 }
 
-function toServiceUrl(hostname: string, daemonPort: number | null): string | null {
+function toServiceProxyUrl(hostname: string, daemonPort: number | null): string | null {
   if (daemonPort === null) {
     return null;
   }
@@ -64,7 +64,7 @@ function createConfiguredPayload(input: {
     type: input.type,
     hostname,
     port: input.type === "service" ? input.configuredPort : null,
-    url: input.type === "service" ? toServiceUrl(hostname, input.daemonPort) : null,
+    proxyUrl: input.type === "service" ? toServiceProxyUrl(hostname, input.daemonPort) : null,
     lifecycle: "stopped",
     health: null,
     exitCode: null,
@@ -117,9 +117,9 @@ export function buildWorkspaceScriptPayloads(
       hostname:
         type === "service" ? (routeEntry?.hostname ?? payload.hostname) : payload.scriptName,
       port: type === "service" ? (routeEntry?.port ?? payload.port) : null,
-      url:
+      proxyUrl:
         type === "service"
-          ? toServiceUrl(routeEntry?.hostname ?? payload.hostname, options.daemonPort)
+          ? toServiceProxyUrl(routeEntry?.hostname ?? payload.hostname, options.daemonPort)
           : null,
       lifecycle: runtimeEntry?.lifecycle ?? payload.lifecycle,
       health:
@@ -146,7 +146,7 @@ export function buildWorkspaceScriptPayloads(
       type,
       hostname,
       port: type === "service" ? (routeEntry?.port ?? null) : null,
-      url: type === "service" ? toServiceUrl(hostname, options.daemonPort) : null,
+      proxyUrl: type === "service" ? toServiceProxyUrl(hostname, options.daemonPort) : null,
       lifecycle: runtimeEntry.lifecycle,
       health:
         type === "service" && routeEntry

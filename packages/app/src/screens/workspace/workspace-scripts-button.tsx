@@ -5,6 +5,7 @@ import { ChevronDown, ExternalLink, Globe, LoaderCircle, Play, SquareTerminal } 
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { resolveWorkspaceScriptLink } from "@/utils/workspace-script-links";
 
 type Script = WorkspaceDescriptor["scripts"][number];
 
@@ -42,6 +44,7 @@ export function WorkspaceScriptsButton({
   const { theme } = useUnistyles();
   const toast = useToast();
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
 
   const startScriptMutation = useMutation({
     mutationFn: async (scriptName: string) => {
@@ -105,7 +108,8 @@ export function WorkspaceScriptsButton({
               {scripts.map((script) => {
                 const isRunning = script.lifecycle === "running";
                 const isService = (script.type ?? "service") === "service";
-                const isLinkable = isService && isRunning && !!script.url;
+                const serviceLink = resolveWorkspaceScriptLink({ script, activeConnection });
+                const isLinkable = isService && isRunning && !!serviceLink.openUrl;
                 const exitCode = script.exitCode ?? null;
 
                 let dotColor: string;
@@ -133,7 +137,9 @@ export function WorkspaceScriptsButton({
                       styles.scriptRow,
                       hovered && isLinkable && styles.scriptRowHovered,
                     ]}
-                    onPress={isLinkable ? () => void openExternalUrl(script.url!) : undefined}
+                    onPress={
+                      isLinkable ? () => void openExternalUrl(serviceLink.openUrl!) : undefined
+                    }
                     disabled={!isLinkable}
                   >
                     {({ hovered }) => (
@@ -156,9 +162,9 @@ export function WorkspaceScriptsButton({
                         >
                           {script.scriptName}
                         </Text>
-                        {isService && isRunning && script.url ? (
+                        {isService && isRunning && serviceLink.labelUrl ? (
                           <Text style={styles.scriptUrl} numberOfLines={1}>
-                            {script.url.replace(/^https?:\/\//, "")}
+                            {serviceLink.labelUrl.replace(/^https?:\/\//, "")}
                           </Text>
                         ) : !isService && !isRunning && exitCode !== null && exitCode !== 0 ? (
                           <Text style={styles.scriptUrl} numberOfLines={1}>

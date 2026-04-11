@@ -657,4 +657,45 @@ describe("runAsyncWorktreeBootstrap", () => {
       exitCode: null,
     });
   });
+
+  it("binds services to the network when the daemon listens on a non-loopback host", async () => {
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          web: {
+            type: "service",
+            command: "npm run dev",
+          },
+        },
+      }),
+    );
+    execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
+    execSync("git -c commit.gpgsign=false commit -m 'add remote service script config'", {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+
+    const routeStore = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    const createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }> =
+      [];
+
+    await spawnWorktreeScripts({
+      repoRoot: repoDir,
+      workspaceId: repoDir,
+      branchName: "feature-remote-service",
+      daemonPort: 6767,
+      daemonListenHost: "100.64.0.20",
+      routeStore,
+      runtimeStore,
+      terminalManager: createStubTerminalManager(createTerminalCalls) as any,
+    });
+
+    expect(createTerminalCalls).toHaveLength(1);
+    expect(createTerminalCalls[0]?.env?.HOST).toBe("0.0.0.0");
+    expect(createTerminalCalls[0]?.env?.PASEO_SCRIPT_URL).toBe(
+      "http://feature-remote-service.web.localhost:6767",
+    );
+  });
 });
