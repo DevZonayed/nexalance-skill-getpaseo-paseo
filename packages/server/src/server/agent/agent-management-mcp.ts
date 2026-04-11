@@ -147,7 +147,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "create_agent",
     {
-      title: "Create Agent",
+      title: "Create agent",
       description:
         "Create a new Claude or Codex agent tied to a working directory. Optionally run an initial prompt immediately or create a git worktree for the agent.",
       inputSchema,
@@ -321,7 +321,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "wait_for_agent",
     {
-      title: "Wait For Agent",
+      title: "Wait for agent",
       description:
         "Block until the agent requests permission or the current run completes. Returns the pending permission (if any) and recent activity summary.",
       inputSchema: {
@@ -399,7 +399,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "send_agent_prompt",
     {
-      title: "Send Agent Prompt",
+      title: "Send agent prompt",
       description:
         "Send a task to a running agent. Returns immediately after the agent begins processing.",
       inputSchema: {
@@ -489,7 +489,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "get_agent_status",
     {
-      title: "Get Agent Status",
+      title: "Get agent status",
       description:
         "Return the latest snapshot for an agent, including lifecycle state, capabilities, and pending permissions.",
       inputSchema: {
@@ -524,7 +524,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "list_agents",
     {
-      title: "List Agents",
+      title: "List agents",
       description: "List all live agents managed by the server.",
       inputSchema: {},
       outputSchema: {
@@ -548,7 +548,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "cancel_agent",
     {
-      title: "Cancel Agent Run",
+      title: "Cancel agent run",
       description: "Abort the agent's current run but keep the agent alive for future tasks.",
       inputSchema: {
         agentId: z.string(),
@@ -572,7 +572,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "archive_agent",
     {
-      title: "Archive Agent",
+      title: "Archive agent",
       description:
         "Archive an agent (soft-delete). The agent is interrupted if running and removed from the active list.",
       inputSchema: {
@@ -595,7 +595,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "kill_agent",
     {
-      title: "Kill Agent",
+      title: "Kill agent",
       description: "Terminate an agent session permanently.",
       inputSchema: {
         agentId: z.string(),
@@ -617,7 +617,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "update_agent",
     {
-      title: "Update Agent",
+      title: "Update agent",
       description: "Update an agent name and/or labels.",
       inputSchema: {
         agentId: z.string(),
@@ -660,7 +660,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "create_schedule",
     {
-      title: "Create Schedule",
+      title: "Create schedule",
       description: "Create a recurring schedule that runs on an agent or a new agent.",
       inputSchema: {
         prompt: z.string().trim().min(1, "prompt is required"),
@@ -711,7 +711,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "list_schedules",
     {
-      title: "List Schedules",
+      title: "List schedules",
       description: "List all schedules managed by the daemon.",
       inputSchema: {},
       outputSchema: {
@@ -734,7 +734,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "inspect_schedule",
     {
-      title: "Inspect Schedule",
+      title: "Inspect schedule",
       description: "Inspect a schedule and its run history.",
       inputSchema: {
         id: z.string(),
@@ -757,7 +757,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "pause_schedule",
     {
-      title: "Pause Schedule",
+      title: "Pause schedule",
       description: "Pause an active schedule.",
       inputSchema: {
         id: z.string(),
@@ -782,7 +782,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "resume_schedule",
     {
-      title: "Resume Schedule",
+      title: "Resume schedule",
       description: "Resume a paused schedule.",
       inputSchema: {
         id: z.string(),
@@ -807,7 +807,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "delete_schedule",
     {
-      title: "Delete Schedule",
+      title: "Delete schedule",
       description: "Delete a schedule permanently.",
       inputSchema: {
         id: z.string(),
@@ -832,7 +832,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "list_providers",
     {
-      title: "List Providers",
+      title: "List providers",
       description: "List available agent providers and their modes.",
       inputSchema: {},
       outputSchema: {
@@ -858,7 +858,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "list_models",
     {
-      title: "List Models",
+      title: "List models",
       description: "List models for an agent provider.",
       inputSchema: {
         provider: AgentProviderEnum,
@@ -892,7 +892,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "get_agent_activity",
     {
-      title: "Get Agent Activity",
+      title: "Get agent activity",
       description: "Return recent agent timeline entries as a curated summary.",
       inputSchema: {
         agentId: z.string(),
@@ -942,7 +942,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "set_agent_mode",
     {
-      title: "Set Agent Session Mode",
+      title: "Set agent session mode",
       description:
         "Switch the agent's session mode (plan, bypassPermissions, read-only, auto, etc.).",
       inputSchema: {
@@ -966,7 +966,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "list_pending_permissions",
     {
-      title: "List Pending Permissions",
+      title: "List pending permissions",
       description:
         "Return all pending permission requests across all agents with the normalized payloads.",
       inputSchema: {},
@@ -1000,7 +1000,7 @@ export async function createAgentManagementMcpServer(
   server.registerTool(
     "respond_to_permission",
     {
-      title: "Respond To Permission",
+      title: "Respond to permission",
       description:
         "Approve or deny a pending permission request with an AgentManager-compatible response payload.",
       inputSchema: {

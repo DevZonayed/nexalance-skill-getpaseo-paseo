@@ -41,6 +41,7 @@ import {
   ProviderSummarySchema,
   parseDurationString,
   sanitizePermissionRequest,
+  setupFinishNotification,
   serializeSnapshotWithMetadata,
   startAgentRun,
   toScheduleSummary,
@@ -310,6 +311,13 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       .describe(
         "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
       ),
+    notifyOnFinish: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Send a notification prompt to the caller agent when this agent finishes, errors, or needs permission. Requires a caller agent context.",
+      ),
   };
 
   const topLevelInputSchema = {
@@ -354,6 +362,13 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       .default(false)
       .describe(
         "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
+      ),
+    notifyOnFinish: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Send a notification prompt to the caller agent when this agent finishes, errors, or needs permission. Requires a caller agent context.",
       ),
   };
 
@@ -410,7 +425,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "create_agent",
     {
-      title: "Create Agent",
+      title: "Create agent",
       description:
         "Create a new Claude or Codex agent tied to a working directory. Optionally run an initial prompt immediately or create a git worktree for the agent.",
       inputSchema: createAgentInputSchema,
@@ -439,6 +454,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       let model: string | undefined;
       let thinking: string | undefined;
       let labels: Record<string, string> | undefined;
+      let notifyOnFinish = false;
 
       let resolvedCwd: string;
       let resolvedMode: string | undefined;
@@ -453,6 +469,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         model = callerArgs.model;
         thinking = callerArgs.thinking;
         labels = callerArgs.labels;
+        notifyOnFinish = callerArgs.notifyOnFinish ?? false;
 
         const parentAgent = agentManager.getAgent(callerAgentId);
         if (!parentAgent) {
@@ -477,6 +494,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         model = topLevelArgs.model;
         thinking = topLevelArgs.thinking;
         labels = topLevelArgs.labels;
+        notifyOnFinish = topLevelArgs.notifyOnFinish ?? false;
         const { cwd, initialMode, worktreeName, baseBranch } = topLevelArgs;
 
         resolvedCwd = expandUserPath(cwd);
@@ -560,6 +578,14 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
 
       try {
         startAgentRun(agentManager, snapshot.id, trimmedPrompt, childLogger);
+        if (notifyOnFinish && callerAgentId) {
+          setupFinishNotification({
+            agentManager,
+            childAgentId: snapshot.id,
+            callerAgentId,
+            logger: childLogger,
+          });
+        }
 
         // If not running in background, wait for completion
         if (!background) {
@@ -610,7 +636,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "wait_for_agent",
     {
-      title: "Wait For Agent",
+      title: "Wait for agent",
       description:
         "Block until the agent requests permission or the current run completes. Returns the pending permission (if any) and recent activity summary.",
       inputSchema: {
@@ -687,7 +713,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "send_agent_prompt",
     {
-      title: "Send Agent Prompt",
+      title: "Send agent prompt",
       description:
         "Send a task to a running agent. Returns immediately after the agent begins processing.",
       inputSchema: {
@@ -704,6 +730,13 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           .describe(
             "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
           ),
+        notifyOnFinish: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "Send a notification prompt to the caller agent when this agent finishes, errors, or needs permission.",
+          ),
       },
       outputSchema: {
         success: z.boolean(),
@@ -712,7 +745,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         permission: AgentPermissionRequestPayloadSchema.nullable().optional(),
       },
     },
-    async ({ agentId, prompt, sessionMode, background = false }) => {
+    async ({ agentId, prompt, sessionMode, background = false, notifyOnFinish = false }) => {
       const snapshot = agentManager.getAgent(agentId);
       if (!snapshot) {
         throw new Error(`Agent ${agentId} not found`);
@@ -737,6 +770,14 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       startAgentRun(agentManager, agentId, prompt, childLogger, {
         replaceRunning: true,
       });
+      if (notifyOnFinish && callerAgentId) {
+        setupFinishNotification({
+          agentManager,
+          childAgentId: agentId,
+          callerAgentId,
+          logger: childLogger,
+        });
+      }
 
       // If not running in background, wait for completion
       if (!background) {
@@ -782,7 +823,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "get_agent_status",
     {
-      title: "Get Agent Status",
+      title: "Get agent status",
       description:
         "Return the latest snapshot for an agent, including lifecycle state, capabilities, and pending permissions.",
       inputSchema: {
@@ -817,7 +858,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_agents",
     {
-      title: "List Agents",
+      title: "List agents",
       description: "List all live agents managed by the server.",
       inputSchema: {},
       outputSchema: {
@@ -841,7 +882,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "cancel_agent",
     {
-      title: "Cancel Agent Run",
+      title: "Cancel agent run",
       description: "Abort the agent's current run but keep the agent alive for future tasks.",
       inputSchema: {
         agentId: z.string(),
@@ -865,7 +906,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "archive_agent",
     {
-      title: "Archive Agent",
+      title: "Archive agent",
       description:
         "Archive an agent (soft-delete). The agent is interrupted if running and removed from the active list.",
       inputSchema: {
@@ -888,7 +929,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "kill_agent",
     {
-      title: "Kill Agent",
+      title: "Kill agent",
       description: "Terminate an agent session permanently.",
       inputSchema: {
         agentId: z.string(),
@@ -910,7 +951,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "update_agent",
     {
-      title: "Update Agent",
+      title: "Update agent",
       description: "Update an agent name and/or labels.",
       inputSchema: {
         agentId: z.string(),
@@ -953,7 +994,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_terminals",
     {
-      title: "List Terminals",
+      title: "List terminals",
       description: "List terminals for a working directory or across all working directories.",
       inputSchema: {
         cwd: z
@@ -1004,7 +1045,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "create_terminal",
     {
-      title: "Create Terminal",
+      title: "Create terminal",
       description: "Create a terminal session for a working directory.",
       inputSchema: {
         cwd: z
@@ -1039,7 +1080,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "kill_terminal",
     {
-      title: "Kill Terminal",
+      title: "Kill terminal",
       description: "Kill an existing terminal session.",
       inputSchema: {
         terminalId: z.string(),
@@ -1070,7 +1111,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "capture_terminal",
     {
-      title: "Capture Terminal",
+      title: "Capture terminal",
       description: "Capture plain-text terminal output lines from a terminal session.",
       inputSchema: {
         terminalId: z.string(),
@@ -1115,7 +1156,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "send_terminal_keys",
     {
-      title: "Send Terminal Keys",
+      title: "Send terminal keys",
       description: "Send literal text or special key tokens to a terminal session.",
       inputSchema: {
         terminalId: z.string(),
@@ -1151,7 +1192,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "create_schedule",
     {
-      title: "Create Schedule",
+      title: "Create schedule",
       description: "Create a recurring schedule that runs on an agent or a new agent.",
       inputSchema: {
         prompt: z.string().trim().min(1, "prompt is required"),
@@ -1207,7 +1248,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_schedules",
     {
-      title: "List Schedules",
+      title: "List schedules",
       description: "List all schedules managed by the daemon.",
       inputSchema: {},
       outputSchema: {
@@ -1230,7 +1271,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "inspect_schedule",
     {
-      title: "Inspect Schedule",
+      title: "Inspect schedule",
       description: "Inspect a schedule and its run history.",
       inputSchema: {
         id: z.string(),
@@ -1253,7 +1294,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "pause_schedule",
     {
-      title: "Pause Schedule",
+      title: "Pause schedule",
       description: "Pause an active schedule.",
       inputSchema: {
         id: z.string(),
@@ -1278,7 +1319,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "resume_schedule",
     {
-      title: "Resume Schedule",
+      title: "Resume schedule",
       description: "Resume a paused schedule.",
       inputSchema: {
         id: z.string(),
@@ -1303,7 +1344,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "delete_schedule",
     {
-      title: "Delete Schedule",
+      title: "Delete schedule",
       description: "Delete a schedule permanently.",
       inputSchema: {
         id: z.string(),
@@ -1328,7 +1369,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_providers",
     {
-      title: "List Providers",
+      title: "List providers",
       description: "List available agent providers and their modes.",
       inputSchema: {},
       outputSchema: {
@@ -1354,7 +1395,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_models",
     {
-      title: "List Models",
+      title: "List models",
       description: "List models for an agent provider.",
       inputSchema: {
         provider: AgentProviderEnum,
@@ -1388,7 +1429,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_worktrees",
     {
-      title: "List Worktrees",
+      title: "List worktrees",
       description: "List Paseo-managed git worktrees for a repository.",
       inputSchema: {
         cwd: z
@@ -1417,7 +1458,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "create_worktree",
     {
-      title: "Create Worktree",
+      title: "Create worktree",
       description: "Create a Paseo-managed git worktree.",
       inputSchema: {
         cwd: z
@@ -1454,7 +1495,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "archive_worktree",
     {
-      title: "Archive Worktree",
+      title: "Archive worktree",
       description: "Delete a Paseo-managed git worktree.",
       inputSchema: {
         cwd: z
@@ -1486,7 +1527,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "get_agent_activity",
     {
-      title: "Get Agent Activity",
+      title: "Get agent activity",
       description: "Return recent agent timeline entries as a curated summary.",
       inputSchema: {
         agentId: z.string(),
@@ -1536,7 +1577,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "set_agent_mode",
     {
-      title: "Set Agent Session Mode",
+      title: "Set agent session mode",
       description:
         "Switch the agent's session mode (plan, bypassPermissions, read-only, auto, etc.).",
       inputSchema: {
@@ -1560,7 +1601,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "list_pending_permissions",
     {
-      title: "List Pending Permissions",
+      title: "List pending permissions",
       description:
         "Return all pending permission requests across all agents with the normalized payloads.",
       inputSchema: {},
@@ -1594,7 +1635,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   server.registerTool(
     "respond_to_permission",
     {
-      title: "Respond To Permission",
+      title: "Respond to permission",
       description:
         "Approve or deny a pending permission request with an AgentManager-compatible response payload.",
       inputSchema: {
