@@ -994,7 +994,7 @@ describe("workspace aggregation", () => {
     expect(result.entries[0]).toMatchObject({
       id: "/tmp/repo",
       status: "running",
-      activityAt: "2026-03-01T12:03:00.000Z",
+      activityAt: null,
     });
   });
 
@@ -1069,6 +1069,7 @@ describe("workspace aggregation", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     session.reconcileActiveWorkspaceRecords = async () => new Set();
 
@@ -1196,6 +1197,7 @@ describe("workspace aggregation", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     session.reconcileActiveWorkspaceRecords = async () =>
       new Set(["/tmp/repo", "/tmp/repo/worktree"]);
@@ -1240,15 +1242,10 @@ describe("workspace aggregation", () => {
     const workspaceUpdates = emitted.filter(
       (message) => message.type === "workspace_update",
     ) as any[];
-    expect(workspaceUpdates).toHaveLength(3);
-    expect(workspaceUpdates.map((entry) => entry.payload.kind)).toEqual([
-      "upsert",
-      "upsert",
-      "upsert",
-    ]);
+    expect(workspaceUpdates).toHaveLength(2);
+    expect(workspaceUpdates.map((entry) => entry.payload.kind)).toEqual(["upsert", "upsert"]);
     expect(workspaceUpdates.map((entry) => entry.payload.workspace.id).sort()).toEqual([
       "/tmp/repo",
-      "/tmp/repo/worktree",
       "/tmp/repo/worktree",
     ]);
   });
@@ -1510,6 +1507,7 @@ describe("workspace aggregation", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     session.listAgentPayloads = async () => [];
     session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
@@ -1986,6 +1984,7 @@ describe("workspace aggregation", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     session.reconcileActiveWorkspaceRecords = async () => new Set();
     session.listAgentPayloads = async () => [];

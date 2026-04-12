@@ -225,6 +225,7 @@ describe("workspace git watch targets", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     sessionAny.reconcileActiveWorkspaceRecords = async () => new Set();
 
