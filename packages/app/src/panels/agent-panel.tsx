@@ -483,16 +483,19 @@ function AgentPanelBody({
     isPendingCreateForPanel && (!authoritativeStatus || isAuthoritativeBootstrapping);
   const canFinalizePendingCreate = Boolean(authoritativeStatus) && !isAuthoritativeBootstrapping;
 
-  const agent: AgentScreenAgent | null =
-    agentState.serverId && agentState.id && agentState.status && agentState.cwd
-      ? {
-          serverId: agentState.serverId,
-          id: agentState.id,
-          status: agentState.status,
-          cwd: agentState.cwd,
-          projectPlacement,
-        }
-      : null;
+  const agent = useMemo<AgentScreenAgent | null>(
+    () =>
+      agentState.serverId && agentState.id && agentState.status && agentState.cwd
+        ? {
+            serverId: agentState.serverId,
+            id: agentState.id,
+            status: agentState.status,
+            cwd: agentState.cwd,
+            projectPlacement,
+          }
+        : null,
+    [agentState.serverId, agentState.id, agentState.status, agentState.cwd, projectPlacement],
+  );
 
   const placeholderAgent: AgentScreenAgent | null = useMemo(() => {
     if (!shouldUseOptimisticStream || !agentId) {
