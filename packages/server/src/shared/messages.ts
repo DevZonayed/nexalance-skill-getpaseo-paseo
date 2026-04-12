@@ -2901,9 +2901,7 @@ export type CreateAgentRequestMessage = z.infer<typeof CreateAgentRequestMessage
 export type ListProviderModelsRequestMessage = z.infer<
   typeof ListProviderModelsRequestMessageSchema
 >;
-export type ListProviderModesRequestMessage = z.infer<
-  typeof ListProviderModesRequestMessageSchema
->;
+export type ListProviderModesRequestMessage = z.infer<typeof ListProviderModesRequestMessageSchema>;
 export type ListProviderFeaturesRequestMessage = z.infer<
   typeof ListProviderFeaturesRequestMessageSchema
 >;

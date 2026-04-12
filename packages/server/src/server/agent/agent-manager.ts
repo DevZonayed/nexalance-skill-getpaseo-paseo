@@ -1349,10 +1349,7 @@ export class AgentManager {
     }
 
     const pendingRun = this.getPendingForegroundRun(agentId);
-    if (
-      (snapshot.lifecycle === "running" || pendingRun?.started) &&
-      !snapshot.pendingReplacement
-    ) {
+    if ((snapshot.lifecycle === "running" || pendingRun?.started) && !snapshot.pendingReplacement) {
       return;
     }
 
@@ -1429,11 +1426,7 @@ export class AgentManager {
           return true;
         }
 
-        if (
-          !currentPendingRun &&
-          !current.activeForegroundTurnId &&
-          !current.pendingReplacement
-        ) {
+        if (!currentPendingRun && !current.activeForegroundTurnId && !current.pendingReplacement) {
           finishErr(new Error(`Agent ${agentId} run finished before starting`));
           return true;
         }
@@ -1495,8 +1488,7 @@ export class AgentManager {
     const pendingRun = this.getPendingForegroundRun(agentId);
     const foregroundTurnId = agent.activeForegroundTurnId;
     const hasForegroundTurn = Boolean(foregroundTurnId);
-    const isAutonomousRunning =
-      agent.lifecycle === "running" && !hasForegroundTurn && !pendingRun;
+    const isAutonomousRunning = agent.lifecycle === "running" && !hasForegroundTurn && !pendingRun;
 
     if (!hasForegroundTurn && !isAutonomousRunning && !pendingRun) {
       return false;
@@ -2123,9 +2115,7 @@ export class AgentManager {
     },
   ): void {
     const eventTurnId = (event as { turnId?: string }).turnId;
-    const isForegroundEvent = Boolean(
-      eventTurnId && agent.activeForegroundTurnId === eventTurnId,
-    );
+    const isForegroundEvent = Boolean(eventTurnId && agent.activeForegroundTurnId === eventTurnId);
 
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
@@ -2166,11 +2156,7 @@ export class AgentManager {
         }
         // Suppress user_message echoes for the active foreground turn —
         // these are already recorded by recordUserMessage().
-        if (
-          !options?.fromHistory &&
-          event.item.type === "user_message" &&
-          isForegroundEvent
-        ) {
+        if (!options?.fromHistory && event.item.type === "user_message" && isForegroundEvent) {
           const eventMessageId = normalizeMessageId(event.item.messageId);
           const eventText = event.item.text;
           if (eventMessageId) {
@@ -2213,7 +2199,7 @@ export class AgentManager {
         void this.refreshRuntimeInfo(agent);
         break;
       case "turn_failed":
-        this.logger.trace(
+        this.logger.warn(
           {
             agentId: agent.id,
             lifecycle: agent.lifecycle,
@@ -2554,9 +2540,7 @@ export class AgentManager {
     }
   }
 
-  private async normalizeConfig(
-    config: AgentSessionConfig,
-  ): Promise<AgentSessionConfig> {
+  private async normalizeConfig(config: AgentSessionConfig): Promise<AgentSessionConfig> {
     const normalized: AgentSessionConfig = { ...config };
 
     // Always resolve cwd to absolute path for consistent history file lookup
@@ -2614,5 +2598,4 @@ export class AgentManager {
     }
     return agent;
   }
-
 }
