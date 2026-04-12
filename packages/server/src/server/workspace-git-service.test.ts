@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type {
-  CheckoutStatusGit,
-  PullRequestStatusResult,
-} from "../utils/checkout-git.js";
+import type { CheckoutStatusGit, PullRequestStatusResult } from "../utils/checkout-git.js";
 import {
   WorkspaceGitServiceImpl,
   type WorkspaceGitRuntimeSnapshot,
@@ -65,11 +62,11 @@ function createSnapshot(
       ...overrides?.github,
       pullRequest:
         overrides?.github && "pullRequest" in overrides.github
-          ? overrides.github.pullRequest ?? null
+          ? (overrides.github.pullRequest ?? null)
           : base.github.pullRequest,
       error:
         overrides?.github && "error" in overrides.github
-          ? overrides.github.error ?? null
+          ? (overrides.github.error ?? null)
           : base.github.error,
     },
   };
@@ -139,7 +136,7 @@ function createService(options?: {
     logger: createLogger() as any,
     paseoHome: "/tmp/paseo-test",
     deps: {
-      watch: options?.watch ?? (((() => createWatcher()) as unknown) as any),
+      watch: options?.watch ?? ((() => createWatcher()) as unknown as any),
       getCheckoutStatus:
         options?.getCheckoutStatus ?? vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
       getCheckoutShortstat:
@@ -149,8 +146,7 @@ function createService(options?: {
           deletions: 0,
         })),
       getPullRequestStatus:
-        options?.getPullRequestStatus ??
-        vi.fn(async () => createPullRequestStatusResult()),
+        options?.getPullRequestStatus ?? vi.fn(async () => createPullRequestStatusResult()),
       resolveGhPath: options?.resolveGhPath ?? vi.fn(async () => "/usr/bin/gh"),
       resolveAbsoluteGitDir: options?.resolveAbsoluteGitDir ?? vi.fn(async () => "/tmp/repo/.git"),
       hasOriginRemote: options?.hasOriginRemote ?? vi.fn(async () => false),
@@ -325,10 +321,7 @@ describe("WorkspaceGitServiceImpl", () => {
         }),
       );
 
-    const nowValues = [
-      new Date("2026-04-12T00:00:00.000Z"),
-      new Date("2026-04-12T00:05:00.000Z"),
-    ];
+    const nowValues = [new Date("2026-04-12T00:00:00.000Z"), new Date("2026-04-12T00:05:00.000Z")];
     const service = createService({
       getPullRequestStatus,
       now: () => nowValues.shift() ?? new Date("2026-04-12T00:05:00.000Z"),
@@ -383,20 +376,18 @@ describe("WorkspaceGitServiceImpl", () => {
           aheadOfOrigin: 2,
         }),
       );
-    const getPullRequestStatus = vi
-      .fn<() => Promise<PullRequestStatusResult>>()
-      .mockResolvedValue(
-        createPullRequestStatusResult({
-          status: {
-            url: "https://github.com/acme/repo/pull/123",
-            title: "Runtime payloads",
-            state: "open",
-            baseRefName: "main",
-            headRefName: "feature/runtime-payloads",
-            isMerged: false,
-          },
-        }),
-      );
+    const getPullRequestStatus = vi.fn<() => Promise<PullRequestStatusResult>>().mockResolvedValue(
+      createPullRequestStatusResult({
+        status: {
+          url: "https://github.com/acme/repo/pull/123",
+          title: "Runtime payloads",
+          state: "open",
+          baseRefName: "main",
+          headRefName: "feature/runtime-payloads",
+          isMerged: false,
+        },
+      }),
+    );
 
     const service = createService({
       getCheckoutStatus,

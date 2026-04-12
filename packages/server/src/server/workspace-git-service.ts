@@ -258,7 +258,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           this.scheduleWorkspaceRefresh(target);
         });
       } catch (error) {
-        this.logger.warn({ err: error, cwd: target.cwd, watchPath }, "Failed to start workspace git watcher");
+        this.logger.warn(
+          { err: error, cwd: target.cwd, watchPath },
+          "Failed to start workspace git watcher",
+        );
       }
 
       if (!watcher) {
@@ -332,7 +335,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           const snapshot = await this.refreshSnapshot(target.cwd);
           this.rememberSnapshot(target, snapshot, { notify: true });
         } catch (error) {
-          this.logger.warn({ err: error, cwd: target.cwd }, "Failed to refresh workspace git snapshot");
+          this.logger.warn(
+            { err: error, cwd: target.cwd },
+            "Failed to refresh workspace git snapshot",
+          );
         }
       } while (target.refreshQueued);
     })();
@@ -378,7 +384,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
 
     target.fetchInFlight = true;
-    this.logger.debug({ repoGitRoot: target.repoGitRoot, cwd: target.cwd }, "Running background git fetch");
+    this.logger.debug(
+      { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+      "Running background git fetch",
+    );
 
     try {
       await this.deps.runGitFetch(target.cwd);

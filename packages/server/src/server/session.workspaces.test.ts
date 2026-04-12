@@ -165,20 +165,22 @@ function createWorkspaceRuntimeSnapshot(
       ...overrides?.github,
       pullRequest:
         overrides?.github && "pullRequest" in overrides.github
-          ? overrides.github.pullRequest ?? null
+          ? (overrides.github.pullRequest ?? null)
           : base.github.pullRequest,
       error:
         overrides?.github && "error" in overrides.github
-          ? overrides.github.error ?? null
+          ? (overrides.github.error ?? null)
           : base.github.error,
     },
   };
 }
 
-function createSessionForWorkspaceTests(options: {
-  appVersion?: string | null;
-  workspaceGitService?: ReturnType<typeof createNoopWorkspaceGitService>;
-} = {}): Session {
+function createSessionForWorkspaceTests(
+  options: {
+    appVersion?: string | null;
+    workspaceGitService?: ReturnType<typeof createNoopWorkspaceGitService>;
+  } = {},
+): Session {
   const logger = {
     child: () => logger,
     trace: vi.fn(),
@@ -238,8 +240,8 @@ function createSessionForWorkspaceTests(options: {
         checkoutDiffWatcherCount: 0,
         checkoutDiffFallbackRefreshTargetCount: 0,
       }),
-        dispose: () => {},
-      } as any,
+      dispose: () => {},
+    } as any,
     workspaceGitService: (options.workspaceGitService ?? createNoopWorkspaceGitService()) as any,
     mcpBaseUrl: null,
     stt: null,

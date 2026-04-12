@@ -43,10 +43,7 @@ export function splitMarkdownBlocks(text: string): string[] {
       continue;
     }
 
-    if (
-      fenceDelimiter[0] === activeFenceCharacter &&
-      fenceDelimiter.length >= activeFenceLength
-    ) {
+    if (fenceDelimiter[0] === activeFenceCharacter && fenceDelimiter.length >= activeFenceLength) {
       activeFenceCharacter = null;
       activeFenceLength = 0;
     }

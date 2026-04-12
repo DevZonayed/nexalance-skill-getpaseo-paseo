@@ -47,11 +47,11 @@ function createWorkspaceRuntimeSnapshot(
       ...overrides?.github,
       pullRequest:
         overrides?.github && "pullRequest" in overrides.github
-          ? overrides.github.pullRequest ?? null
+          ? (overrides.github.pullRequest ?? null)
           : base.github.pullRequest,
       error:
         overrides?.github && "error" in overrides.github
-          ? overrides.github.error ?? null
+          ? (overrides.github.error ?? null)
           : base.github.error,
     },
   };
@@ -309,7 +309,9 @@ describe("workspace git watch targets", () => {
     });
 
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo");
-    expect(emitted.find((message) => message.type === "checkout_pr_status_response")?.payload).toEqual({
+    expect(
+      emitted.find((message) => message.type === "checkout_pr_status_response")?.payload,
+    ).toEqual({
       cwd: "/tmp/repo",
       status: {
         url: "https://github.com/acme/repo/pull/456",
@@ -366,7 +368,9 @@ describe("workspace git watch targets", () => {
     expect(workspaceGitService.refresh).toHaveBeenCalledWith("/tmp/repo", {
       priority: "high",
     });
-    expect(emitted.find((message) => message.type === "checkout_pr_status_response")?.payload).toEqual({
+    expect(
+      emitted.find((message) => message.type === "checkout_pr_status_response")?.payload,
+    ).toEqual({
       cwd: "/tmp/repo",
       status: {
         url: "https://github.com/acme/repo/pull/457",

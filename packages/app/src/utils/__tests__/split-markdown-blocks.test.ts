@@ -37,18 +37,17 @@ describe("splitMarkdownBlocks", () => {
 
   it("splits mixed paragraph, code fence, and paragraph content into three blocks", () => {
     expect(
-      splitMarkdownBlocks("Intro paragraph\n\n```ts\nconst a = 1;\n\nconst b = 2;\n```\n\nOutro paragraph"),
-    ).toEqual([
-      "Intro paragraph",
-      "```ts\nconst a = 1;\n\nconst b = 2;\n```",
-      "Outro paragraph",
-    ]);
+      splitMarkdownBlocks(
+        "Intro paragraph\n\n```ts\nconst a = 1;\n\nconst b = 2;\n```\n\nOutro paragraph",
+      ),
+    ).toEqual(["Intro paragraph", "```ts\nconst a = 1;\n\nconst b = 2;\n```", "Outro paragraph"]);
   });
 
   it("keeps everything from an unclosed fence start as one block for streaming content", () => {
-    expect(
-      splitMarkdownBlocks("Before fence\n\n```ts\nconst a = 1;\n\nconst b = 2;"),
-    ).toEqual(["Before fence", "```ts\nconst a = 1;\n\nconst b = 2;"]);
+    expect(splitMarkdownBlocks("Before fence\n\n```ts\nconst a = 1;\n\nconst b = 2;")).toEqual([
+      "Before fence",
+      "```ts\nconst a = 1;\n\nconst b = 2;",
+    ]);
   });
 
   it("returns an empty array for empty input", () => {
