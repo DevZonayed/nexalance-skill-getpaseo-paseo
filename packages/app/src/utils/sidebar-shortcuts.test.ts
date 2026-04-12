@@ -13,7 +13,6 @@ function workspace(serverId: string, cwd: string): SidebarWorkspaceEntry {
     workspaceId: cwd,
     workspaceKind: "local_checkout",
     name: cwd,
-    activityAt: null,
     statusBucket: "done",
     diffStat: null,
   };
@@ -28,7 +27,6 @@ function project(projectKey: string, workspaces: SidebarWorkspaceEntry[]): Sideb
     statusBucket: "done",
     activeCount: 0,
     totalWorkspaces: workspaces.length,
-    latestActivityAt: null,
     workspaces,
   };
 }

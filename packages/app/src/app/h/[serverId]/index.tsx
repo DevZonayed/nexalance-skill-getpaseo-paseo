@@ -57,11 +57,6 @@ function HostIndexRouteContent() {
       );
 
       const visibleWorkspaces = sessionWorkspaces ? Array.from(sessionWorkspaces.values()) : [];
-      visibleWorkspaces.sort((left, right) => {
-        const leftTime = left.activityAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-        const rightTime = right.activityAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-        return rightTime - leftTime;
-      });
 
       const primaryAgent = visibleAgents[0];
       if (primaryAgent?.cwd?.trim()) {

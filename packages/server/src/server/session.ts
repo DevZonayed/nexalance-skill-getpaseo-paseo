@@ -1,3 +1,4 @@
+import equal from "fast-deep-equal";
 import { v4 as uuidv4 } from "uuid";
 import { stat } from "fs/promises";
 import { exec, execFile } from "node:child_process";
@@ -323,6 +324,7 @@ type WorkspaceUpdatesSubscriptionState = {
   filter?: WorkspaceUpdatesFilter;
   isBootstrapping: boolean;
   pendingUpdatesByWorkspaceId: Map<string, WorkspaceUpdatePayload>;
+  lastEmittedByWorkspaceId: Map<string, WorkspaceUpdatePayload>;
 };
 type FetchWorkspacesCursor = {
   sort: FetchWorkspacesRequestSort[];
@@ -5301,25 +5303,6 @@ export class Session {
     return "done";
   }
 
-  private accumulateLatestActivityAt(
-    current: string | null,
-    agent: AgentSnapshotPayload,
-  ): string | null {
-    const candidateRaw = agent.lastUserMessageAt ?? agent.updatedAt;
-    const candidateMs = Date.parse(candidateRaw);
-    if (Number.isNaN(candidateMs)) {
-      return current;
-    }
-    if (!current) {
-      return new Date(candidateMs).toISOString();
-    }
-    const currentMs = Date.parse(current);
-    if (Number.isNaN(currentMs) || candidateMs > currentMs) {
-      return new Date(candidateMs).toISOString();
-    }
-    return current;
-  }
-
   private async describeWorkspaceRecord(
     workspace: PersistedWorkspaceRecord,
     projectRecord?: PersistedProjectRecord | null,
@@ -5464,7 +5447,6 @@ export class Session {
       if (this.workspaceStatePriority[bucket] < this.workspaceStatePriority[existing.status]) {
         existing.status = bucket;
       }
-      existing.activityAt = this.accumulateLatestActivityAt(existing.activityAt, agent);
     }
 
     return descriptorsByWorkspaceId;
@@ -5746,6 +5728,8 @@ export class Session {
       subscription.pendingUpdatesByWorkspaceId.set(workspaceId, payload);
       return;
     }
+    const workspaceId = payload.kind === "upsert" ? payload.workspace.id : payload.id;
+    subscription.lastEmittedByWorkspaceId.set(workspaceId, payload);
     this.emit({
       type: "workspace_update",
       payload,
@@ -5878,6 +5862,7 @@ export class Session {
           : null;
 
       if (!nextWorkspace) {
+        subscription.lastEmittedByWorkspaceId.delete(workspaceId);
         this.bufferOrEmitWorkspaceUpdate(subscription, {
           kind: "remove",
           id: workspaceId,
@@ -5885,10 +5870,17 @@ export class Session {
         continue;
       }
 
-      this.bufferOrEmitWorkspaceUpdate(subscription, {
+      const nextPayload: WorkspaceUpdatePayload = {
         kind: "upsert",
         workspace: nextWorkspace,
-      });
+      };
+
+      const lastEmitted = subscription.lastEmittedByWorkspaceId.get(workspaceId);
+      if (lastEmitted && lastEmitted.kind === "upsert" && equal(lastEmitted.workspace, nextWorkspace)) {
+        continue;
+      }
+
+      this.bufferOrEmitWorkspaceUpdate(subscription, nextPayload);
     }
 
     if (!options?.skipReconcile) {
@@ -6001,6 +5993,7 @@ export class Session {
           filter: request.filter,
           isBootstrapping: true,
           pendingUpdatesByWorkspaceId: new Map(),
+          lastEmittedByWorkspaceId: new Map(),
         };
       }
 

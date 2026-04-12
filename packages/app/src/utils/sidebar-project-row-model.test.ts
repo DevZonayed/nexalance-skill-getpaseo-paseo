@@ -15,7 +15,6 @@ function workspace(overrides: Partial<SidebarWorkspaceEntry> = {}): SidebarWorks
     workspaceId: "/repo",
     workspaceKind: "directory",
     name: "paseo",
-    activityAt: null,
     statusBucket: "done",
     diffStat: null,
     ...overrides,
@@ -31,7 +30,6 @@ function project(overrides: Partial<SidebarProjectEntry> = {}): SidebarProjectEn
     statusBucket: "done",
     activeCount: 0,
     totalWorkspaces: 1,
-    latestActivityAt: null,
     workspaces: [workspace()],
     ...overrides,
   };
