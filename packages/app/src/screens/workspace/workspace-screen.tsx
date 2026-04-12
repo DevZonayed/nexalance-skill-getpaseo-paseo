@@ -863,6 +863,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
+  const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
   const splitWorkspacePane = useWorkspaceLayoutStore((state) => state.splitPane);
   const splitWorkspacePaneEmpty = useWorkspaceLayoutStore((state) => state.splitPaneEmpty);
@@ -875,6 +876,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     persistenceKey
       ? (state.pinnedAgentIdsByWorkspace[persistenceKey] ?? EMPTY_PINNED_AGENT_IDS)
       : EMPTY_PINNED_AGENT_IDS,
+  );
+  const hiddenAgentIds = useWorkspaceLayoutStore((state) =>
+    persistenceKey ? (state.hiddenAgentIdsByWorkspace[persistenceKey] ?? EMPTY_SET) : EMPTY_SET,
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const { closingTabIds, closeTab } = useCloseTabs();
@@ -890,10 +894,11 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
 
       if (input.target?.kind === "agent") {
         unpinWorkspaceAgent(persistenceKey, input.target.agentId);
+        hideWorkspaceAgent(persistenceKey, input.target.agentId);
       }
       closeWorkspaceTab(persistenceKey, normalizedTabId);
     },
-    [closeWorkspaceTab, persistenceKey, unpinWorkspaceAgent],
+    [closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, unpinWorkspaceAgent],
   );
 
   const focusedPaneTabState = useMemo(
@@ -989,6 +994,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     });
 
     for (const agentId of workspaceAgentVisibility.activeAgentIds) {
+      if (hiddenAgentIds.has(agentId)) {
+        continue;
+      }
       const representedByTarget = uiTabs.some(
         (tab) => tab.target.kind === "agent" && tab.target.agentId === agentId,
       );
@@ -1036,6 +1044,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     closeWorkspaceTabWithCleanup,
     ensureWorkspaceTab,
     hasHydratedAgents,
+    hiddenAgentIds,
     pendingByDraftId,
     pinnedAgentIds,
     persistenceKey,
