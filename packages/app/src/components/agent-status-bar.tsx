@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { View, Text, Platform, Pressable, Keyboard } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
@@ -848,7 +848,11 @@ function ControlledStatusBar({
 
 const EMPTY_MODES: AgentMode[] = [];
 
-export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStatusBarProps) {
+export const AgentStatusBar = memo(function AgentStatusBar({
+  agentId,
+  serverId,
+  onDropdownClose,
+}: AgentStatusBarProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
     useShallow((state) => {
@@ -1048,7 +1052,7 @@ export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStat
       disabled={!client}
     />
   );
-}
+});
 
 export function DraftAgentStatusBar({
   providerDefinitions,

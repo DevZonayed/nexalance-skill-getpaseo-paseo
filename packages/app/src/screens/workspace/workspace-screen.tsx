@@ -81,7 +81,6 @@ import type { ListTerminalsResponse } from "@server/shared/messages";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
-import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -761,23 +760,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     checkoutQuery.data?.isGit && checkoutQuery.data.currentBranch !== "HEAD"
       ? trimNonEmpty(checkoutQuery.data.currentBranch)
       : null;
-
-  const {
-    branchOptions,
-    isOpen: isBranchSwitcherOpen,
-    setIsOpen: setIsBranchSwitcherOpen,
-    handleBranchSelect,
-    invalidateStashAndCheckout,
-  } = useBranchSwitcher({
-    client,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    currentBranchName,
-    isGitCheckout,
-    isConnected,
-    toast,
-    queryClient,
-  });
 
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
@@ -1982,10 +1964,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                         <BranchSwitcher
                           currentBranchName={currentBranchName}
                           title={workspaceHeader.title}
-                          branchOptions={branchOptions}
-                          isOpen={isBranchSwitcherOpen}
-                          onOpenChange={setIsBranchSwitcherOpen}
-                          onBranchSelect={handleBranchSelect}
+                          serverId={normalizedServerId}
+                          workspaceId={normalizedWorkspaceId}
+                          isGitCheckout={isGitCheckout}
                         />
                         <Text
                           testID="workspace-header-subtitle"

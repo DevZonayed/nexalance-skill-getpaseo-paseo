@@ -1,28 +1,45 @@
 import { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useToast } from "@/contexts/toast-context";
+import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
 
 interface BranchSwitcherProps {
   currentBranchName: string | null;
   title: string;
-  branchOptions: ComboboxOption[];
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
-  onBranchSelect: (branchId: string) => void;
+  serverId: string;
+  workspaceId: string;
+  isGitCheckout: boolean;
 }
 
 export function BranchSwitcher({
   currentBranchName,
   title,
-  branchOptions,
-  isOpen,
-  onOpenChange,
-  onBranchSelect,
+  serverId,
+  workspaceId,
+  isGitCheckout,
 }: BranchSwitcherProps) {
   const { theme } = useUnistyles();
   const anchorRef = useRef<View>(null);
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
+  const { branchOptions, isOpen, setIsOpen, handleBranchSelect } = useBranchSwitcher({
+    client,
+    normalizedServerId: serverId,
+    normalizedWorkspaceId: workspaceId,
+    currentBranchName,
+    isGitCheckout,
+    isConnected,
+    toast,
+    queryClient,
+  });
 
   if (!currentBranchName) {
     return (
@@ -36,7 +53,7 @@ export function BranchSwitcher({
     <View ref={anchorRef} collapsable={false}>
       <Pressable
         testID="workspace-header-branch-switcher"
-        onPress={() => onOpenChange(true)}
+        onPress={() => setIsOpen(true)}
         style={({ hovered, pressed }) => [
           styles.branchSwitcherTrigger,
           (hovered || pressed) && styles.branchSwitcherTriggerHovered,
@@ -53,14 +70,14 @@ export function BranchSwitcher({
       <Combobox
         options={branchOptions}
         value={currentBranchName}
-        onSelect={onBranchSelect}
+        onSelect={handleBranchSelect}
         searchable
         placeholder="Switch branch..."
         searchPlaceholder="Filter branches..."
         emptyText="No branches found."
         title="Switch branch"
         open={isOpen}
-        onOpenChange={onOpenChange}
+        onOpenChange={setIsOpen}
         anchorRef={anchorRef}
         desktopPlacement="bottom-start"
         desktopPreventInitialFlash
