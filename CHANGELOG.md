@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.54 - 2026-04-12
+
+### Improved
+- Paseo tools are no longer injected into agents by default — opt in from Settings when you need agent-to-agent orchestration.
+- Agent provider and mode are now resolved server-side, so CLI commands like `paseo run` use consistent defaults without client-side lookups.
+
+### Fixed
+- Shift+Enter now correctly inserts a newline in agent terminal input instead of submitting.
+- Windows: MCP configuration is no longer mangled when spawning Claude agents.
+- Branch ahead/behind count no longer errors for branches with no remote tracking branch.
+
 ## 0.1.53 - 2026-04-12
 
 ### Added
