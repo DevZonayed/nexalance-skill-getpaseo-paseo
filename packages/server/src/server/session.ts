@@ -1,9 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
-import { watch, type FSWatcher } from "node:fs";
-import { readFile, stat } from "fs/promises";
+import { stat } from "fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "util";
-import { join, resolve, sep } from "path";
+import { resolve, sep } from "path";
 import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolSet } from "ai";
@@ -67,8 +66,8 @@ import {
 import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
-import { BackgroundGitFetchManager } from "./background-git-fetch-manager.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
+import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 
 import { buildProviderRegistry } from "./agent/provider-registry.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
@@ -147,7 +146,6 @@ import { type WorktreeConfig } from "../utils/worktree.js";
 import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
 import {
   getCheckoutDiff,
-  getCheckoutShortstat,
   getCheckoutStatus,
   listBranchSuggestions,
   commitChanges,
@@ -156,12 +154,11 @@ import {
   pullCurrentBranch,
   pushCurrentBranch,
   createPullRequest,
-  getPullRequestStatus,
 } from "../utils/checkout-git.js";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
-import { READ_ONLY_GIT_ENV, resolveCheckoutGitDir, toCheckoutError } from "./checkout-git-utils.js";
+import { READ_ONLY_GIT_ENV, toCheckoutError } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
@@ -219,8 +216,6 @@ function clientSupportsFlexibleEditorIds(appVersion: string | null): boolean {
   return isAppVersionAtLeast(appVersion, MIN_VERSION_FLEXIBLE_EDITOR_IDS);
 }
 
-const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
-const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
 const MAX_TERMINAL_STREAM_SLOTS = 256;
 
 function deriveInitialAgentTitle(prompt: string): string | null {
@@ -269,15 +264,6 @@ export function resolveWaitForFinishError(options: {
 }
 
 type ProcessingPhase = "idle" | "transcribing";
-
-type WorkspaceGitWatchTarget = {
-  cwd: string;
-  watchers: FSWatcher[];
-  debounceTimer: NodeJS.Timeout | null;
-  refreshPromise: Promise<void> | null;
-  refreshQueued: boolean;
-  latestFingerprint: string | null;
-};
 
 type ActiveTerminalStream = {
   terminalId: string;
@@ -406,7 +392,7 @@ export type SessionOptions = {
   scheduleService: ScheduleService;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
-  backgroundGitFetchManager: BackgroundGitFetchManager;
+  workspaceGitService: WorkspaceGitService;
   daemonConfigStore: DaemonConfigStore;
   mcpBaseUrl?: string | null;
   stt: Resolvable<SpeechToTextProvider | null>;
@@ -589,7 +575,7 @@ export class Session {
   private readonly scheduleService: ScheduleService;
   private readonly loopService: LoopService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
-  private readonly backgroundGitFetchManager: BackgroundGitFetchManager;
+  private readonly workspaceGitService: WorkspaceGitService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly mcpBaseUrl: string | null;
   private readonly downloadTokenStore: DownloadTokenStore;
@@ -618,8 +604,7 @@ export class Session {
   private inflightRequests = 0;
   private peakInflightRequests = 0;
   private readonly checkoutDiffSubscriptions = new Map<string, () => void>();
-  private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
-  private readonly workspaceGitFetchSubscriptions = new Map<string, () => void>();
+  private readonly workspaceGitSubscriptions = new Map<string, () => void>();
   private readonly registerVoiceSpeakHandler?: (
     agentId: string,
     handler: VoiceSpeakHandler,
@@ -654,7 +639,7 @@ export class Session {
       scheduleService,
       loopService,
       checkoutDiffManager,
-      backgroundGitFetchManager,
+      workspaceGitService,
       daemonConfigStore,
       mcpBaseUrl,
       stt,
@@ -683,7 +668,7 @@ export class Session {
     this.scheduleService = scheduleService;
     this.loopService = loopService;
     this.checkoutDiffManager = checkoutDiffManager;
-    this.backgroundGitFetchManager = backgroundGitFetchManager;
+    this.workspaceGitService = workspaceGitService;
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl ?? null;
     this.terminalManager = terminalManager;
@@ -1444,7 +1429,7 @@ export class Session {
     let removedWorkspaceId: string | null = null;
     if (needsStaleWorkspaceCleanup) {
       await this.workspaceRegistry.archive(staleWorkspace.workspaceId, now);
-      this.removeWorkspaceGitWatchTarget(staleWorkspace.workspaceId);
+      this.removeWorkspaceGitSubscription(staleWorkspace.workspaceId);
       removedWorkspaceId = staleWorkspace.workspaceId;
     }
 
@@ -1460,7 +1445,7 @@ export class Session {
     await this.workspaceRegistry.upsert(nextWorkspaceRecord);
     if (existing && existing.workspaceId !== resolvedWorkspaceId) {
       await this.workspaceRegistry.archive(existing.workspaceId, now);
-      this.removeWorkspaceGitWatchTarget(existing.workspaceId);
+      this.removeWorkspaceGitSubscription(existing.workspaceId);
       removedWorkspaceId ??= existing.workspaceId;
     }
 
@@ -4181,190 +4166,30 @@ export class Session {
     }
   }
 
-  private async resolveWorkspaceGitRefsRoot(gitDir: string): Promise<string> {
-    try {
-      const commonDir = (await readFile(join(gitDir, "commondir"), "utf8")).trim();
-      if (commonDir.length > 0) {
-        return resolve(gitDir, commonDir);
-      }
-    } catch {
-      // Regular repos do not have a commondir file.
-    }
-    return gitDir;
-  }
-
-  private closeWorkspaceGitWatchTarget(target: WorkspaceGitWatchTarget): void {
-    if (target.debounceTimer) {
-      clearTimeout(target.debounceTimer);
-      target.debounceTimer = null;
-    }
-    for (const watcher of target.watchers) {
-      watcher.close();
-    }
-    target.watchers = [];
-  }
-
-  private removeWorkspaceGitWatchTarget(cwd: string): void {
+  private removeWorkspaceGitSubscription(cwd: string): void {
     const workspaceId = normalizePersistedWorkspaceId(cwd);
-    const target = this.workspaceGitWatchTargets.get(workspaceId);
-    if (!target) {
-      return;
-    }
-    const unsubscribeFetch = this.workspaceGitFetchSubscriptions.get(workspaceId);
-    unsubscribeFetch?.();
-    this.workspaceGitFetchSubscriptions.delete(workspaceId);
-    this.closeWorkspaceGitWatchTarget(target);
-    this.workspaceGitWatchTargets.delete(workspaceId);
-  }
-
-  private workspaceGitDescriptorFingerprint(workspace: WorkspaceDescriptorPayload | null): string {
-    if (!workspace) {
-      return WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT;
-    }
-    return JSON.stringify([
-      workspace.name,
-      workspace.diffStat ? [workspace.diffStat.additions, workspace.diffStat.deletions] : null,
-    ]);
-  }
-
-  private shouldSkipWorkspaceGitWatchUpdate(
-    workspaceId: string,
-    workspace: WorkspaceDescriptorPayload | null,
-  ): boolean {
-    const target = this.workspaceGitWatchTargets.get(workspaceId);
-    if (!target) {
-      return false;
-    }
-    const nextFingerprint = this.workspaceGitDescriptorFingerprint(workspace);
-    if (target.latestFingerprint === nextFingerprint) {
-      return true;
-    }
-    target.latestFingerprint = nextFingerprint;
-    return false;
-  }
-
-  private rememberWorkspaceGitWatchFingerprint(
-    workspaceId: string,
-    workspace: WorkspaceDescriptorPayload | null,
-  ): void {
-    const target = this.workspaceGitWatchTargets.get(workspaceId);
-    if (!target) {
-      return;
-    }
-    target.latestFingerprint = this.workspaceGitDescriptorFingerprint(workspace);
-  }
-
-  private primeWorkspaceGitWatchFingerprints(
-    workspaces: Iterable<WorkspaceDescriptorPayload>,
-  ): void {
-    for (const workspace of workspaces) {
-      this.rememberWorkspaceGitWatchFingerprint(workspace.id, workspace);
-    }
-  }
-
-  private scheduleWorkspaceGitWatchRefresh(target: WorkspaceGitWatchTarget): void {
-    if (target.debounceTimer) {
-      clearTimeout(target.debounceTimer);
-    }
-    target.debounceTimer = setTimeout(() => {
-      target.debounceTimer = null;
-      void this.refreshWorkspaceGitWatchTarget(target);
-    }, WORKSPACE_GIT_WATCH_DEBOUNCE_MS);
-  }
-
-  private async refreshWorkspaceGitWatchTarget(target: WorkspaceGitWatchTarget): Promise<void> {
-    if (target.refreshPromise) {
-      target.refreshQueued = true;
-      return;
-    }
-
-    target.refreshPromise = (async () => {
-      do {
-        target.refreshQueued = false;
-        await this.emitWorkspaceUpdateForCwd(target.cwd, {
-          dedupeGitState: true,
-        });
-      } while (target.refreshQueued);
-    })();
-
-    try {
-      await target.refreshPromise;
-    } finally {
-      target.refreshPromise = null;
-    }
-  }
-
-  private async ensureWorkspaceGitWatchTarget(cwd: string): Promise<void> {
-    const workspaceId = normalizePersistedWorkspaceId(cwd);
-    if (this.workspaceGitWatchTargets.has(workspaceId)) {
-      return;
-    }
-
-    const gitDir = await resolveCheckoutGitDir(cwd);
-    if (!gitDir) {
-      return;
-    }
-
-    const refsRoot = await this.resolveWorkspaceGitRefsRoot(gitDir);
-    const target: WorkspaceGitWatchTarget = {
-      cwd: workspaceId,
-      watchers: [],
-      debounceTimer: null,
-      refreshPromise: null,
-      refreshQueued: false,
-      latestFingerprint: null,
-    };
-
-    for (const watchPath of new Set([join(gitDir, "HEAD"), join(refsRoot, "refs", "heads")])) {
-      let watcher: FSWatcher | null = null;
-      try {
-        watcher = watch(watchPath, { recursive: false }, () => {
-          this.scheduleWorkspaceGitWatchRefresh(target);
-        });
-      } catch (error) {
-        this.sessionLogger.warn(
-          { err: error, cwd, watchPath },
-          "Failed to start workspace git watcher",
-        );
-      }
-
-      if (!watcher) {
-        continue;
-      }
-
-      watcher.on("error", (error) => {
-        this.sessionLogger.warn({ err: error, cwd, watchPath }, "Workspace git watcher error");
-      });
-      target.watchers.push(watcher);
-    }
-
-    if (target.watchers.length === 0) {
-      return;
-    }
-
-    this.workspaceGitWatchTargets.set(workspaceId, target);
-    const subscription = await this.backgroundGitFetchManager.subscribe(
-      { repoGitRoot: refsRoot, cwd: workspaceId },
-      () => {
-        const activeTarget = this.workspaceGitWatchTargets.get(workspaceId);
-        if (activeTarget) {
-          this.scheduleWorkspaceGitWatchRefresh(activeTarget);
-        }
-      },
-    );
-    this.workspaceGitFetchSubscriptions.set(workspaceId, subscription.unsubscribe);
+    this.workspaceGitSubscriptions.get(workspaceId)?.();
+    this.workspaceGitSubscriptions.delete(workspaceId);
   }
 
   private async syncWorkspaceGitWatchTarget(
     cwd: string,
     options: { isGit: boolean },
   ): Promise<void> {
+    const workspaceId = normalizePersistedWorkspaceId(cwd);
     if (!options.isGit) {
-      this.removeWorkspaceGitWatchTarget(cwd);
+      this.removeWorkspaceGitSubscription(workspaceId);
       return;
     }
 
-    await this.ensureWorkspaceGitWatchTarget(cwd);
+    if (this.workspaceGitSubscriptions.has(workspaceId)) {
+      return;
+    }
+
+    const subscription = await this.workspaceGitService.subscribe({ cwd: workspaceId }, () => {
+      void this.emitWorkspaceUpdateForCwd(workspaceId);
+    });
+    this.workspaceGitSubscriptions.set(workspaceId, subscription.unsubscribe);
   }
 
   private async handleSubscribeCheckoutDiffRequest(
@@ -4806,14 +4631,20 @@ export class Session {
     const { cwd, requestId } = msg;
 
     try {
-      const prStatus = await getPullRequestStatus(cwd);
+      await this.workspaceGitService.refresh(cwd, { priority: "high" });
+      const snapshot = await this.workspaceGitService.getSnapshot(cwd);
       this.emit({
         type: "checkout_pr_status_response",
         payload: {
           cwd,
-          status: prStatus.status,
-          githubFeaturesEnabled: prStatus.githubFeaturesEnabled,
-          error: null,
+          status: snapshot.github.pullRequest,
+          githubFeaturesEnabled: snapshot.github.featuresEnabled,
+          error: snapshot.github.error
+            ? {
+                code: "UNKNOWN",
+                message: snapshot.github.error.message,
+              }
+            : null,
           requestId,
         },
       });
@@ -5510,6 +5341,35 @@ export class Session {
     };
   }
 
+  private buildWorkspaceGitRuntimePayload(
+    snapshot: WorkspaceGitRuntimeSnapshot,
+  ): NonNullable<WorkspaceDescriptorPayload["gitRuntime"]> | null {
+    if (!snapshot.git.isGit) {
+      return null;
+    }
+
+    return {
+      currentBranch: snapshot.git.currentBranch,
+      remoteUrl: snapshot.git.remoteUrl,
+      isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
+      isDirty: snapshot.git.isDirty,
+      aheadBehind: snapshot.git.aheadBehind,
+      aheadOfOrigin: snapshot.git.aheadOfOrigin,
+      behindOfOrigin: snapshot.git.behindOfOrigin,
+    };
+  }
+
+  private buildWorkspaceGitHubRuntimePayload(
+    snapshot: WorkspaceGitRuntimeSnapshot,
+  ): NonNullable<WorkspaceDescriptorPayload["githubRuntime"]> {
+    return {
+      featuresEnabled: snapshot.github.featuresEnabled,
+      pullRequest: snapshot.github.pullRequest,
+      error: snapshot.github.error,
+      refreshedAt: snapshot.github.refreshedAt,
+    };
+  }
+
   private async describeWorkspaceRecordWithGitData(
     workspace: PersistedWorkspaceRecord,
     projectRecord?: PersistedProjectRecord | null,
@@ -5526,14 +5386,16 @@ export class Session {
       // Fall back to the persisted label if checkout metadata is unavailable.
     }
 
-    let diffStat: { additions: number; deletions: number } | null = null;
-    try {
-      diffStat = await getCheckoutShortstat(workspace.cwd);
-    } catch {
-      // Non-critical — leave null on failure.
-    }
+    let snapshot: WorkspaceGitRuntimeSnapshot | null = null;
+    snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
 
-    return { ...base, name: displayName, diffStat };
+    return {
+      ...base,
+      name: displayName,
+      diffStat: snapshot?.git.diffStat ?? null,
+      gitRuntime: snapshot ? this.buildWorkspaceGitRuntimePayload(snapshot) : undefined,
+      githubRuntime: snapshot ? this.buildWorkspaceGitHubRuntimePayload(snapshot) : undefined,
+    };
   }
 
   private async buildWorkspaceDescriptor(input: {
@@ -5608,16 +5470,6 @@ export class Session {
     return descriptorsByWorkspaceId;
   }
 
-  private async listWorkspaceDescriptorsSnapshot(): Promise<WorkspaceDescriptorPayload[]> {
-    return Array.from(
-      (
-        await this.buildWorkspaceDescriptorMap({
-          includeGitData: false,
-        })
-      ).values(),
-    );
-  }
-
   private resolveRegisteredWorkspaceIdForCwd(
     cwd: string,
     workspaces: PersistedWorkspaceRecord[],
@@ -5645,7 +5497,13 @@ export class Session {
   }
 
   private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
-    return this.listWorkspaceDescriptorsSnapshot();
+    return Array.from(
+      (
+        await this.buildWorkspaceDescriptorMap({
+          includeGitData: true,
+        })
+      ).values(),
+    );
   }
 
   private normalizeFetchWorkspacesSort(
@@ -5958,13 +5816,13 @@ export class Session {
   private async archiveWorkspaceRecord(workspaceId: string, archivedAt?: string): Promise<void> {
     const existing = await this.workspaceRegistry.get(workspaceId);
     if (!existing || existing.archivedAt) {
-      this.removeWorkspaceGitWatchTarget(workspaceId);
+      this.removeWorkspaceGitSubscription(workspaceId);
       return;
     }
 
     const nextArchivedAt = archivedAt ?? new Date().toISOString();
     await this.workspaceRegistry.archive(workspaceId, nextArchivedAt);
-    this.removeWorkspaceGitWatchTarget(workspaceId);
+    this.removeWorkspaceGitSubscription(workspaceId);
 
     const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
       (workspace) => workspace.projectId === existing.projectId && !workspace.archivedAt,
@@ -5993,7 +5851,7 @@ export class Session {
 
   private async emitWorkspaceUpdatesForWorkspaceIds(
     workspaceIds: Iterable<string>,
-    options?: { dedupeGitState?: boolean; skipReconcile?: boolean },
+    options?: { skipReconcile?: boolean },
   ): Promise<void> {
     const subscription = this.workspaceUpdatesSubscription;
     if (!subscription) {
@@ -6018,13 +5876,6 @@ export class Session {
         workspace && this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })
           ? workspace
           : null;
-      if (
-        options?.dedupeGitState &&
-        this.shouldSkipWorkspaceGitWatchUpdate(workspaceId, nextWorkspace)
-      ) {
-        continue;
-      }
-      this.rememberWorkspaceGitWatchFingerprint(workspaceId, nextWorkspace);
 
       if (!nextWorkspace) {
         this.bufferOrEmitWorkspaceUpdate(subscription, {
@@ -6045,30 +5896,9 @@ export class Session {
     }
   }
 
-  private scheduleWorkspaceGitBootstrapUpdates(options: {
-    subscriptionId: string;
-    workspaces: Iterable<WorkspaceDescriptorPayload>;
-  }): void {
-    const gitWorkspaceIds = Array.from(options.workspaces, (workspace) => workspace)
-      .filter((workspace) => workspace.projectKind === "git")
-      .map((workspace) => workspace.id);
-    if (gitWorkspaceIds.length === 0) {
-      return;
-    }
-
-    queueMicrotask(() => {
-      if (this.workspaceUpdatesSubscription?.subscriptionId !== options.subscriptionId) {
-        return;
-      }
-      void this.emitWorkspaceUpdatesForWorkspaceIds(gitWorkspaceIds, {
-        skipReconcile: true,
-      });
-    });
-  }
-
   private async emitWorkspaceUpdateForCwd(
     cwd: string,
-    options?: { dedupeGitState?: boolean },
+    options?: { skipReconcile?: boolean },
   ): Promise<void> {
     const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
       (workspace) => !workspace.archivedAt,
@@ -6175,7 +6005,6 @@ export class Session {
       }
 
       const payload = await this.listFetchWorkspacesEntries(request);
-      this.primeWorkspaceGitWatchFingerprints(payload.entries);
       const snapshotLatestActivityByWorkspaceId = new Map<string, number>();
       for (const entry of payload.entries) {
         const parsedLatestActivity = entry.activityAt
@@ -6198,10 +6027,6 @@ export class Session {
       if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
         this.flushBootstrappedWorkspaceUpdates({ snapshotLatestActivityByWorkspaceId });
         void this.reconcileAndEmitWorkspaceUpdates();
-        this.scheduleWorkspaceGitBootstrapUpdates({
-          subscriptionId,
-          workspaces: payload.entries,
-        });
       }
     } catch (error) {
       if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
@@ -6227,7 +6052,9 @@ export class Session {
   ): Promise<void> {
     try {
       const workspace = await this.ensureWorkspaceRegistered(request.cwd);
-      await this.emitWorkspaceUpdateForCwd(workspace.cwd);
+      await this.emitWorkspaceUpdateForCwd(workspace.cwd, {
+        skipReconcile: true,
+      });
       const descriptor = await this.describeWorkspaceRecordWithGitData(workspace);
       this.emit({
         type: "open_project_response",
@@ -6349,8 +6176,7 @@ export class Session {
     return createWorktreeInBackgroundSession(
       {
         paseoHome: this.paseoHome,
-        emitWorkspaceUpdateForCwd: (cwd, emitOptions) =>
-          this.emitWorkspaceUpdateForCwd(cwd, emitOptions),
+        emitWorkspaceUpdateForCwd: (cwd) => this.emitWorkspaceUpdateForCwd(cwd),
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
       },
@@ -7517,14 +7343,10 @@ export class Session {
     }
     this.checkoutDiffSubscriptions.clear();
 
-    for (const unsubscribe of this.workspaceGitFetchSubscriptions.values()) {
+    for (const unsubscribe of this.workspaceGitSubscriptions.values()) {
       unsubscribe();
     }
-    this.workspaceGitFetchSubscriptions.clear();
-    for (const target of this.workspaceGitWatchTargets.values()) {
-      this.closeWorkspaceGitWatchTarget(target);
-    }
-    this.workspaceGitWatchTargets.clear();
+    this.workspaceGitSubscriptions.clear();
   }
 
   // ============================================================================

@@ -12,7 +12,6 @@ import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
-import { BackgroundGitFetchManager } from "./background-git-fetch-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
   type ServerInfoStatusPayload,
@@ -31,6 +30,7 @@ import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { buildProviderRegistry } from "./agent/provider-registry.js";
+import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
@@ -234,7 +234,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
-  private readonly backgroundGitFetchManager: BackgroundGitFetchManager;
+  private readonly workspaceGitService: WorkspaceGitServiceImpl;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly paseoHome: string;
   private readonly daemonConfigStore: DaemonConfigStore;
@@ -329,8 +329,9 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("VoiceAssistantWebSocketServer requires a checkout diff manager.");
     }
     this.checkoutDiffManager = checkoutDiffManager;
-    this.backgroundGitFetchManager = new BackgroundGitFetchManager({
+    this.workspaceGitService = new WorkspaceGitServiceImpl({
       logger: this.logger,
+      paseoHome,
     });
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
@@ -507,7 +508,7 @@ export class VoiceAssistantWebSocketServer {
 
     await Promise.all(cleanupPromises);
     this.providerSnapshotManager.destroy();
-    this.backgroundGitFetchManager.dispose();
+    this.workspaceGitService.dispose();
     this.checkoutDiffManager.dispose();
     this.pendingConnections.clear();
     this.sessions.clear();
@@ -638,7 +639,7 @@ export class VoiceAssistantWebSocketServer {
       loopService: this.loopService,
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
-      backgroundGitFetchManager: this.backgroundGitFetchManager,
+      workspaceGitService: this.workspaceGitService,
       daemonConfigStore: this.daemonConfigStore,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,

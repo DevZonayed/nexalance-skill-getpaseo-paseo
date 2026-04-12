@@ -1855,6 +1855,50 @@ export const ProjectPlacementPayloadSchema = z.object({
   checkout: ProjectCheckoutLitePayloadSchema,
 });
 
+const WorkspaceGitRuntimePayloadSchema = z
+  .object({
+    currentBranch: z.string().nullable().optional(),
+    remoteUrl: z.string().nullable().optional(),
+    isPaseoOwnedWorktree: z.boolean().optional(),
+    isDirty: z.boolean().nullable().optional(),
+    aheadBehind: z
+      .object({
+        ahead: z.number(),
+        behind: z.number(),
+      })
+      .nullable()
+      .optional(),
+    aheadOfOrigin: z.number().nullable().optional(),
+    behindOfOrigin: z.number().nullable().optional(),
+  })
+  .optional()
+  .nullable();
+
+const WorkspaceGitHubRuntimePayloadSchema = z
+  .object({
+    featuresEnabled: z.boolean().optional(),
+    pullRequest: z
+      .object({
+        url: z.string(),
+        title: z.string(),
+        state: z.string(),
+        baseRefName: z.string(),
+        headRefName: z.string(),
+        isMerged: z.boolean(),
+      })
+      .nullable()
+      .optional(),
+    error: z
+      .object({
+        message: z.string(),
+      })
+      .nullable()
+      .optional(),
+    refreshedAt: z.string().nullable().optional(),
+  })
+  .optional()
+  .nullable();
+
 export const WorkspaceDescriptorPayloadSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -1872,6 +1916,8 @@ export const WorkspaceDescriptorPayloadSchema = z.object({
     })
     .nullable()
     .optional(),
+  gitRuntime: WorkspaceGitRuntimePayloadSchema,
+  githubRuntime: WorkspaceGitHubRuntimePayloadSchema,
 });
 
 export const AgentUpdateMessageSchema = z.object({

@@ -643,7 +643,7 @@ async function requireGitRepo(cwd: string): Promise<void> {
   }
 }
 
-async function getCurrentBranch(cwd: string): Promise<string | null> {
+export async function getCurrentBranch(cwd: string): Promise<string | null> {
   const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD", {
     cwd,
     env: READ_ONLY_GIT_ENV,
@@ -665,7 +665,7 @@ async function getWorktreeRoot(cwd: string): Promise<string | null> {
   }
 }
 
-async function getMainRepoRoot(cwd: string): Promise<string> {
+export async function getMainRepoRoot(cwd: string): Promise<string> {
   const { stdout: commonDirOut } = await execAsync(
     "git rev-parse --path-format=absolute --git-common-dir",
     { cwd, env: READ_ONLY_GIT_ENV },
@@ -807,7 +807,7 @@ async function isWorkingTreeDirty(cwd: string): Promise<boolean> {
   return stdout.trim().length > 0;
 }
 
-async function getOriginRemoteUrl(cwd: string): Promise<string | null> {
+export async function getOriginRemoteUrl(cwd: string): Promise<string | null> {
   try {
     const { stdout } = await execAsync("git config --get remote.origin.url", {
       cwd,
@@ -820,12 +820,12 @@ async function getOriginRemoteUrl(cwd: string): Promise<string | null> {
   }
 }
 
-async function hasOriginRemote(cwd: string): Promise<boolean> {
+export async function hasOriginRemote(cwd: string): Promise<boolean> {
   const url = await getOriginRemoteUrl(cwd);
   return url !== null;
 }
 
-async function resolveAbsoluteGitDir(cwd: string): Promise<string | null> {
+export async function resolveAbsoluteGitDir(cwd: string): Promise<string | null> {
   try {
     const { stdout } = await execAsync("git rev-parse --absolute-git-dir", {
       cwd,
@@ -1850,7 +1850,7 @@ export interface PullRequestStatusResult {
   githubFeaturesEnabled: boolean;
 }
 
-async function resolveGhPath(): Promise<string> {
+export async function resolveGhPath(): Promise<string> {
   if (cachedGhPath === undefined) {
     cachedGhPath = await findExecutable("gh");
   }

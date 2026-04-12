@@ -95,7 +95,7 @@ type RegisterPendingWorktreeWorkspaceDependencies = {
 
 type CreatePaseoWorktreeInBackgroundDependencies = {
   paseoHome?: string;
-  emitWorkspaceUpdateForCwd: (cwd: string, options?: { dedupeGitState?: boolean }) => Promise<void>;
+  emitWorkspaceUpdateForCwd: (cwd: string) => Promise<void>;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
 };
