@@ -44,7 +44,7 @@ import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runtime";
-import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import { parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
@@ -53,7 +53,7 @@ import {
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { ContextMenuTrigger, useContextMenu } from "@/components/ui/context-menu";
 import {
   DropdownMenu,
@@ -1604,10 +1604,7 @@ export function SidebarWorkspaceList({
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
-  const isDesktopApp = getIsElectronRuntime();
-  const altDown = useKeyboardShortcutsStore((state) => state.altDown);
-  const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown);
-  const showShortcutBadges = altDown || (isDesktopApp && cmdOrCtrlDown);
+  const showShortcutBadges = useShowShortcutBadges();
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder);
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
