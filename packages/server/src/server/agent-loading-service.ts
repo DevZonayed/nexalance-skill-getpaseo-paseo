@@ -3,7 +3,7 @@ import type pino from "pino";
 import type { ManagedAgent } from "./agent/agent-manager.js";
 import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentPersistenceHandle, AgentSessionConfig } from "./agent/agent-sdk-types.js";
-import type { AgentSnapshotStore } from "./agent/agent-snapshot-store.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
 import {
   buildConfigOverrides,
   buildSessionConfig,
@@ -18,7 +18,7 @@ export type AgentLoadingServiceOptions = {
     AgentManager,
     "createAgent" | "getAgent" | "reloadAgentSession" | "resumeAgentFromPersistence"
   >;
-  agentStorage: Pick<AgentSnapshotStore, "get">;
+  agentStorage: Pick<AgentStorage, "get">;
   logger: pino.Logger;
 };
 

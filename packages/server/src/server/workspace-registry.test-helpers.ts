@@ -5,12 +5,12 @@ import path from "node:path";
 import type { Logger } from "pino";
 
 import {
-  parsePersistedProjectRecords,
-  parsePersistedWorkspaceRecords,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
   type ProjectRegistry,
   type WorkspaceRegistry,
+  createPersistedProjectRecord,
+  createPersistedWorkspaceRecord,
 } from "./workspace-registry.js";
 
 type RegistryRecord = PersistedProjectRecord | PersistedWorkspaceRecord;
@@ -18,9 +18,8 @@ type RegistryRecord = PersistedProjectRecord | PersistedWorkspaceRecord;
 class FileBackedRegistry<TRecord extends RegistryRecord> {
   private readonly filePath: string;
   private readonly logger: Logger;
-  private readonly parseRecord: (record: unknown) => TRecord;
-  private readonly parseRecords: (input: unknown) => TRecord[];
-  private readonly getId: (record: TRecord) => number;
+  private readonly schema: (record: unknown) => TRecord;
+  private readonly getId: (record: TRecord) => string;
   private loaded = false;
   private readonly cache = new Map<string, TRecord>();
   private persistQueue: Promise<void> = Promise.resolve();
@@ -28,13 +27,12 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
   constructor(options: {
     filePath: string;
     logger: Logger;
-    parseRecords: (input: unknown) => TRecord[];
-    getId: (record: TRecord) => number;
+    schema: (record: unknown) => TRecord;
+    getId: (record: TRecord) => string;
     component: string;
   }) {
     this.filePath = options.filePath;
-    this.parseRecords = options.parseRecords;
-    this.parseRecord = (record) => options.parseRecords([record])[0]!;
+    this.schema = options.schema;
     this.getId = options.getId;
     this.logger = options.logger.child({
       module: "workspace-registry",
@@ -60,47 +58,36 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     return Array.from(this.cache.values());
   }
 
-  async get(id: number): Promise<TRecord | null> {
+  async get(id: string): Promise<TRecord | null> {
     await this.load();
-    return this.cache.get(String(id)) ?? null;
-  }
-
-  async insert(record: Omit<TRecord, "id">): Promise<number> {
-    await this.load();
-    const nextId =
-      Math.max(0, ...Array.from(this.cache.values(), (value) => this.getId(value))) + 1;
-    const parsed = this.parseRecord({ ...record, id: nextId });
-    this.cache.set(String(this.getId(parsed)), parsed);
-    await this.enqueuePersist();
-    return nextId;
+    return this.cache.get(id) ?? null;
   }
 
   async upsert(record: TRecord): Promise<void> {
     await this.load();
-    const parsed = this.parseRecord(record);
-    this.cache.set(String(this.getId(parsed)), parsed);
+    const parsed = this.schema(record);
+    this.cache.set(this.getId(parsed), parsed);
     await this.enqueuePersist();
   }
 
-  async archive(id: number, archivedAt: string): Promise<void> {
+  async archive(id: string, archivedAt: string): Promise<void> {
     await this.load();
-    const key = String(id);
-    const existing = this.cache.get(key);
+    const existing = this.cache.get(id);
     if (!existing) {
       return;
     }
-    const next = this.parseRecord({
+    const next = this.schema({
       ...existing,
       updatedAt: archivedAt,
       archivedAt,
     });
-    this.cache.set(key, next);
+    this.cache.set(id, next);
     await this.enqueuePersist();
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     await this.load();
-    if (!this.cache.delete(String(id))) {
+    if (!this.cache.delete(id)) {
       return;
     }
     await this.enqueuePersist();
@@ -114,9 +101,10 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     this.cache.clear();
     try {
       const raw = await fs.readFile(this.filePath, "utf8");
-      const parsed = this.parseRecords(JSON.parse(raw));
+      const parsed = JSON.parse(raw) as TRecord[];
       for (const record of parsed) {
-        this.cache.set(String(this.getId(record)), record);
+        const validated = this.schema(record);
+        this.cache.set(this.getId(validated), validated);
       }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
@@ -150,8 +138,8 @@ export class FileBackedProjectRegistry
     super({
       filePath,
       logger,
-      parseRecords: parsePersistedProjectRecords,
-      getId: (record) => record.id,
+      schema: (record) => createPersistedProjectRecord(record as PersistedProjectRecord),
+      getId: (record) => record.projectId,
       component: "projects",
     });
   }
@@ -165,8 +153,8 @@ export class FileBackedWorkspaceRegistry
     super({
       filePath,
       logger,
-      parseRecords: parsePersistedWorkspaceRecords,
-      getId: (record) => record.id,
+      schema: (record) => createPersistedWorkspaceRecord(record as PersistedWorkspaceRecord),
+      getId: (record) => record.workspaceId,
       component: "workspaces",
     });
   }

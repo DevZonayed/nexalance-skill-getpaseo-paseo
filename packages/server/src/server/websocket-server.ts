@@ -3,7 +3,7 @@ import type { Server as HTTPServer } from "http";
 import { join } from "path";
 import { hostname as getHostname } from "node:os";
 import type { AgentManager } from "./agent/agent-manager.js";
-import type { AgentSnapshotStore } from "./agent/agent-snapshot-store.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
@@ -74,7 +74,6 @@ function createNoopProjectRegistry(): ProjectRegistry {
     existsOnDisk: async () => true,
     list: async () => [],
     get: async () => null,
-    insert: async () => 0,
     upsert: async () => {},
     archive: async () => {},
     remove: async () => {},
@@ -87,7 +86,6 @@ function createNoopWorkspaceRegistry(): WorkspaceRegistry {
     existsOnDisk: async () => true,
     list: async () => [],
     get: async () => null,
-    insert: async () => 0,
     upsert: async () => {},
     archive: async () => {},
     remove: async () => {},
@@ -234,7 +232,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly serverId: string;
   private readonly daemonVersion: string;
   private readonly agentManager: AgentManager;
-  private readonly agentStorage: AgentSnapshotStore;
+  private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly chatService: FileBackedChatService;
@@ -298,7 +296,7 @@ export class VoiceAssistantWebSocketServer {
     logger: pino.Logger,
     serverId: string,
     agentManager: AgentManager,
-    agentStorage: AgentSnapshotStore,
+    agentStorage: AgentStorage,
     downloadTokenStore: DownloadTokenStore,
     paseoHome: string,
     daemonConfigStore: DaemonConfigStore,

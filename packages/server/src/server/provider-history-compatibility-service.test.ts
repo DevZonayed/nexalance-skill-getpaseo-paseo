@@ -7,8 +7,6 @@ import { describe, expect, test, vi } from "vitest";
 import { AgentLoadingService } from "./agent-loading-service.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent/agent-storage.js";
-import { DbAgentTimelineStore } from "./db/db-agent-timeline-store.js";
-import { openPaseoDatabase } from "./db/sqlite-database.js";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 
 function createStoredAgentRecord(overrides?: Partial<StoredAgentRecord>): StoredAgentRecord {
@@ -57,65 +55,6 @@ function createCompatibilitySnapshot(overrides?: Partial<Record<string, unknown>
 }
 
 describe("AgentLoadingService", () => {
-  test("ensureAgentLoaded seeds the live timeline from durable rows for an unloaded persisted agent", async () => {
-    const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "provider-history-compat-load-"));
-    const logger = pino({ level: "silent" });
-    const database = await openPaseoDatabase(path.join(workspaceRoot, "db"));
-
-    try {
-      const storage = new AgentStorage(path.join(workspaceRoot, "agents"), logger);
-      const manager = new AgentManager({
-        clients: createTestAgentClients(),
-        registry: storage,
-        durableTimelineStore: new DbAgentTimelineStore(database.db),
-        logger,
-        idFactory: () => "00000000-0000-4000-8000-000000000301",
-      });
-      const service = new AgentLoadingService({
-        agentManager: manager as any,
-        agentStorage: storage as any,
-        logger,
-      });
-
-      const snapshot = await manager.createAgent({
-        provider: "codex",
-        cwd: workspaceRoot,
-        model: "gpt-5.1-codex-mini",
-      });
-      await manager.runAgent(snapshot.id, "say 'timeline test'");
-      await manager.flush();
-      await storage.flush();
-      rmSync(
-        path.join(
-          os.tmpdir(),
-          "paseo-fake-provider-history",
-          "codex",
-          `${snapshot.persistence?.sessionId}.jsonl`,
-        ),
-        { force: true },
-      );
-      await manager.closeAgent(snapshot.id);
-
-      const loaded = await service.ensureAgentLoaded({ agentId: snapshot.id });
-      const durableTimeline = await manager.fetchTimeline(snapshot.id, {
-        direction: "tail",
-        limit: 0,
-      });
-
-      expect(loaded.id).toBe(snapshot.id);
-      expect(manager.getTimeline(snapshot.id)).toEqual([]);
-      expect(durableTimeline.rows.every((row) => row.item.type === "assistant_message")).toBe(true);
-      expect(
-        durableTimeline.rows
-          .map((row) => (row.item.type === "assistant_message" ? row.item.text : ""))
-          .join(""),
-      ).toBe("timeline test");
-    } finally {
-      await database.close();
-      rmSync(workspaceRoot, { recursive: true, force: true });
-    }
-  });
-
   test("ensureAgentLoaded succeeds when provider history is absent", async () => {
     const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "provider-history-compat-empty-"));
     const logger = pino({ level: "silent" });

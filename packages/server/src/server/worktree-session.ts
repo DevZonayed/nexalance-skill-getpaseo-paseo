@@ -89,10 +89,10 @@ type ArchivePaseoWorktreeDependencies = {
 type RegisterPendingWorktreeWorkspaceDependencies = {
   buildProjectPlacement: (cwd: string) => Promise<ProjectPlacementPayload>;
   findWorkspaceByDirectory: (directory: string) => Promise<PersistedWorkspaceRecord | null>;
-  projectRegistry: Pick<ProjectRegistry, "get" | "upsert" | "insert" | "archive">;
+  projectRegistry: Pick<ProjectRegistry, "get" | "upsert" | "archive">;
   syncWorkspaceGitWatchTarget: (cwd: string, options: { isGit: boolean }) => Promise<void>;
-  workspaceRegistry: Pick<WorkspaceRegistry, "get" | "upsert" | "insert" | "list">;
-  archiveProjectRecordIfEmpty: (projectId: number, archivedAt: string) => Promise<void>;
+  workspaceRegistry: Pick<WorkspaceRegistry, "get" | "upsert" | "list">;
+  archiveProjectRecordIfEmpty: (projectId: string, archivedAt: string) => Promise<void>;
 };
 
 type CreatePaseoWorktreeInBackgroundDependencies = {
@@ -102,7 +102,7 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
   emit: EmitSessionMessage;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
-  archiveWorkspaceRecord: (workspaceId: number) => Promise<void>;
+  archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
 };
 
 type HandleWorkspaceSetupStatusRequestDependencies = {
@@ -126,7 +126,7 @@ type HandleCreatePaseoWorktreeRequestDependencies = {
   runWorktreeSetupInBackground: (options: {
     requestCwd: string;
     repoRoot: string;
-    workspaceId: number;
+    workspaceId: string;
     worktree: WorktreeConfig;
     shouldBootstrap: boolean;
     slug: string;
@@ -595,34 +595,33 @@ export async function registerPendingWorktreeWorkspace(
 ): Promise<PersistedWorkspaceRecord> {
   const workspaceDirectory = normalizePersistedWorkspaceId(options.worktreePath);
   const basePlacement = await dependencies.buildProjectPlacement(options.repoRoot);
-  const projectId = Number(basePlacement.projectKey);
-  if (!Number.isInteger(projectId)) {
-    throw new Error(`Invalid project id for repo root ${options.repoRoot}`);
-  }
+  const projectId = basePlacement.projectKey;
   const now = new Date().toISOString();
   const existingWorkspace = await dependencies.findWorkspaceByDirectory(workspaceDirectory);
   if (!existingWorkspace) {
-    const workspaceId = await dependencies.workspaceRegistry.insert({
+    const newRecord: import("./workspace-registry.js").PersistedWorkspaceRecord = {
+      workspaceId: workspaceDirectory,
       projectId,
-      directory: workspaceDirectory,
+      cwd: workspaceDirectory,
       displayName: options.branchName,
       kind: "worktree",
       createdAt: now,
       updatedAt: now,
       archivedAt: null,
-    });
-    const workspace = await dependencies.workspaceRegistry.get(workspaceId);
+    };
+    await dependencies.workspaceRegistry.upsert(newRecord);
+    const workspace = await dependencies.workspaceRegistry.get(workspaceDirectory);
     if (!workspace) {
-      throw new Error(`Workspace not found after insert: ${workspaceId}`);
+      throw new Error(`Workspace not found after upsert: ${workspaceDirectory}`);
     }
     await dependencies.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
     return workspace;
   }
 
   await dependencies.workspaceRegistry.upsert({
-    id: existingWorkspace.id,
+    workspaceId: existingWorkspace.workspaceId,
     projectId,
-    directory: workspaceDirectory,
+    cwd: workspaceDirectory,
     displayName: options.branchName,
     kind: "worktree",
     createdAt: existingWorkspace.createdAt,
@@ -635,7 +634,7 @@ export async function registerPendingWorktreeWorkspace(
     await dependencies.archiveProjectRecordIfEmpty(existingWorkspace.projectId, now);
   }
 
-  return (await dependencies.workspaceRegistry.get(existingWorkspace.id))!;
+  return (await dependencies.workspaceRegistry.get(existingWorkspace.workspaceId))!;
 }
 
 export async function handleCreatePaseoWorktreeRequest(
@@ -710,7 +709,7 @@ export async function handleCreatePaseoWorktreeRequest(
     void dependencies.runWorktreeSetupInBackground({
       requestCwd: request.cwd,
       repoRoot,
-      workspaceId: workspace.id,
+      workspaceId: workspace.workspaceId,
       worktree: createdWorktree.worktree,
       shouldBootstrap: createdWorktree.shouldBootstrap,
       slug: normalizedSlug,
@@ -744,9 +743,9 @@ export async function handleWorkspaceSetupStatusRequest(
   // Fallback: if workspaceId is a directory path, resolve to numeric ID and retry lookup
   if (!snapshot && Number.isNaN(Number(workspaceId))) {
     const workspaces = await dependencies.workspaceRegistry.list();
-    const match = workspaces.find((w) => w.directory === workspaceId && !w.archivedAt);
+    const match = workspaces.find((w) => w.cwd === workspaceId && !w.archivedAt);
     if (match) {
-      snapshot = dependencies.workspaceSetupSnapshots.get(String(match.id)) ?? null;
+      snapshot = dependencies.workspaceSetupSnapshots.get(match.workspaceId) ?? null;
     }
   }
 
@@ -765,7 +764,7 @@ export async function runWorktreeSetupInBackground(
   options: {
     requestCwd: string;
     repoRoot: string;
-    workspaceId: number;
+    workspaceId: string;
     worktree: WorktreeConfig;
     shouldBootstrap: boolean;
     slug: string;

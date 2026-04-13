@@ -14,7 +14,7 @@ import {
 } from "../messages.js";
 import { toAgentPayload } from "./agent-projections.js";
 import { curateAgentActivity } from "./activity-curator.js";
-import type { AgentSnapshotStore } from "./agent-snapshot-store.js";
+import type { AgentStorage } from "./agent-storage.js";
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
@@ -47,7 +47,7 @@ import {
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
-  agentStorage: AgentSnapshotStore;
+  agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;

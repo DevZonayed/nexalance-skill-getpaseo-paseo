@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer } from "./mcp-server.js";
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
-import type { AgentSnapshotStore } from "./agent-snapshot-store.js";
+import type { AgentStorage } from "./agent-storage.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 
 type TestDeps = {
   agentManager: AgentManager;
-  agentStorage: AgentSnapshotStore;
+  agentStorage: AgentStorage;
   spies: {
     agentManager: Record<string, any>;
     agentStorage: Record<string, any>;
@@ -46,7 +46,7 @@ function createTestDeps(): TestDeps {
 
   return {
     agentManager: agentManagerSpies as unknown as AgentManager,
-    agentStorage: agentStorageSpies as unknown as AgentSnapshotStore,
+    agentStorage: agentStorageSpies as unknown as AgentStorage,
     spies: {
       agentManager: agentManagerSpies,
       agentStorage: agentStorageSpies,

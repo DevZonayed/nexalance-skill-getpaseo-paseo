@@ -33,8 +33,7 @@ import type {
   ListPersistedAgentsOptions,
   PersistedAgentDescriptor,
 } from "./agent-sdk-types.js";
-import type { StoredAgentRecord } from "./agent-storage.js";
-import type { AgentSnapshotStore } from "./agent-snapshot-store.js";
+import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
@@ -92,7 +91,7 @@ export type ProviderAvailability = {
 export type AgentManagerOptions = {
   clients?: Partial<Record<AgentProvider, AgentClient>>;
   idFactory?: () => string;
-  registry?: AgentSnapshotStore;
+  registry?: AgentStorage;
   onAgentAttention?: AgentAttentionCallback;
   durableTimelineStore?: AgentTimelineStore;
   terminalManager?: TerminalManager | null;
@@ -306,7 +305,7 @@ export class AgentManager {
   private readonly pendingForegroundRuns = new Map<string, PendingForegroundRun>();
   private readonly subscribers = new Set<SubscriptionRecord>();
   private readonly idFactory: () => string;
-  private readonly registry?: AgentSnapshotStore;
+  private readonly registry?: AgentStorage;
   private readonly durableTimelineStore?: AgentTimelineStore;
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
@@ -605,7 +604,7 @@ export class AgentManager {
     agentId?: string,
     options?: {
       labels?: Record<string, string>;
-      workspaceId?: number;
+      workspaceId?: string;
       initialPrompt?: string;
     },
   ): Promise<ManagedAgent> {
@@ -1812,7 +1811,7 @@ export class AgentManager {
     config: AgentSessionConfig,
     agentId: string,
     options?: {
-      workspaceId?: number;
+      workspaceId?: string;
       createdAt?: Date;
       updatedAt?: Date;
       lastUserMessageAt?: Date | null;
@@ -2093,7 +2092,7 @@ export class AgentManager {
 
   private async persistSnapshot(
     agent: ManagedAgent,
-    options?: { workspaceId?: number; title?: string | null; internal?: boolean },
+    options?: { workspaceId?: string; title?: string | null; internal?: boolean },
   ): Promise<void> {
     if (!this.registry) {
       return;
@@ -2109,7 +2108,7 @@ export class AgentManager {
     await this.registry.applySnapshot(agent, options);
   }
 
-  private requireRegistry(): AgentSnapshotStore {
+  private requireRegistry(): AgentStorage {
     if (!this.registry) {
       throw new Error("Agent storage unavailable");
     }

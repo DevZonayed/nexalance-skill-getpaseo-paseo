@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import { AgentManager } from "../agent/agent-manager.js";
 import type { ManagedAgent } from "../agent/agent-manager.js";
-import type { AgentSnapshotStore } from "../agent/agent-snapshot-store.js";
+import type { AgentStorage } from "../agent/agent-storage.js";
 import type { AgentPromptInput, AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import {
@@ -98,7 +98,7 @@ export interface ScheduleServiceOptions {
   paseoHome: string;
   logger: Logger;
   agentManager: AgentManager;
-  agentStorage: AgentSnapshotStore;
+  agentStorage: AgentStorage;
   now?: () => Date;
   runner?: (schedule: StoredSchedule) => Promise<ScheduleExecutionResult>;
 }
@@ -107,7 +107,7 @@ export class ScheduleService {
   private readonly store: ScheduleStore;
   private readonly logger: Logger;
   private readonly agentManager: AgentManager;
-  private readonly agentStorage: AgentSnapshotStore;
+  private readonly agentStorage: AgentStorage;
   private readonly now: () => Date;
   private readonly runner: (schedule: StoredSchedule) => Promise<ScheduleExecutionResult>;
   private readonly runningScheduleIds = new Set<string>();

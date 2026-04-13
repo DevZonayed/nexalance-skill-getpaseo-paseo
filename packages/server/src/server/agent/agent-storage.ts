@@ -7,7 +7,6 @@ import type { Logger } from "pino";
 import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
-import type { AgentSnapshotStore } from "./agent-snapshot-store.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
 
 const SERIALIZABLE_CONFIG_SCHEMA = z
@@ -84,7 +83,7 @@ export function parseStoredAgentRecord(value: unknown): StoredAgentRecord {
   return STORED_AGENT_SCHEMA.parse(value);
 }
 
-export class AgentStorage implements AgentSnapshotStore {
+export class AgentStorage {
   private cache: Map<string, StoredAgentRecord> = new Map();
   private pathById: Map<string, string> = new Map();
   private pathsById: Map<string, Set<string>> = new Map();
@@ -182,10 +181,10 @@ export class AgentStorage implements AgentSnapshotStore {
 
   async applySnapshot(
     agent: ManagedAgent,
-    workspaceIdOrOptions?: number | { title?: string | null; internal?: boolean },
+    workspaceIdOrOptions?: string | { title?: string | null; internal?: boolean },
     options?: { title?: string | null; internal?: boolean },
   ): Promise<void> {
-    const nextOptions = typeof workspaceIdOrOptions === "number" ? options : workspaceIdOrOptions;
+    const nextOptions = typeof workspaceIdOrOptions === "string" ? options : workspaceIdOrOptions;
     await this.load();
     await this.waitForPendingWrite(agent.id);
     const existing = (await this.get(agent.id)) ?? null;

@@ -5,10 +5,9 @@
   "description": "Paseo desktop app (Electron wrapper)",
   "main": "dist/main.js",
   "scripts": {
-    "build": "npm --prefix ../.. run build:daemon && npm run build:main && npm run rebuild-native && electron-builder --config electron-builder.yml",
+    "build": "npm --prefix ../.. run build:daemon && npm run build:main && electron-builder --config electron-builder.yml",
     "build:main": "tsc -p tsconfig.json",
     "dev": "./scripts/dev.sh",
-    "rebuild-native": "electron-rebuild -m ../.. -o better-sqlite3",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -20,7 +19,6 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
     "@types/node": "24.6.0",
     "@types/ws": "^8.5.14",
     "electron": "41.0.3",

@@ -110,14 +110,24 @@ import type {
   ProviderSnapshotEntry,
 } from "./agent/agent-sdk-types.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
-import type { AgentSnapshotStore } from "./agent/agent-snapshot-store.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
 import { AGENT_PROVIDER_IDS } from "./agent/provider-manifest.js";
-import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
-import type {
-  PersistedProjectRecord,
-  PersistedWorkspaceRecord,
-  ProjectRegistry,
-  WorkspaceRegistry,
+import {
+  normalizeWorkspaceId as normalizePersistedWorkspaceId,
+  deriveWorkspaceId,
+  deriveProjectRootPath,
+  deriveProjectKind,
+  deriveWorkspaceKind,
+  deriveWorkspaceDisplayName,
+  buildProjectPlacementForCwd as buildProjectPlacementForCwdStandalone,
+} from "./workspace-registry-model.js";
+import {
+  createPersistedProjectRecord,
+  createPersistedWorkspaceRecord,
+  type PersistedProjectRecord,
+  type PersistedWorkspaceRecord,
+  type ProjectRegistry,
+  type WorkspaceRegistry,
 } from "./workspace-registry.js";
 import { AgentLoadingService } from "./agent-loading-service.js";
 import {
@@ -156,7 +166,6 @@ import { expandTilde } from "../utils/path.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
 import { READ_ONLY_GIT_ENV, toCheckoutError } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
-import { detectWorkspaceGitMetadata } from "./workspace-git-metadata.js";
 import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
@@ -216,13 +225,13 @@ function clientSupportsFlexibleEditorIds(appVersion: string | null): boolean {
 
 const MAX_TERMINAL_STREAM_SLOTS = 256;
 
-type DeleteFencedAgentSnapshotStore = AgentSnapshotStore & {
+type DeleteFencedAgentStorage = AgentStorage & {
   beginDelete(agentId: string): void;
 };
 
-function beginAgentDeleteIfSupported(agentStorage: AgentSnapshotStore, agentId: string): void {
+function beginAgentDeleteIfSupported(agentStorage: AgentStorage, agentId: string): void {
   if ("beginDelete" in agentStorage && typeof agentStorage.beginDelete === "function") {
-    (agentStorage as DeleteFencedAgentSnapshotStore).beginDelete(agentId);
+    (agentStorage as DeleteFencedAgentStorage).beginDelete(agentId);
   }
 }
 
@@ -382,13 +391,6 @@ interface AudioBufferState {
 }
 
 // Stub types for features under development (modules not yet available)
-type BackgroundGitFetchManager = {
-  subscribe(
-    opts: { repoGitRoot: string; cwd: string },
-    callback: () => void,
-  ): Promise<{ unsubscribe: () => void }>;
-};
-
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
 type VoiceTranscriptionResultPayload = {
@@ -414,7 +416,7 @@ export type SessionOptions = {
   pushTokenStore: PushTokenStore;
   paseoHome: string;
   agentManager: AgentManager;
-  agentStorage: AgentSnapshotStore;
+  agentStorage: AgentStorage;
   projectRegistry: ProjectRegistry;
   workspaceRegistry: WorkspaceRegistry;
   chatService: FileBackedChatService;
@@ -422,7 +424,6 @@ export type SessionOptions = {
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   agentLoadingService?: AgentLoadingService;
-  backgroundGitFetchManager?: BackgroundGitFetchManager;
   createAgentMcpTransport?: AgentMcpTransportFactory;
   workspaceGitService: WorkspaceGitService;
   daemonConfigStore: DaemonConfigStore;
@@ -624,7 +625,7 @@ export class Session {
   private agentMcpClient: Awaited<ReturnType<typeof experimental_createMCPClient>> | null = null;
   private agentTools: ToolSet | null = null;
   private agentManager: AgentManager;
-  private readonly agentStorage: AgentSnapshotStore;
+  private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly chatService: FileBackedChatService;
@@ -1418,21 +1419,14 @@ export class Session {
   private async findWorkspaceByDirectory(cwd: string): Promise<PersistedWorkspaceRecord | null> {
     const normalizedCwd = await this.resolveWorkspaceDirectory(cwd);
     const workspaces = await this.workspaceRegistry.list();
-    return workspaces.find((workspace) => workspace.directory === normalizedCwd) ?? null;
+    return workspaces.find((workspace) => workspace.cwd === normalizedCwd) ?? null;
   }
 
-  /**
-   * Resolve a workspace ID that may be either a numeric ID (legacy) or a directory path
-   * (sent by clients that received the path-based descriptor format).
-   */
   private async resolveWorkspaceByIdOrDirectory(
     workspaceId: string,
   ): Promise<PersistedWorkspaceRecord | null> {
-    const numericId = Number(workspaceId);
-    if (!Number.isNaN(numericId)) {
-      const record = await this.workspaceRegistry.get(numericId);
-      if (record) return record;
-    }
+    const record = await this.workspaceRegistry.get(workspaceId);
+    if (record) return record;
     // Fallback: treat as directory path
     return this.findWorkspaceByDirectory(workspaceId);
   }
@@ -1455,12 +1449,12 @@ export class Session {
   ): Promise<ProjectPlacementPayload> {
     const project = projectRecord ?? (await this.projectRegistry.get(workspace.projectId));
     if (!project) {
-      throw new Error(`Project not found for workspace ${workspace.id}`);
+      throw new Error(`Project not found for workspace ${workspace.workspaceId}`);
     }
     const checkout =
       project.kind !== "git"
         ? {
-            cwd: workspace.directory,
+            cwd: workspace.cwd,
             isGit: false as const,
             currentBranch: null,
             remoteUrl: null,
@@ -1470,25 +1464,25 @@ export class Session {
           }
         : workspace.kind === "worktree"
           ? {
-              cwd: workspace.directory,
+              cwd: workspace.cwd,
               isGit: true as const,
               currentBranch: workspace.displayName,
-              remoteUrl: project.gitRemote,
-              worktreeRoot: workspace.directory,
+              remoteUrl: null,
+              worktreeRoot: workspace.cwd,
               isPaseoOwnedWorktree: true as const,
-              mainRepoRoot: project.directory,
+              mainRepoRoot: project.rootPath,
             }
           : {
-              cwd: workspace.directory,
+              cwd: workspace.cwd,
               isGit: true as const,
               currentBranch: workspace.displayName,
-              remoteUrl: project.gitRemote,
-              worktreeRoot: workspace.directory,
+              remoteUrl: null,
+              worktreeRoot: workspace.cwd,
               isPaseoOwnedWorktree: false as const,
               mainRepoRoot: null,
             };
     return {
-      projectKey: String(project.id),
+      projectKey: project.projectId,
       projectName: project.displayName,
       checkout,
     };
@@ -3071,12 +3065,12 @@ export class Session {
       const snapshot = await this.agentManager.createAgent(
         {
           ...sessionConfig,
-          cwd: resolvedWorkspace.directory,
+          cwd: resolvedWorkspace.cwd,
         },
         undefined,
         {
           labels,
-          workspaceId: resolvedWorkspace.id,
+          workspaceId: resolvedWorkspace.workspaceId,
           initialPrompt: trimmedPrompt,
         },
       );
@@ -4494,10 +4488,10 @@ export class Session {
       if (!persistedWorkspace) {
         continue;
       }
-      await this.syncWorkspaceGitWatchTarget(persistedWorkspace.directory, {
+      await this.syncWorkspaceGitWatchTarget(persistedWorkspace.cwd, {
         isGit: workspace.projectKind === "git",
       });
-      this.rememberWorkspaceGitWatchFingerprint(persistedWorkspace.directory, workspace);
+      this.rememberWorkspaceGitWatchFingerprint(persistedWorkspace.cwd, workspace);
     }
   }
 
@@ -5014,7 +5008,7 @@ export class Session {
         archiveWorkspaceRecord: async (workspaceDirectory) => {
           const workspace = await this.findWorkspaceByDirectory(workspaceDirectory);
           if (workspace) {
-            await this.archiveWorkspaceRecord(workspace.id);
+            await this.archiveWorkspaceRecord(workspace.workspaceId);
           }
         },
         emit: (message) => this.emit(message),
@@ -5650,23 +5644,23 @@ export class Session {
       projectRecord ?? (await this.projectRegistry.get(workspace.projectId));
 
     let diffStat: { additions: number; deletions: number } | null = null;
-    const cachedShortstat = getCachedCheckoutShortstat(workspace.directory);
+    const cachedShortstat = getCachedCheckoutShortstat(workspace.cwd);
     if (cachedShortstat !== undefined) {
       diffStat = cachedShortstat;
     } else {
-      warmCheckoutShortstatInBackground(workspace.directory, undefined, () => {
-        void this.emitWorkspaceUpdateForCwd(workspace.directory);
+      warmCheckoutShortstatInBackground(workspace.cwd, undefined, () => {
+        void this.emitWorkspaceUpdateForCwd(workspace.cwd);
       });
     }
 
     return {
-      id: workspace.directory,
-      projectId: resolvedProjectRecord?.directory ?? workspace.directory,
+      id: workspace.cwd,
+      projectId: resolvedProjectRecord?.rootPath ?? workspace.cwd,
       projectDisplayName: resolvedProjectRecord?.displayName ?? String(workspace.projectId),
-      projectRootPath: resolvedProjectRecord?.directory ?? workspace.directory,
-      workspaceDirectory: workspace.directory,
+      projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
+      workspaceDirectory: workspace.cwd,
       projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
-      workspaceKind: workspace.kind === "checkout" ? "local_checkout" : workspace.kind,
+      workspaceKind: workspace.kind,
       name: workspace.displayName,
       status: "done",
       activityAt: null,
@@ -5674,7 +5668,7 @@ export class Session {
       scripts:
         this.scriptRouteStore && this.scriptRuntimeStore
           ? buildWorkspaceScriptPayloads({
-              workspaceDirectory: workspace.directory,
+              workspaceDirectory: workspace.cwd,
               routeStore: this.scriptRouteStore,
               runtimeStore: this.scriptRuntimeStore,
               daemonPort: this.getDaemonTcpPort?.() ?? null,
@@ -5718,7 +5712,7 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null,
   ): Promise<WorkspaceDescriptorPayload> {
     const base = await this.describeWorkspaceRecord(workspace, projectRecord);
-    const snapshot = this.workspaceGitService.peekSnapshot(workspace.directory);
+    const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
     if (!snapshot) {
       return base;
     }
@@ -5754,7 +5748,7 @@ export class Session {
     const activeProjects = new Map(
       persistedProjects
         .filter((project) => !project.archivedAt)
-        .map((project) => [project.id, project] as const),
+        .map((project) => [project.projectId, project] as const),
     );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
     const workspaceIds = options.workspaceIds
@@ -5765,16 +5759,16 @@ export class Session {
         )
       : null;
     const workspaceIdsByDirectory = new Map(
-      activeRecords.map((workspace) => [workspace.directory, workspace.directory] as const),
+      activeRecords.map((workspace) => [workspace.cwd, workspace.cwd] as const),
     );
 
     for (const workspace of activeRecords) {
-      if (workspaceIds && !workspaceIds.has(workspace.directory)) {
+      if (workspaceIds && !workspaceIds.has(workspace.cwd)) {
         continue;
       }
       const projectRecord = activeProjects.get(workspace.projectId) ?? null;
       descriptorsByWorkspaceId.set(
-        workspace.directory,
+        workspace.cwd,
         await this.buildWorkspaceDescriptor({
           workspace,
           projectRecord,
@@ -5814,25 +5808,23 @@ export class Session {
     workspaces: PersistedWorkspaceRecord[],
   ): string {
     const normalizedCwd = normalizePersistedWorkspaceId(cwd);
-    const exact = workspaces.find((workspace) => workspace.directory === normalizedCwd);
+    const exact = workspaces.find((workspace) => workspace.cwd === normalizedCwd);
     if (exact) {
-      return exact.directory;
+      return exact.cwd;
     }
 
     let bestMatch: PersistedWorkspaceRecord | null = null;
     for (const workspace of workspaces) {
-      const prefix = workspace.directory.endsWith(sep)
-        ? workspace.directory
-        : `${workspace.directory}${sep}`;
+      const prefix = workspace.cwd.endsWith(sep) ? workspace.cwd : `${workspace.cwd}${sep}`;
       if (!normalizedCwd.startsWith(prefix)) {
         continue;
       }
-      if (!bestMatch || workspace.directory.length > bestMatch.directory.length) {
+      if (!bestMatch || workspace.cwd.length > bestMatch.cwd.length) {
         bestMatch = workspace;
       }
     }
 
-    return bestMatch?.directory ?? normalizedCwd;
+    return bestMatch?.cwd ?? normalizedCwd;
   }
 
   private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
@@ -6136,43 +6128,34 @@ export class Session {
       return existingWorkspace;
     }
 
+    const placement = await buildProjectPlacementForCwdStandalone({
+      cwd: normalizedCwd,
+      paseoHome: this.paseoHome,
+    });
+    const workspaceId = deriveWorkspaceId(normalizedCwd, placement.checkout);
     const timestamp = new Date().toISOString();
-    const directoryName = normalizedCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? normalizedCwd;
-    const gitMetadata = detectWorkspaceGitMetadata(normalizedCwd, directoryName);
 
-    let projectId: number | null = null;
-    if (gitMetadata.gitRemote) {
-      const existingProjects = await this.projectRegistry.list();
-      const matchingProject = existingProjects.find(
-        (p) => p.gitRemote === gitMetadata.gitRemote && !p.archivedAt,
-      );
-      if (matchingProject) {
-        projectId = matchingProject.id;
-      }
-    }
-
-    if (projectId === null) {
-      projectId = await this.projectRegistry.insert({
-        directory: normalizedCwd,
-        displayName: gitMetadata.projectDisplayName,
-        kind: gitMetadata.projectKind,
-        gitRemote: gitMetadata.gitRemote,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        archivedAt: null,
-      });
-    }
-
-    const workspaceId = await this.workspaceRegistry.insert({
-      projectId,
-      directory: normalizedCwd,
-      displayName: gitMetadata.workspaceDisplayName,
-      kind: gitMetadata.isWorktree ? "worktree" : "checkout",
+    const projectRecord = createPersistedProjectRecord({
+      projectId: placement.projectKey,
+      rootPath: deriveProjectRootPath({ cwd: normalizedCwd, checkout: placement.checkout }),
+      kind: deriveProjectKind(placement.checkout),
+      displayName: placement.projectName,
       createdAt: timestamp,
       updatedAt: timestamp,
-      archivedAt: null,
     });
-    return (await this.workspaceRegistry.get(workspaceId))!;
+    await this.projectRegistry.upsert(projectRecord);
+
+    const workspaceRecord = createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: placement.projectKey,
+      cwd: workspaceId,
+      kind: deriveWorkspaceKind(placement.checkout),
+      displayName: deriveWorkspaceDisplayName({ cwd: workspaceId, checkout: placement.checkout }),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    await this.workspaceRegistry.upsert(workspaceRecord);
+    return workspaceRecord;
   }
 
   private async registerPendingWorktreeWorkspace(options: {
@@ -6187,48 +6170,42 @@ export class Session {
       throw new Error(`Workspace not found for repo root ${options.repoRoot}`);
     }
 
-    const projectId = Number(basePlacement.projectKey);
-    if (!Number.isInteger(projectId)) {
-      throw new Error(`Invalid project id for repo root ${options.repoRoot}`);
-    }
-
+    const projectId = basePlacement.projectKey;
     const now = new Date().toISOString();
     const existingWorkspace = await this.findWorkspaceByDirectory(workspaceDirectory);
     if (!existingWorkspace) {
-      const workspaceId = await this.workspaceRegistry.insert({
+      const newRecord = createPersistedWorkspaceRecord({
+        workspaceId: workspaceDirectory,
         projectId,
-        directory: workspaceDirectory,
+        cwd: workspaceDirectory,
         displayName: options.branchName,
         kind: "worktree",
         createdAt: now,
         updatedAt: now,
-        archivedAt: null,
       });
-      const workspace = await this.workspaceRegistry.get(workspaceId);
-      if (!workspace) {
-        throw new Error(`Workspace not found after insert: ${workspaceId}`);
-      }
-      await this.syncWorkspaceGitWatchTarget(workspace.directory, { isGit: true });
-      return workspace;
+      await this.workspaceRegistry.upsert(newRecord);
+      await this.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
+      return newRecord;
     }
 
-    await this.workspaceRegistry.upsert({
-      id: existingWorkspace.id,
-      projectId,
-      directory: workspaceDirectory,
-      displayName: options.branchName,
-      kind: "worktree",
-      createdAt: existingWorkspace.createdAt,
-      updatedAt: now,
-      archivedAt: null,
-    });
+    await this.workspaceRegistry.upsert(
+      createPersistedWorkspaceRecord({
+        workspaceId: existingWorkspace.workspaceId,
+        projectId,
+        cwd: workspaceDirectory,
+        displayName: options.branchName,
+        kind: "worktree",
+        createdAt: existingWorkspace.createdAt,
+        updatedAt: now,
+      }),
+    );
     await this.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
 
     if (!existingWorkspace.archivedAt && existingWorkspace.projectId !== projectId) {
       const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
         (workspace) =>
           workspace.projectId === existingWorkspace.projectId &&
-          workspace.id !== existingWorkspace.id &&
+          workspace.workspaceId !== existingWorkspace.workspaceId &&
           !workspace.archivedAt,
       );
       if (siblingWorkspaces.length === 0) {
@@ -6236,21 +6213,21 @@ export class Session {
       }
     }
 
-    return (await this.workspaceRegistry.get(existingWorkspace.id))!;
+    return (await this.workspaceRegistry.get(existingWorkspace.workspaceId))!;
   }
 
-  private async archiveWorkspaceRecord(workspaceId: number, archivedAt?: string): Promise<void> {
+  private async archiveWorkspaceRecord(workspaceId: string, archivedAt?: string): Promise<void> {
     const existingWorkspace = await this.workspaceRegistry.get(workspaceId);
     if (!existingWorkspace || existingWorkspace.archivedAt) {
-      this.removeWorkspaceGitSubscription(String(workspaceId));
+      this.removeWorkspaceGitSubscription(workspaceId);
       return;
     }
 
     const nextArchivedAt = archivedAt ?? new Date().toISOString();
     await this.workspaceRegistry.archive(workspaceId, nextArchivedAt);
-    await this.removeWorkspaceGitWatchTarget(existingWorkspace.directory);
-    this.scriptRuntimeStore?.removeForWorkspace(existingWorkspace.directory);
-    this.removeWorkspaceGitSubscription(String(workspaceId));
+    await this.removeWorkspaceGitWatchTarget(existingWorkspace.cwd);
+    this.scriptRuntimeStore?.removeForWorkspace(existingWorkspace.cwd);
+    this.removeWorkspaceGitSubscription(workspaceId);
 
     const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
       (workspace) => workspace.projectId === existingWorkspace.projectId && !workspace.archivedAt,
@@ -6506,7 +6483,7 @@ export class Session {
   ): Promise<void> {
     try {
       const workspace = await this.findOrCreateWorkspaceForDirectory(request.cwd);
-      await this.emitWorkspaceUpdateForCwd(workspace.directory);
+      await this.emitWorkspaceUpdateForCwd(workspace.cwd);
       const descriptor = await this.describeWorkspaceRecordWithGitData(workspace);
       this.emit({
         type: "open_project_response",
@@ -6577,9 +6554,9 @@ export class Session {
       }
 
       const serviceResult = await spawnWorkspaceScript({
-        repoRoot: workspace.directory,
-        workspaceId: workspace.directory,
-        branchName: readGitCommand(workspace.directory, "git symbolic-ref --short HEAD"),
+        repoRoot: workspace.cwd,
+        workspaceId: workspace.cwd,
+        branchName: readGitCommand(workspace.cwd, "git symbolic-ref --short HEAD"),
         scriptName: request.scriptName,
         daemonPort: this.getDaemonTcpPort?.() ?? null,
         daemonListenHost: this.getDaemonTcpHost?.() ?? null,
@@ -6588,11 +6565,11 @@ export class Session {
         terminalManager: this.terminalManager,
         logger: this.sessionLogger,
         onLifecycleChanged: () => {
-          this.emitWorkspaceScriptStatusUpdate(workspace.directory);
+          this.emitWorkspaceScriptStatusUpdate(workspace.cwd);
         },
       });
 
-      this.emitWorkspaceScriptStatusUpdate(workspace.directory);
+      this.emitWorkspaceScriptStatusUpdate(workspace.cwd);
       this.emit({
         type: "start_workspace_script_response",
         payload: {
@@ -6709,7 +6686,7 @@ export class Session {
   private async runWorktreeSetupInBackground(options: {
     requestCwd: string;
     repoRoot: string;
-    workspaceId: number;
+    workspaceId: string;
     worktree: { branchName: string; worktreePath: string };
     shouldBootstrap: boolean;
     slug: string;
@@ -6757,8 +6734,8 @@ export class Session {
         throw new Error("Use worktree archive for Paseo worktrees");
       }
       const archivedAt = new Date().toISOString();
-      await this.archiveWorkspaceRecord(existing.id, archivedAt);
-      await this.emitWorkspaceUpdateForCwd(existing.directory);
+      await this.archiveWorkspaceRecord(existing.workspaceId, archivedAt);
+      await this.emitWorkspaceUpdateForCwd(existing.cwd);
       this.emit({
         type: "archive_workspace_response",
         payload: {

@@ -93,21 +93,16 @@ import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
-import type { AgentSnapshotStore } from "./agent/agent-snapshot-store.js";
+import { AgentStorage } from "./agent/agent-storage.js";
+import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
   buildProviderRegistry,
   createAllClients,
   shutdownProviders,
 } from "./agent/provider-registry.js";
-import { DbAgentSnapshotStore } from "./db/db-agent-snapshot-store.js";
-import { DbAgentTimelineStore } from "./db/db-agent-timeline-store.js";
-import { DbProjectRegistry } from "./db/db-project-registry.js";
-import { DbWorkspaceRegistry } from "./db/db-workspace-registry.js";
-import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
-import { importLegacyAgentSnapshots } from "./db/legacy-agent-snapshot-import.js";
-import { importLegacyProjectWorkspaceJson } from "./db/legacy-project-workspace-import.js";
-import { openPaseoDatabase, type PaseoDatabaseHandle } from "./db/sqlite-database.js";
+import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
+import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
@@ -201,7 +196,7 @@ export type PaseoDaemonConfig = {
 export interface PaseoDaemon {
   config: PaseoDaemonConfig;
   agentManager: AgentManager;
-  agentStorage: AgentSnapshotStore;
+  agentStorage: AgentStorage;
   terminalManager: TerminalManager;
   scriptRouteStore: ScriptRouteStore;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore;
@@ -218,7 +213,6 @@ export async function createPaseoDaemon(
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = resolveDaemonVersion(import.meta.url);
-  let database: PaseoDatabaseHandle | null = null;
   const daemonConfigStore = new DaemonConfigStore(
     config.paseoHome,
     {
@@ -384,9 +378,6 @@ export async function createPaseoDaemon(
 
     const httpServer = createHTTPServer(app);
 
-    database = await openPaseoDatabase(path.join(config.paseoHome, "db"));
-    logger.info({ elapsed: elapsed() }, "Paseo database opened");
-
     // Script proxy WebSocket upgrade handler — must be registered before the
     // VoiceAssistantWebSocketServer attaches its own "upgrade" listener so that
     // script-bound upgrades are forwarded first. The handler is a no-op for
@@ -397,15 +388,20 @@ export async function createPaseoDaemon(
     });
     httpServer.on("upgrade", scriptProxyUpgradeHandler);
 
-    const agentStorage = new DbAgentSnapshotStore(database.db);
+    const agentStorage = new AgentStorage(config.agentStoragePath, logger);
+    const projectRegistry = new FileBackedProjectRegistry(
+      path.join(config.paseoHome, "projects", "projects.json"),
+      logger,
+    );
+    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+      path.join(config.paseoHome, "projects", "workspaces.json"),
+      logger,
+    );
     const chatService = new FileBackedChatService({
       paseoHome: config.paseoHome,
       logger,
     });
-    const durableTimelineStore = new DbAgentTimelineStore(database.db);
-    let agentManager: AgentManager | null = null;
-    const terminalManager = createTerminalManager();
-    agentManager = new AgentManager({
+    const agentManager = new AgentManager({
       clients: {
         ...createAllClients(logger, {
           runtimeSettings: config.agentProviderSettings,
@@ -414,8 +410,6 @@ export async function createPaseoDaemon(
         ...config.agentClients,
       },
       registry: agentStorage,
-      durableTimelineStore,
-      terminalManager,
       logger,
     });
     const providerRegistry = buildProviderRegistry(logger, {
@@ -423,37 +417,23 @@ export async function createPaseoDaemon(
       providerOverrides: config.providerOverrides,
     });
 
-    const projectRegistry = new DbProjectRegistry(database.db);
-    const workspaceRegistry = new DbWorkspaceRegistry(database.db);
+    const terminalManager = createTerminalManager();
 
-    try {
-      await importLegacyProjectWorkspaceJson({
-        db: database.db,
-        paseoHome: config.paseoHome,
-        logger,
-      });
-      logger.info({ elapsed: elapsed() }, "Legacy project/workspace import checked");
-    } catch (err) {
-      logger.error({ err }, "Legacy project/workspace import failed (non-fatal)");
-    }
-    try {
-      await importLegacyAgentSnapshots({
-        db: database.db,
-        paseoHome: config.paseoHome,
-        logger,
-      });
-      logger.info({ elapsed: elapsed() }, "Legacy agent snapshot import checked");
-    } catch (err) {
-      logger.error({ err }, "Legacy agent snapshot import failed (non-fatal)");
-    }
-
-    const reconciliationService = new WorkspaceReconciliationService({
+    const detachAgentStoragePersistence = attachAgentStoragePersistence(
+      logger,
+      agentManager,
+      agentStorage,
+    );
+    await agentStorage.initialize();
+    logger.info({ elapsed: elapsed() }, "Agent storage initialized");
+    await bootstrapWorkspaceRegistries({
+      paseoHome: config.paseoHome,
+      agentStorage,
       projectRegistry,
       workspaceRegistry,
       logger,
     });
-    reconciliationService.start();
-    logger.info({ elapsed: elapsed() }, "Workspace reconciliation service started");
+    logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
     await chatService.initialize();
     logger.info({ elapsed: elapsed() }, "Chat service initialized");
     const checkoutDiffManager = new CheckoutDiffManager({
@@ -755,10 +735,11 @@ export async function createPaseoDaemon(
     };
 
     const stop = async () => {
-      reconciliationService.stop();
       scriptHealthMonitor.stop();
       await closeAllAgents(logger, agentManager);
       await agentManager.flush().catch(() => undefined);
+      detachAgentStoragePersistence();
+      await agentStorage.flush().catch(() => undefined);
       await shutdownProviders(logger, {
         runtimeSettings: config.agentProviderSettings,
         providerOverrides: config.providerOverrides,
@@ -770,7 +751,6 @@ export async function createPaseoDaemon(
       if (wsServer) {
         await wsServer.close();
       }
-      await database?.close().catch(() => undefined);
       await new Promise<void>((resolve) => {
         httpServer.close(() => resolve());
       });
@@ -792,7 +772,6 @@ export async function createPaseoDaemon(
       getListenTarget: () => boundListenTarget,
     };
   } catch (err) {
-    await database?.close().catch(() => undefined);
     throw err;
   }
 }

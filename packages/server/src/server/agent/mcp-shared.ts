@@ -4,7 +4,7 @@ import type { Logger } from "pino";
 import type { AgentPromptInput, AgentPermissionRequest } from "./agent-sdk-types.js";
 import type { AgentManager, ManagedAgent, WaitForAgentResult } from "./agent-manager.js";
 import { curateAgentActivity } from "./activity-curator.js";
-import type { AgentSnapshotStore } from "./agent-snapshot-store.js";
+import type { AgentStorage } from "./agent-storage.js";
 import { serializeAgentSnapshot } from "../messages.js";
 import { StoredScheduleSchema } from "../schedule/types.js";
 
@@ -253,7 +253,7 @@ export function sanitizePermissionRequest(
 }
 
 export async function resolveAgentTitle(
-  agentStorage: AgentSnapshotStore,
+  agentStorage: AgentStorage,
   agentId: string,
   logger: Logger,
 ): Promise<string | null> {
@@ -267,7 +267,7 @@ export async function resolveAgentTitle(
 }
 
 export async function serializeSnapshotWithMetadata(
-  agentStorage: AgentSnapshotStore,
+  agentStorage: AgentStorage,
   snapshot: ManagedAgent,
   logger: Logger,
 ) {
