@@ -114,6 +114,7 @@ import type {
 import { AgentStorage, type StoredAgentRecord } from "./agent/agent-storage.js";
 import {
   buildProjectPlacementForCwd,
+  checkoutLiteFromGitSnapshot,
   detectStaleWorkspaces,
   deriveProjectKind,
   deriveProjectRootPath,
@@ -5406,26 +5407,17 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null,
   ): Promise<WorkspaceDescriptorPayload> {
     const base = await this.describeWorkspaceRecord(workspace, projectRecord);
-    let displayName = workspace.displayName;
-    try {
-      const placement = await this.buildProjectPlacement(workspace.cwd);
-      displayName = deriveWorkspaceDisplayName({
-        cwd: workspace.cwd,
-        checkout: placement.checkout,
-      });
-    } catch {
-      // Fall back to the persisted label if checkout metadata is unavailable.
-    }
+    const snapshot = await this.workspaceGitService.getSnapshot(workspace.cwd);
 
-    let snapshot: WorkspaceGitRuntimeSnapshot | null = null;
-    snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
+    const checkout = checkoutLiteFromGitSnapshot(workspace.cwd, snapshot.git);
+    const displayName = deriveWorkspaceDisplayName({ cwd: workspace.cwd, checkout });
 
     return {
       ...base,
       name: displayName,
-      diffStat: snapshot?.git.diffStat ?? null,
-      gitRuntime: snapshot ? this.buildWorkspaceGitRuntimePayload(snapshot) : undefined,
-      githubRuntime: snapshot ? this.buildWorkspaceGitHubRuntimePayload(snapshot) : undefined,
+      diffStat: snapshot.git.diffStat ?? null,
+      gitRuntime: this.buildWorkspaceGitRuntimePayload(snapshot),
+      githubRuntime: this.buildWorkspaceGitHubRuntimePayload(snapshot),
     };
   }
 

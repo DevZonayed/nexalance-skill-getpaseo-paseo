@@ -137,6 +137,50 @@ export function deriveWorkspaceKind(checkout: ProjectCheckoutLitePayload): Persi
   return checkout.isPaseoOwnedWorktree ? "worktree" : "local_checkout";
 }
 
+export function checkoutLiteFromGitSnapshot(
+  cwd: string,
+  git: {
+    isGit: boolean;
+    currentBranch: string | null;
+    remoteUrl: string | null;
+    repoRoot: string | null;
+    isPaseoOwnedWorktree: boolean;
+    mainRepoRoot: string | null;
+  },
+): ProjectCheckoutLitePayload {
+  if (!git.isGit) {
+    return {
+      cwd,
+      isGit: false,
+      currentBranch: null,
+      remoteUrl: null,
+      worktreeRoot: null,
+      isPaseoOwnedWorktree: false,
+      mainRepoRoot: null,
+    };
+  }
+  if (git.isPaseoOwnedWorktree && git.mainRepoRoot) {
+    return {
+      cwd,
+      isGit: true,
+      currentBranch: git.currentBranch,
+      remoteUrl: git.remoteUrl,
+      worktreeRoot: git.repoRoot ?? cwd,
+      isPaseoOwnedWorktree: true,
+      mainRepoRoot: git.mainRepoRoot,
+    };
+  }
+  return {
+    cwd,
+    isGit: true,
+    currentBranch: git.currentBranch,
+    remoteUrl: git.remoteUrl,
+    worktreeRoot: git.repoRoot ?? cwd,
+    isPaseoOwnedWorktree: false,
+    mainRepoRoot: null,
+  };
+}
+
 export async function detectStaleWorkspaces(
   input: DetectStaleWorkspacesInput,
 ): Promise<Set<string>> {
