@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { parseHostWorkspaceRouteFromPathname } from "../../src/utils/host-routes";
 import { gotoAppShell } from "./app";
+import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./node-ws-factory";
 import type { SessionOutboundMessage } from "@server/shared/messages";
 
 type WorkspaceSetupDaemonClient = {
@@ -73,6 +74,7 @@ async function loadDaemonClientConstructor(): Promise<
     url: string;
     clientId: string;
     clientType: "cli";
+    webSocketFactory?: NodeWebSocketFactory;
   }) => WorkspaceSetupDaemonClient
 > {
   const repoRoot = path.resolve(process.cwd(), "../..");
@@ -84,6 +86,7 @@ async function loadDaemonClientConstructor(): Promise<
       url: string;
       clientId: string;
       clientType: "cli";
+      webSocketFactory?: NodeWebSocketFactory;
     }) => WorkspaceSetupDaemonClient;
   };
   return mod.DaemonClient;
@@ -91,10 +94,12 @@ async function loadDaemonClientConstructor(): Promise<
 
 export async function connectWorkspaceSetupClient(): Promise<WorkspaceSetupDaemonClient> {
   const DaemonClient = await loadDaemonClientConstructor();
+  const webSocketFactory = createNodeWebSocketFactory();
   const client = new DaemonClient({
     url: getDaemonWsUrl(),
     clientId: `workspace-setup-${randomUUID()}`,
     clientType: "cli",
+    webSocketFactory,
   });
   await client.connect();
   return client;
