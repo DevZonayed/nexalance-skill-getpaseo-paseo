@@ -585,6 +585,46 @@ describe("HostRuntimeController", () => {
     });
   });
 
+  it("does not emit legacy typed reason-code transition logs", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const host = makeHost({
+        connections: [
+          {
+            id: "direct:lan:6767",
+            type: "directTcp",
+            endpoint: "lan:6767",
+          },
+        ],
+      });
+      const clients: FakeDaemonClient[] = [];
+      const controller = new HostRuntimeController({
+        host,
+        deps: makeDeps(
+          {
+            "direct:lan:6767": 12,
+          },
+          clients,
+        ),
+      });
+
+      await controller.start({ autoProbe: false });
+      clients[0]?.setConnectionState({
+        status: "disconnected",
+        reason: "transport closed",
+      });
+
+      const transitionPayloads = infoSpy.mock.calls
+        .filter((call) => call[0] === "[HostRuntimeTransition]")
+        .map((call) => call[1] as { reasonCode?: string | null });
+      const lastTransition = transitionPayloads[transitionPayloads.length - 1] ?? null;
+
+      expect(lastTransition?.reasonCode).toBeUndefined();
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
   it("marks directory loading on first connection before any directory sync succeeds", async () => {
     const host = makeHost();
     const clients: FakeDaemonClient[] = [];
@@ -1201,12 +1241,7 @@ describe("HostRuntimeStore", () => {
         archivedAt: stale.archivedAt ? new Date(stale.archivedAt) : null,
         attentionTimestamp: stale.attentionTimestamp ? new Date(stale.attentionTimestamp) : null,
       };
-      return new Map([
-        [
-          stale.id,
-          staleAgent,
-        ],
-      ]);
+      return new Map([[stale.id, staleAgent]]);
     });
 
     store.syncHosts([host]);
@@ -1322,7 +1357,7 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([]);
   });
 
-  it("keeps a custom host label when re-pairing with an advertised hostname", async () => {
+  it("uses the latest advertised hostname when re-pairing an existing relay host", async () => {
     const store = new HostRuntimeStore({
       deps: {
         createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
@@ -1345,7 +1380,7 @@ describe("HostRuntimeStore", () => {
     await store.upsertConnectionFromOffer(makeOffer(), "mbp");
 
     const pairedHost = store.getHosts().find((host) => host.serverId === "srv_offer");
-    expect(pairedHost?.label).toBe("Custom name");
+    expect(pairedHost?.label).toBe("mbp");
 
     store.syncHosts([]);
   });

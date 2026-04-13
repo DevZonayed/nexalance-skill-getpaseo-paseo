@@ -448,7 +448,7 @@ function ChatAgentContent({
 
   const agentState = useSessionStore(
     useShallow((state) => {
-      const agent = agentId ? state.sessions[serverId]?.agents?.get(agentId) ?? null : null;
+      const agent = agentId ? (state.sessions[serverId]?.agents?.get(agentId) ?? null) : null;
       return {
         serverId: agent?.serverId ?? null,
         id: agent?.id ?? null,
@@ -678,17 +678,20 @@ function ChatAgentContent({
     isPendingCreateForPanel && (!authoritativeStatus || isAuthoritativeBootstrapping);
   const canFinalizePendingCreate = Boolean(authoritativeStatus) && !isAuthoritativeBootstrapping;
 
-  const agent: AgentScreenAgent | null =
-    agentState.serverId && agentState.id && agentState.status && agentState.cwd
-      ? {
-          serverId: agentState.serverId,
-          id: agentState.id,
-          status: agentState.status,
-          cwd: agentState.cwd,
-          lastError: agentState.lastError ?? null,
-          projectPlacement,
-        }
-      : null;
+  const agent = useMemo<AgentScreenAgent | null>(
+    () =>
+      agentState.serverId && agentState.id && agentState.status && agentState.cwd
+        ? {
+            serverId: agentState.serverId,
+            id: agentState.id,
+            status: agentState.status,
+            cwd: agentState.cwd,
+            lastError: agentState.lastError ?? null,
+            projectPlacement,
+          }
+        : null,
+    [agentState.serverId, agentState.id, agentState.status, agentState.cwd, agentState.lastError, projectPlacement],
+  );
 
   const placeholderAgent: AgentScreenAgent | null = useMemo(() => {
     if (!shouldUseOptimisticStream || !agentId) {
@@ -806,6 +809,98 @@ function ChatAgentContent({
     initAttemptTokenRef.current += 1;
     setMissingAgentState({ kind: "idle" });
   }, [agentId, serverId]);
+
+  useEffect(() => {
+    if (!agentId) {
+      return;
+    }
+    if (agentState.id || shouldUseOptimisticStream) {
+      if (missingAgentState.kind !== "idle") {
+        setMissingAgentState({ kind: "idle" });
+      }
+      return;
+    }
+    if (!isConnected || !hasSession) {
+      return;
+    }
+    if (missingAgentState.kind === "resolving" || missingAgentState.kind === "not_found") {
+      return;
+    }
+
+    setMissingAgentState({ kind: "resolving" });
+    const attemptToken = ++initAttemptTokenRef.current;
+
+    ensureAgentIsInitialized(agentId)
+      .then(async () => {
+        if (attemptToken !== initAttemptTokenRef.current) {
+          return;
+        }
+        const currentAgent = useSessionStore.getState().sessions[serverId]?.agents.get(agentId);
+        if (!currentAgent) {
+          const result = await client.fetchAgent(agentId);
+          if (attemptToken !== initAttemptTokenRef.current) {
+            return;
+          }
+          if (!result) {
+            setMissingAgentState({
+              kind: "not_found",
+              message: `Agent not found: ${agentId}`,
+            });
+            return;
+          }
+          const normalized = normalizeAgentSnapshot(result.agent, serverId);
+          const hydrated = {
+            ...normalized,
+            projectPlacement: result.project,
+          };
+          setAgents(serverId, (previous) => {
+            const next = new Map(previous);
+            next.set(hydrated.id, hydrated);
+            return next;
+          });
+          setPendingPermissions(serverId, (previous) => {
+            const next = new Map(previous);
+            for (const [key, pending] of next.entries()) {
+              if (pending.agentId === hydrated.id) {
+                next.delete(key);
+              }
+            }
+            for (const request of hydrated.pendingPermissions) {
+              const key = derivePendingPermissionKey(hydrated.id, request);
+              next.set(key, { key, agentId: hydrated.id, request });
+            }
+            return next;
+          });
+        }
+        if (attemptToken !== initAttemptTokenRef.current) {
+          return;
+        }
+        setMissingAgentState({ kind: "idle" });
+      })
+      .catch((error) => {
+        if (attemptToken !== initAttemptTokenRef.current) {
+          return;
+        }
+        const message = toErrorMessage(error);
+        if (isNotFoundErrorMessage(message)) {
+          setMissingAgentState({ kind: "not_found", message });
+          return;
+        }
+        setMissingAgentState({ kind: "error", message });
+      });
+  }, [
+    agentState.id,
+    agentId,
+    client,
+    ensureAgentIsInitialized,
+    hasSession,
+    isConnected,
+    missingAgentState.kind,
+    serverId,
+    setAgents,
+    setPendingPermissions,
+    shouldUseOptimisticStream,
+  ]);
 
   if (viewState.tag === "not_found") {
     return (

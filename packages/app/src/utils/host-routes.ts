@@ -314,11 +314,7 @@ export function buildHostWorkspaceOpenRoute(
   return `${base}?open=${encodeURIComponent(normalizedOpenIntent)}` as const;
 }
 
-export function buildHostAgentDetailRoute(
-  serverId: string,
-  agentId: string,
-  workspaceId?: string,
-) {
+export function buildHostAgentDetailRoute(serverId: string, agentId: string, workspaceId?: string) {
   const normalizedWorkspaceId = trimNonEmpty(workspaceId);
   if (normalizedWorkspaceId) {
     const normalizedAgentId = trimNonEmpty(agentId);

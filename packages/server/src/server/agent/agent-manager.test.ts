@@ -100,6 +100,22 @@ class TestAgentClient implements AgentClient {
     return new TestAgentSession(config);
   }
 
+  async listModels() {
+    return [
+      {
+        provider: "codex",
+        id: "gpt-5.4",
+        label: "GPT-5.4",
+        isDefault: true,
+      },
+      {
+        provider: "codex",
+        id: "gpt-5.4-mini",
+        label: "GPT-5.4 Mini",
+      },
+    ];
+  }
+
   async resumeSession(
     _handle: AgentPersistenceHandle,
     config?: Partial<AgentSessionConfig>,
@@ -317,7 +333,7 @@ class StreamingAssistantClient implements AgentClient {
 describe("AgentManager", () => {
   const logger = createTestLogger();
 
-  test("normalizeConfig does not inject default model when omitted", async () => {
+  test("normalizeConfig injects the provider default model when omitted", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
@@ -335,7 +351,8 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    expect(snapshot.model).toBeUndefined();
+    expect(snapshot.config.model).toBe("gpt-5.4");
+    expect(snapshot.config.modeId).toBe("auto");
   });
 
   test("normalizeConfig strips legacy 'default' model id", async () => {
@@ -357,7 +374,8 @@ describe("AgentManager", () => {
       model: "default",
     });
 
-    expect(snapshot.model).toBeUndefined();
+    expect(snapshot.config.model).toBe("gpt-5.4");
+    expect(snapshot.config.modeId).toBe("auto");
   });
 
   test("createAgent passes daemon launch env through the provider launch context", async () => {
@@ -397,12 +415,108 @@ describe("AgentManager", () => {
     expect(client.lastConfig).toEqual({
       provider: "codex",
       cwd: workdir,
+      model: "gpt-5.4",
+      modeId: "auto",
     });
     expect(client.lastLaunchContext).toEqual({
       env: {
         PASEO_AGENT_ID: snapshot.id,
       },
     });
+  });
+
+  test("createAgent injects paseo MCP server when manager has an MCP base URL", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+
+    class CaptureClient extends TestAgentClient {
+      lastConfig: AgentSessionConfig | null = null;
+
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        this.lastConfig = config;
+        return new TestAgentSession(config);
+      }
+    }
+
+    const client = new CaptureClient();
+    const manager = new AgentManager({
+      clients: {
+        codex: client,
+      },
+      registry: storage,
+      logger,
+      mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
+      idFactory: () => "00000000-0000-4000-8000-000000000103",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+      mcpServers: {
+        custom: {
+          type: "stdio",
+          command: "custom-mcp",
+        },
+      },
+    });
+
+    expect(snapshot.config.mcpServers).toEqual({
+      paseo: {
+        type: "http",
+        url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${snapshot.id}`,
+      },
+      custom: {
+        type: "stdio",
+        command: "custom-mcp",
+      },
+    });
+    expect(client.lastConfig?.mcpServers).toEqual(snapshot.config.mcpServers);
+  });
+
+  test("createAgent preserves a user-provided paseo MCP config", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+
+    class CaptureClient extends TestAgentClient {
+      lastConfig: AgentSessionConfig | null = null;
+
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        this.lastConfig = config;
+        return new TestAgentSession(config);
+      }
+    }
+
+    const client = new CaptureClient();
+    const manager = new AgentManager({
+      clients: {
+        codex: client,
+      },
+      registry: storage,
+      logger,
+      mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
+      idFactory: () => "00000000-0000-4000-8000-000000000104",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+      mcpServers: {
+        paseo: {
+          type: "http",
+          url: "https://example.com/custom-paseo",
+        },
+      },
+    });
+
+    expect(snapshot.config.mcpServers).toEqual({
+      paseo: {
+        type: "http",
+        url: "https://example.com/custom-paseo",
+      },
+    });
+    expect(client.lastConfig?.mcpServers).toEqual(snapshot.config.mcpServers);
   });
 
   test("createAgent fails when cwd does not exist", async () => {
@@ -1067,7 +1181,12 @@ describe("AgentManager", () => {
           });
           await this.gate;
           if (this.delayedInterrupted) {
-            this.pushEvent({ type: "turn_canceled", provider: this.provider, reason: "Interrupted", turnId });
+            this.pushEvent({
+              type: "turn_canceled",
+              provider: this.provider,
+              reason: "Interrupted",
+              turnId,
+            });
           } else {
             this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
           }
@@ -1890,7 +2009,7 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    expect(snapshot.runtimeInfo?.model ?? null).toBeNull();
+    expect(snapshot.runtimeInfo?.model).toBe("gpt-5.4");
 
     await manager.runAgent(snapshot.id, "hello");
 
@@ -2013,7 +2132,12 @@ describe("AgentManager", () => {
           this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
           if (turnNum === 1) {
             await allowFirstRunToEnd.promise;
-            this.pushEvent({ type: "turn_canceled", provider: this.provider, reason: "interrupted", turnId });
+            this.pushEvent({
+              type: "turn_canceled",
+              provider: this.provider,
+              reason: "interrupted",
+              turnId,
+            });
           } else {
             await allowSecondRunToEnd.promise;
             this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
@@ -2197,7 +2321,7 @@ describe("AgentManager", () => {
     await secondStartEntered.promise;
 
     const replaceGapSnapshot = manager.getAgent(snapshot.id) as
-      | ({ pendingReplacement: boolean; activeForegroundTurnId: string | null; lifecycle: string })
+      | { pendingReplacement: boolean; activeForegroundTurnId: string | null; lifecycle: string }
       | undefined;
     expect(replaceGapSnapshot?.pendingReplacement).toBe(false);
     expect(replaceGapSnapshot?.activeForegroundTurnId).toBeNull();
@@ -2269,14 +2393,22 @@ describe("AgentManager", () => {
 
     // Push autonomous events through the session's subscribe() callbacks
     const autonomousTurnId = "autonomous-turn-1";
-    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_started",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
     capturedSession!.pushEvent({
       type: "timeline",
       provider: "codex",
       item: { type: "assistant_message", text: "AUTONOMOUS_PUMP_MESSAGE" },
       turnId: autonomousTurnId,
     });
-    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
     await settled;
 
     const updated = manager.getAgent(snapshot.id);
@@ -2346,7 +2478,11 @@ describe("AgentManager", () => {
         },
         { agentId: snapshot.id, replayState: false },
       );
-      capturedSession.pushEvent({ type: "turn_started", provider: "codex", turnId: "autonomous-cancel-1" });
+      capturedSession.pushEvent({
+        type: "turn_started",
+        provider: "codex",
+        turnId: "autonomous-cancel-1",
+      });
     });
 
     const beforeCancel = manager.getAgent(snapshot.id);
@@ -2389,8 +2525,16 @@ describe("AgentManager", () => {
 
     const autonomousTurnId = "autonomous-wait-1";
     const waitPromise = manager.waitForAgentEvent(snapshot.id, { waitForActive: true });
-    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
-    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_started",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
+    capturedSession!.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
 
     const result = await waitPromise;
     expect(result.status).toBe("idle");
@@ -2451,7 +2595,11 @@ describe("AgentManager", () => {
     await new Promise<void>((resolve) => {
       const unsub = manager.subscribe(
         (event) => {
-          if (event.type === "agent_state" && event.agent.id === snapshot.id && event.agent.lifecycle === "running") {
+          if (
+            event.type === "agent_state" &&
+            event.agent.id === snapshot.id &&
+            event.agent.lifecycle === "running"
+          ) {
             unsub();
             resolve();
           }
@@ -2462,14 +2610,22 @@ describe("AgentManager", () => {
 
     // Push autonomous events while foreground is active
     const autonomousTurnId = "autonomous-during-fg-1";
-    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_started",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
     capturedSession!.pushEvent({
       type: "timeline",
       provider: "codex",
       item: { type: "assistant_message", text: "AUTONOMOUS_DURING_FOREGROUND" },
       turnId: autonomousTurnId,
     });
-    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
 
     releaseForeground.resolve();
     const foregroundEvents = await foregroundResults;
@@ -2525,7 +2681,11 @@ describe("AgentManager", () => {
     const settled = new Promise<void>((resolve) => {
       manager.subscribe(
         (event) => {
-          if (event.type === "agent_state" && event.agent.id === snapshot.id && event.agent.lifecycle === "idle") {
+          if (
+            event.type === "agent_state" &&
+            event.agent.id === snapshot.id &&
+            event.agent.lifecycle === "idle"
+          ) {
             resolve();
           }
           if (event.type === "agent_stream" && event.agentId === snapshot.id) {
@@ -2537,14 +2697,22 @@ describe("AgentManager", () => {
     });
 
     const autonomousTurnId = "autonomous-isolation-1";
-    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_started",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
     capturedSession!.pushEvent({
       type: "timeline",
       provider: "codex",
       item: { type: "assistant_message", text: "EVENT_AFTER_ERROR" },
       turnId: autonomousTurnId,
     });
-    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
+      type: "turn_completed",
+      provider: "codex",
+      turnId: autonomousTurnId,
+    });
 
     await settled;
 
@@ -2684,7 +2852,9 @@ describe("AgentManager", () => {
 
       subscribe(callback: (event: AgentStreamEvent) => void): () => void {
         this.subs.add(callback);
-        return () => { this.subs.delete(callback); };
+        return () => {
+          this.subs.delete(callback);
+        };
       }
 
       async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
@@ -2967,7 +3137,12 @@ describe("AgentManager", () => {
         const turnId = `fail-turn-${attempt}`;
         setTimeout(() => {
           this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-          this.pushEvent({ type: "turn_failed", provider: this.provider, error: `boom-${attempt}`, turnId });
+          this.pushEvent({
+            type: "turn_failed",
+            provider: this.provider,
+            error: `boom-${attempt}`,
+            turnId,
+          });
         }, 0);
         return { turnId };
       }
@@ -3112,7 +3287,12 @@ describe("AgentManager", () => {
         const turnId = "turn-failed-1";
         setTimeout(() => {
           this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-          this.pushEvent({ type: "turn_failed", provider: this.provider, error: "invalid model id", turnId });
+          this.pushEvent({
+            type: "turn_failed",
+            provider: this.provider,
+            error: "invalid model id",
+            turnId,
+          });
         }, 0);
         return { turnId };
       }
@@ -3364,7 +3544,9 @@ describe("AgentManager", () => {
 
       subscribe(callback: (event: AgentStreamEvent) => void): () => void {
         this.subs.add(callback);
-        return () => { this.subs.delete(callback); };
+        return () => {
+          this.subs.delete(callback);
+        };
       }
 
       async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
@@ -3658,7 +3840,9 @@ describe("AgentManager", () => {
       }
       if (event.type === "agent_state" && event.agent.id === snapshot.id) {
         const fastMode = event.agent.features?.find((feature) => feature.id === "fast_mode");
-        seen.push(`state:${event.agent.currentModeId}:${String(fastMode?.type === "toggle" ? fastMode.value : null)}`);
+        seen.push(
+          `state:${event.agent.currentModeId}:${String(fastMode?.type === "toggle" ? fastMode.value : null)}`,
+        );
         return;
       }
       if (event.type === "agent_stream" && event.event.type === "permission_resolved") {
@@ -3706,12 +3890,18 @@ describe("AgentManager", () => {
 
       subscribe(callback: (event: AgentStreamEvent) => void): () => void {
         this.subscribers.add(callback);
-        return () => { this.subscribers.delete(callback); };
+        return () => {
+          this.subscribers.delete(callback);
+        };
       }
 
       private pushEvent(event: AgentStreamEvent): void {
         for (const cb of this.subscribers) {
-          try { cb(event); } catch { /* isolation */ }
+          try {
+            cb(event);
+          } catch {
+            /* isolation */
+          }
         }
       }
 

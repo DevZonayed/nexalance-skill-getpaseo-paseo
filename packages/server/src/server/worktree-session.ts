@@ -30,10 +30,7 @@ import {
   getWorktreeSetupProgressResults,
 } from "./worktree-bootstrap.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
-import {
-  getCheckoutStatusLite,
-  resolveRepositoryDefaultBranch,
-} from "../utils/checkout-git.js";
+import { getCheckoutStatusLite, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
   computeWorktreePath,
@@ -320,10 +317,7 @@ export function assertSafeGitRef(ref: string, label: string): void {
   }
 }
 
-export async function resolveGitCreateBaseBranch(
-  cwd: string,
-  paseoHome?: string,
-): Promise<string> {
+export async function resolveGitCreateBaseBranch(cwd: string, paseoHome?: string): Promise<string> {
   const checkout = await getCheckoutStatusLite(cwd, { paseoHome });
   if (!checkout.isGit) {
     throw new Error("Cannot create a worktree outside a git repository");

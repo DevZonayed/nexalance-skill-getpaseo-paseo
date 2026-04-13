@@ -6,7 +6,6 @@ import { randomUUID } from "node:crypto";
 import { hostname as getHostname } from "node:os";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Logger } from "pino";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
@@ -96,7 +95,11 @@ import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import type { AgentSnapshotStore } from "./agent/agent-snapshot-store.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
-import { createAllClients, shutdownProviders } from "./agent/provider-registry.js";
+import {
+  buildProviderRegistry,
+  createAllClients,
+  shutdownProviders,
+} from "./agent/provider-registry.js";
 import { DbAgentSnapshotStore } from "./db/db-agent-snapshot-store.js";
 import { DbAgentTimelineStore } from "./db/db-agent-timeline-store.js";
 import { DbProjectRegistry } from "./db/db-project-registry.js";
@@ -109,6 +112,7 @@ import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
+import { DaemonConfigStore } from "./daemon-config-store.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
@@ -134,28 +138,18 @@ import { resolveVoiceMcpBridgeFromRuntime } from "./voice-mcp-bridge-command.js"
 
 type AgentMcpTransportMap = Map<string, StreamableHTTPServerTransport>;
 
-function resolveVoiceMcpBridgeCommand(
-  logger: Logger,
-): { command: string; baseArgs: string[] } | null {
-  try {
-    const decision = resolveVoiceMcpBridgeFromRuntime({
-      bootstrapModuleUrl: import.meta.url,
-      execPath: process.execPath,
-      explicitScriptPath: process.env.PASEO_MCP_STDIO_SOCKET_BRIDGE_SCRIPT,
-    });
-    logger.info(
-      {
-        source: decision.source,
-        command: decision.resolved.command,
-        baseArgs: decision.resolved.baseArgs,
-      },
-      "Resolved voice MCP bridge command",
-    );
-    return decision.resolved;
-  } catch (err) {
-    logger.warn({ err }, "Voice MCP bridge script not available — voice MCP via stdio disabled");
+function formatHostForHttpUrl(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+}
+
+function createAgentMcpBaseUrl(listenTarget: ListenTarget | null): string | null {
+  if (!listenTarget || listenTarget.type !== "tcp") {
     return null;
   }
+  return new URL(
+    "/mcp/agents",
+    `http://${formatHostForHttpUrl(listenTarget.host)}:${listenTarget.port}`,
+  ).toString();
 }
 
 export type PaseoOpenAIConfig = OpenAiSpeechProviderConfig;
@@ -185,6 +179,7 @@ export type PaseoDaemonConfig = {
   corsAllowedOrigins: string[];
   allowedHosts?: AllowedHostsConfig;
   mcpEnabled?: boolean;
+  mcpInjectIntoAgents?: boolean;
   staticDir: string;
   mcpDebug: boolean;
   agentClients: Partial<Record<AgentProvider, AgentClient>>;
@@ -225,6 +220,13 @@ export async function createPaseoDaemon(
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = resolveDaemonVersion(import.meta.url);
   let database: PaseoDatabaseHandle | null = null;
+  const daemonConfigStore = new DaemonConfigStore(
+    config.paseoHome,
+    {
+      mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
+    },
+    logger,
+  );
 
   try {
     const serverId = getOrCreateServerId(config.paseoHome, { logger });
@@ -418,6 +420,9 @@ export async function createPaseoDaemon(
       terminalManager,
       logger,
     });
+    const providerRegistry = buildProviderRegistry(logger, {
+      runtimeSettings: config.agentProviderSettings,
+    });
 
     const projectRegistry = new DbProjectRegistry(database.db);
     const workspaceRegistry = new DbWorkspaceRegistry(database.db);
@@ -508,6 +513,7 @@ export async function createPaseoDaemon(
     };
 
     const mcpEnabled = config.mcpEnabled ?? true;
+    let agentMcpBaseUrl: string | null = null;
     if (mcpEnabled) {
       const agentMcpRoute = "/mcp/agents";
       const agentMcpTransports: AgentMcpTransportMap = new Map();
@@ -519,6 +525,8 @@ export async function createPaseoDaemon(
           terminalManager,
           getDaemonTcpPort: () =>
             boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
+          scheduleService,
+          providerRegistry,
           paseoHome: config.paseoHome,
           callerAgentId,
           enableVoiceTools: false,
@@ -657,61 +665,6 @@ export async function createPaseoDaemon(
     });
     logger.info({ elapsed: elapsed() }, "Speech service created");
 
-    wsServer = new VoiceAssistantWebSocketServer(
-      httpServer,
-      logger,
-      serverId,
-      agentManager,
-      agentStorage,
-      downloadTokenStore,
-      config.paseoHome,
-      createInMemoryAgentMcpTransport,
-      { allowedOrigins, allowedHosts: config.allowedHosts },
-      speechService,
-      terminalManager,
-      {
-        voiceAgentMcpStdio: voiceMcpBridgeCommand
-          ? {
-              command: voiceMcpBridgeCommand.command,
-              baseArgs: [...voiceMcpBridgeCommand.baseArgs],
-              env: {
-                ELECTRON_RUN_AS_NODE: "1",
-                PASEO_HOME: config.paseoHome,
-              },
-            }
-          : null,
-        ensureVoiceMcpSocketForAgent: (agentId) =>
-          voiceMcpBridgeManager?.ensureBridgeForCaller(agentId) ??
-          Promise.reject(new Error("Voice MCP bridge manager is not initialized")),
-        removeVoiceMcpSocketForAgent: (agentId) =>
-          voiceMcpBridgeManager?.removeBridgeForCaller(agentId) ?? Promise.resolve(),
-      },
-      {
-        finalTimeoutMs: config.dictationFinalTimeoutMs,
-      },
-      config.agentProviderSettings,
-      daemonVersion,
-      (intent) => {
-        try {
-          config.onLifecycleIntent?.(intent);
-        } catch (error) {
-          logger.error({ err: error, intent }, "Failed to handle daemon lifecycle intent");
-        }
-      },
-      projectRegistry,
-      workspaceRegistry,
-      chatService,
-      loopService,
-      scheduleService,
-      checkoutDiffManager,
-      scriptRouteStore,
-      scriptRuntimeStore,
-      handleBranchChange,
-      () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
-      () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
-      (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
-    );
-
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
     const start = async () => {
@@ -725,6 +678,12 @@ export async function createPaseoDaemon(
           httpServer.off("error", onError);
           const logAndResolve = async () => {
             boundListenTarget = resolveBoundListenTarget(listenTarget, httpServer);
+            const mcpBaseUrl = mcpEnabled ? createAgentMcpBaseUrl(boundListenTarget) : null;
+            agentMcpBaseUrl = config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
+            agentManager.setMcpBaseUrl(agentMcpBaseUrl);
+            daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
+              agentManager.setMcpBaseUrl(value ? mcpBaseUrl : null);
+            });
             const relayEnabled = config.relayEnabled ?? true;
             const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
@@ -745,6 +704,62 @@ export async function createPaseoDaemon(
                 `Server listening on ${boundListenTarget.path}`,
               );
             }
+
+            wsServer = new VoiceAssistantWebSocketServer(
+              httpServer,
+              logger,
+              serverId,
+              agentManager,
+              agentStorage,
+              downloadTokenStore,
+              config.paseoHome,
+              daemonConfigStore,
+              mcpBaseUrl,
+              { allowedOrigins, allowedHosts: config.allowedHosts },
+              speechService,
+              terminalManager,
+              {
+                voiceAgentMcpStdio: voiceMcpBridgeCommand
+                  ? {
+                      command: voiceMcpBridgeCommand.command,
+                      baseArgs: [...voiceMcpBridgeCommand.baseArgs],
+                      env: {
+                        ELECTRON_RUN_AS_NODE: "1",
+                        PASEO_HOME: config.paseoHome,
+                      },
+                    }
+                  : null,
+                ensureVoiceMcpSocketForAgent: (agentId) =>
+                  voiceMcpBridgeManager?.ensureBridgeForCaller(agentId) ??
+                  Promise.reject(new Error("Voice MCP bridge manager is not initialized")),
+                removeVoiceMcpSocketForAgent: (agentId) =>
+                  voiceMcpBridgeManager?.removeBridgeForCaller(agentId) ?? Promise.resolve(),
+              },
+              {
+                finalTimeoutMs: config.dictationFinalTimeoutMs,
+              },
+              config.agentProviderSettings,
+              daemonVersion,
+              (intent) => {
+                try {
+                  config.onLifecycleIntent?.(intent);
+                } catch (error) {
+                  logger.error({ err: error, intent }, "Failed to handle daemon lifecycle intent");
+                }
+              },
+              projectRegistry,
+              workspaceRegistry,
+              chatService,
+              loopService,
+              scheduleService,
+              checkoutDiffManager,
+              scriptRouteStore,
+              scriptRuntimeStore,
+              handleBranchChange,
+              () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
+              () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
+              (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
+            );
 
             if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {
               process.send({

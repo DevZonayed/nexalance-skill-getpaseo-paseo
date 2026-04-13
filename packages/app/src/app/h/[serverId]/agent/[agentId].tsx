@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import { useSessionStore } from "@/stores/session-store";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
@@ -7,6 +8,14 @@ import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execut
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 export default function HostAgentReadyRoute() {
+  return (
+    <HostRouteBootstrapBoundary>
+      <HostAgentReadyRouteContent />
+    </HostRouteBootstrapBoundary>
+  );
+}
+
+function HostAgentReadyRouteContent() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     serverId?: string;

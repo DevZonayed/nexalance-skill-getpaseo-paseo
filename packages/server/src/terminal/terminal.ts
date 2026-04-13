@@ -142,10 +142,7 @@ export function ensureNodePtySpawnHelperExecutableForCurrentPlatform(
 }
 
 export function resolveDefaultTerminalShell(
-  options: {
-    platform?: NodeJS.Platform;
-    env?: NodeJS.ProcessEnv;
-  } = {},
+  options: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
 ): string {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
@@ -455,7 +452,10 @@ function extractLastOutputLinesFromText(text: string, limit: number): string[] {
 }
 
 function cellsToPlainText(cells: TerminalCell[], options: { stripAnsi: boolean }): string {
-  const text = cells.map((cell) => cell.char).join("").trimEnd();
+  const text = cells
+    .map((cell) => cell.char)
+    .join("")
+    .trimEnd();
   return options.stripAnsi ? stripAnsi(text) : text;
 }
 

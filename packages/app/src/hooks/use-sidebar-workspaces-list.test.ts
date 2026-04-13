@@ -16,7 +16,7 @@ function item(key: string): OrderedItem {
 }
 
 function workspace(
-  input: Pick<WorkspaceDescriptor, "id" | "projectId" | "name" | "status" | "activityAt"> &
+  input: Pick<WorkspaceDescriptor, "id" | "projectId" | "name" | "status"> &
     Partial<
       Pick<
         WorkspaceDescriptor,
@@ -39,7 +39,6 @@ function workspace(
     workspaceKind: input.workspaceKind ?? "checkout",
     name: input.name,
     status: input.status,
-    activityAt: input.activityAt,
     diffStat: null,
     scripts: input.scripts ?? [],
   };
@@ -130,7 +129,6 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
         projectId: "project-1",
         name: "feat/hard-cut",
         status: "failed",
-        activityAt: new Date("2026-01-01T00:00:00.000Z"),
       }),
     ];
 
@@ -156,7 +154,6 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
           projectId: "project-1",
           name: "main",
           status: "running",
-          activityAt: new Date("2026-01-01T00:00:00.000Z"),
           scripts: [runningScript, stoppedScript],
         }),
       ],
@@ -168,21 +165,19 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
     expect(projects[0]?.workspaces[0]?.hasRunningScripts).toBe(true);
   });
 
-  it("preserves stored project order even when activity changes", () => {
+  it("preserves stored project order even when input order differs", () => {
     const initialWorkspaces: WorkspaceDescriptor[] = [
       workspace({
         id: "/repo/b",
         projectId: "project-b",
         name: "feat/b",
         status: "running",
-        activityAt: new Date("2026-01-02T00:00:00.000Z"),
       }),
       workspace({
         id: "/repo/a",
         projectId: "project-a",
         name: "feat/a",
         status: "running",
-        activityAt: new Date("2026-01-01T00:00:00.000Z"),
       }),
     ];
 
@@ -200,18 +195,16 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
       serverId: "srv",
       workspaces: [
         workspace({
-          id: "/repo/b",
-          projectId: "project-b",
-          name: "feat/b",
-          status: "running",
-          activityAt: new Date("2026-01-02T00:00:00.000Z"),
-        }),
-        workspace({
           id: "/repo/a",
           projectId: "project-a",
           name: "feat/a",
           status: "running",
-          activityAt: new Date("2026-01-03T00:00:00.000Z"),
+        }),
+        workspace({
+          id: "/repo/b",
+          projectId: "project-b",
+          name: "feat/b",
+          status: "running",
         }),
       ],
       projectOrder: seededOrder,
@@ -219,8 +212,8 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
     });
 
     expect(updatedProjects.map((project) => project.projectKey)).toEqual([
-      "project-b",
       "project-a",
+      "project-b",
     ]);
   });
 
@@ -233,21 +226,18 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
           projectId: "project-c",
           name: "feat/c",
           status: "running",
-          activityAt: new Date("2026-01-04T00:00:00.000Z"),
         }),
         workspace({
           id: "/repo/b",
           projectId: "project-b",
           name: "feat/b",
           status: "running",
-          activityAt: new Date("2026-01-02T00:00:00.000Z"),
         }),
         workspace({
           id: "/repo/a",
           projectId: "project-a",
           name: "feat/a",
           status: "running",
-          activityAt: new Date("2026-01-01T00:00:00.000Z"),
         }),
       ],
       projectOrder: ["project-b", "project-a", "project-c"],
@@ -270,14 +260,12 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
           projectId: "project-1",
           name: "main",
           status: "running",
-          activityAt: new Date("2026-01-02T00:00:00.000Z"),
         }),
         workspace({
           id: "/repo/feature",
           projectId: "project-1",
           name: "feature",
           status: "running",
-          activityAt: new Date("2026-01-01T00:00:00.000Z"),
         }),
       ],
       projectOrder: ["project-1"],
@@ -297,14 +285,12 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
           projectId: "project-1",
           name: "main",
           status: "running",
-          activityAt: new Date("2026-01-02T00:00:00.000Z"),
         }),
         workspace({
           id: "/repo/feature",
           projectId: "project-1",
           name: "feature",
           status: "running",
-          activityAt: new Date("2026-01-03T00:00:00.000Z"),
         }),
       ],
       projectOrder: ["project-1"],
@@ -314,8 +300,8 @@ describe("buildSidebarProjectsFromWorkspaces", () => {
     });
 
     expect(projects[0]?.workspaces.map((workspace) => workspace.workspaceId)).toEqual([
-      "/repo/main",
       "/repo/feature",
+      "/repo/main",
     ]);
   });
 });

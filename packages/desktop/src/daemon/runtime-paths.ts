@@ -78,7 +78,13 @@ function resolvePackagedAsarPath(): string {
 }
 
 function resolvePackagedNodeEntrypointRunnerPath(): string {
-  return path.join(process.resourcesPath, "app.asar.unpacked", "dist", "daemon", "node-entrypoint-runner.js");
+  return path.join(
+    process.resourcesPath,
+    "app.asar.unpacked",
+    "dist",
+    "daemon",
+    "node-entrypoint-runner.js",
+  );
 }
 
 function assertPathExists(input: { label: string; filePath: string }): string {
@@ -117,12 +123,7 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
   }
 
   const serverPackage = resolveServerPackageInfo();
-  const distRunner = path.join(
-    serverPackage.root,
-    "dist",
-    "scripts",
-    "supervisor-entrypoint.js",
-  );
+  const distRunner = path.join(serverPackage.root, "dist", "scripts", "supervisor-entrypoint.js");
   if (existsSync(distRunner)) {
     return {
       entryPath: distRunner,

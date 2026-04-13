@@ -9,6 +9,7 @@ import {
   ViewStyle,
   Platform,
 } from "react-native";
+import * as React from "react";
 import {
   useState,
   useEffect,
@@ -23,7 +24,8 @@ import {
   cloneElement,
 } from "react";
 import type { ReactNode, ComponentType } from "react";
-import Markdown, { MarkdownIt } from "react-native-markdown-display";
+import Markdown, { MarkdownIt, type RenderRules } from "react-native-markdown-display";
+import { useQuery } from "@tanstack/react-query";
 import MaskedView from "@react-native-masked-view/masked-view";
 import {
   Circle,
@@ -72,11 +74,18 @@ import {
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { markScrollInvestigationEvent } from "@/utils/scroll-jank-investigation";
+import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import {
+  getAssistantImageMetadata,
+  setAssistantImageMetadata,
+} from "@/utils/assistant-image-metadata";
+import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
 export type { InlinePathTarget } from "@/utils/inline-path";
 import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
+import type { DaemonClient } from "@server/client/daemon-client";
 
 interface UserMessageProps {
   message: string;
@@ -399,6 +408,8 @@ interface AssistantMessageProps {
   timestamp: number;
   onInlinePathPress?: (target: InlinePathTarget) => void;
   workspaceRoot?: string;
+  serverId?: string;
+  client?: DaemonClient | null;
   disableOuterSpacing?: boolean;
 }
 
@@ -425,7 +436,214 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: 13,
     userSelect: Platform.OS === "web" ? "text" : "auto",
   },
+  imageFrame: {
+    width: "100%",
+    minHeight: 160,
+    marginHorizontal: -theme.spacing[1],
+  },
+  imageSurface: {
+    width: "100%",
+    overflow: "hidden",
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  imageState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[6],
+    gap: theme.spacing[2],
+  },
+  imageErrorText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    textAlign: "center",
+  },
 }));
+
+const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
+
+const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedImage({
+  uri,
+  alt,
+  containerStyle,
+  source,
+  workspaceRoot,
+  serverId,
+}: {
+  uri: string;
+  alt?: string;
+  containerStyle?: StyleProp<ViewStyle>;
+  source: string;
+  workspaceRoot?: string;
+  serverId?: string;
+}) {
+  const cachedMetadata = useMemo(
+    () => getAssistantImageMetadata({ source, workspaceRoot, serverId }),
+    [serverId, source, workspaceRoot],
+  );
+  const [aspectRatio, setAspectRatio] = useState<number | null>(
+    cachedMetadata?.aspectRatio ?? null,
+  );
+
+  useEffect(() => {
+    if (cachedMetadata) {
+      setAspectRatio(cachedMetadata.aspectRatio);
+      return;
+    }
+
+    setAspectRatio(null);
+    let cancelled = false;
+
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (cancelled) {
+          return;
+        }
+        if (width > 0 && height > 0) {
+          const metadata = setAssistantImageMetadata(
+            { source, workspaceRoot, serverId },
+            { width, height },
+          );
+          setAspectRatio(metadata?.aspectRatio ?? width / height);
+        }
+      },
+      () => {
+        if (cancelled) {
+          return;
+        }
+        setAspectRatio(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedMetadata, serverId, source, uri, workspaceRoot]);
+
+  const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      assistantMessageStylesheet.imageSurface,
+      aspectRatio ? { aspectRatio } : { minHeight: ASSISTANT_IMAGE_MIN_HEIGHT },
+    ],
+    [aspectRatio],
+  );
+
+  return (
+    <View style={[assistantMessageStylesheet.imageFrame, containerStyle]}>
+      <View style={surfaceStyle}>
+        <Image
+          source={{ uri }}
+          style={assistantMessageStylesheet.image}
+          resizeMode="contain"
+          accessibilityLabel={alt}
+        />
+      </View>
+    </View>
+  );
+});
+
+function AssistantMarkdownImage({
+  source,
+  alt,
+  hasLeadingContent,
+  client,
+  workspaceRoot,
+  serverId,
+}: {
+  source: string;
+  alt?: string;
+  hasLeadingContent: boolean;
+  client?: DaemonClient | null;
+  workspaceRoot?: string;
+  serverId?: string;
+}) {
+  const { theme } = useUnistyles();
+  const resolution = useMemo(
+    () => resolveAssistantImageSource({ source, workspaceRoot }),
+    [source, workspaceRoot],
+  );
+  const containerStyle = useMemo<StyleProp<ViewStyle>>(
+    () => ({
+      marginTop: hasLeadingContent ? theme.spacing[4] : 0,
+      marginBottom: 0,
+    }),
+    [hasLeadingContent, theme],
+  );
+
+  const query = useQuery({
+    queryKey: [
+      "assistantMarkdownImage",
+      serverId ?? "unknown-server",
+      resolution?.kind === "file_rpc" ? resolution.cwd : null,
+      resolution?.kind === "file_rpc" ? resolution.path : null,
+    ],
+    enabled: Boolean(client && resolution?.kind === "file_rpc"),
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (!client || !resolution || resolution.kind !== "file_rpc") {
+        return null;
+      }
+
+      const payload = await client.exploreFileSystem(resolution.cwd, resolution.path, "file");
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+      if (!payload.file || payload.file.kind !== "image" || !payload.file.content) {
+        throw new Error("Image preview unavailable.");
+      }
+
+      return `data:${payload.file.mimeType ?? "image/png"};base64,${payload.file.content}`;
+    },
+  });
+
+  const directUri = resolution?.kind === "direct" ? resolution.uri : null;
+  const resolvedUri = directUri ?? query.data ?? null;
+
+  if (resolvedUri) {
+    return (
+      <AssistantMarkdownResolvedImage
+        uri={resolvedUri}
+        alt={alt}
+        containerStyle={containerStyle}
+        source={source}
+        workspaceRoot={workspaceRoot}
+        serverId={serverId}
+      />
+    );
+  }
+
+  if (query.isLoading) {
+    return (
+      <View
+        style={[
+          assistantMessageStylesheet.imageFrame,
+          containerStyle,
+          assistantMessageStylesheet.imageState,
+        ]}
+      >
+        <ActivityIndicator size="small" />
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        assistantMessageStylesheet.imageFrame,
+        containerStyle,
+        assistantMessageStylesheet.imageState,
+      ]}
+    >
+      <Text style={assistantMessageStylesheet.imageErrorText}>
+        {query.error instanceof Error ? query.error.message : "Unable to load image preview."}
+      </Text>
+    </View>
+  );
+}
 
 function MarkdownLink({
   href,
@@ -712,11 +930,35 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
+interface MemoizedMarkdownBlockProps {
+  text: string;
+  styles: ReturnType<typeof createMarkdownStyles>;
+  rules: RenderRules;
+  parser: MarkdownIt;
+  onLinkPress: (url: string) => boolean;
+}
+
+const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
+  text,
+  styles,
+  rules,
+  parser,
+  onLinkPress,
+}: MemoizedMarkdownBlockProps) {
+  return (
+    <Markdown style={styles} rules={rules} markdownit={parser} onLinkPress={onLinkPress}>
+      {text}
+    </Markdown>
+  );
+});
+
 export const AssistantMessage = memo(function AssistantMessage({
   message,
   timestamp,
   onInlinePathPress,
   workspaceRoot,
+  serverId,
+  client,
   disableOuterSpacing,
 }: AssistantMessageProps) {
   const { theme, rt } = useUnistyles();
@@ -753,7 +995,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     [onInlinePathPress, workspaceRoot],
   );
 
-  const markdownRules = useMemo(() => {
+  const markdownRules = useMemo<RenderRules>(() => {
     return {
       text: (
         node: any,
@@ -868,14 +1110,11 @@ export const AssistantMessage = memo(function AssistantMessage({
           </View>
         );
       },
-      paragraph: (node: any, children: ReactNode[], parent: any, styles: any) => {
-        const isLastChild = parent[0]?.children?.at(-1)?.key === node.key;
-        return (
-          <View key={node.key} style={[styles.paragraph, isLastChild && { marginBottom: 0 }]}>
-            {children}
-          </View>
-        );
-      },
+      paragraph: (node: any, children: ReactNode[], _parent: any, styles: any) => (
+        <View key={node.key} style={[styles.paragraph, { marginBottom: 0 }]}>
+          {children}
+        </View>
+      ),
       link: (node: any, children: ReactNode[], _parent: any, styles: any) => (
         <MarkdownLink
           key={node.key}
@@ -892,8 +1131,32 @@ export const AssistantMessage = memo(function AssistantMessage({
           )}
         </MarkdownLink>
       ),
+      image: (node: any, _children: ReactNode[], parent: any, styles: any) => {
+        const paragraphNode = Array.isArray(parent)
+          ? parent.find((ancestor: any) => ancestor?.type === "paragraph")
+          : null;
+        const paragraphChildren = Array.isArray(paragraphNode?.children)
+          ? paragraphNode.children
+          : [];
+        const imageIndex = paragraphChildren.findIndex((child: any) => child?.key === node.key);
+        const hasLeadingContent = imageIndex > 0;
+
+        return (
+          <AssistantMarkdownImage
+            key={node.key}
+            source={String(node.attributes?.src ?? "")}
+            alt={typeof node.attributes?.alt === "string" ? node.attributes.alt : undefined}
+            hasLeadingContent={hasLeadingContent}
+            client={client}
+            workspaceRoot={workspaceRoot}
+            serverId={serverId}
+          />
+        );
+      },
     };
-  }, [handleLinkPress, markdownParser, onInlinePathPress]);
+  }, [client, handleLinkPress, markdownParser, onInlinePathPress, serverId, workspaceRoot]);
+
+  const blocks = useMemo(() => splitMarkdownBlocks(message), [message]);
 
   return (
     <View
@@ -903,14 +1166,20 @@ export const AssistantMessage = memo(function AssistantMessage({
         !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
       ]}
     >
-      <Markdown
-        style={markdownStyles}
-        rules={markdownRules}
-        markdownit={markdownParser}
-        onLinkPress={handleLinkPress}
-      >
-        {message}
-      </Markdown>
+      {blocks.map((block, index) => (
+        <View
+          key={index}
+          style={index < blocks.length - 1 ? { marginBottom: theme.spacing[3] } : undefined}
+        >
+          <MemoizedMarkdownBlock
+            text={block}
+            styles={markdownStyles}
+            rules={markdownRules}
+            parser={markdownParser}
+            onLinkPress={handleLinkPress}
+          />
+        </View>
+      ))}
     </View>
   );
 });
@@ -1938,7 +2207,11 @@ export const ToolCall = memo(function ToolCall({
 
   if (effectiveDetail?.type === "plan") {
     return (
-      <PlanCard title="Plan" text={effectiveDetail.text} disableOuterSpacing={disableOuterSpacing} />
+      <PlanCard
+        title="Plan"
+        text={effectiveDetail.text}
+        disableOuterSpacing={disableOuterSpacing}
+      />
     );
   }
 

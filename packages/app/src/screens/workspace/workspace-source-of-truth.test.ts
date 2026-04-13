@@ -18,7 +18,6 @@ describe("workspace source of truth consumption", () => {
       workspaceKind: "checkout",
       name: "feat/workspace-sot",
       status: "running",
-      activityAt: new Date("2026-03-01T00:00:00.000Z"),
       diffStat: null,
       scripts: [],
     };

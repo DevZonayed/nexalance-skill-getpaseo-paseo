@@ -1,7 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import { existsSync, rmSync } from "node:fs";
 
-import type { AgentLaunchContext, AgentSession, AgentSessionConfig, AgentStreamEvent } from "../agent-sdk-types.js";
+import type {
+  AgentLaunchContext,
+  AgentSession,
+  AgentSessionConfig,
+  AgentStreamEvent,
+} from "../agent-sdk-types.js";
 import {
   __codexAppServerInternals,
   codexAppServerTurnInputFromPrompt,
@@ -381,10 +386,7 @@ describe("Codex app-server provider", () => {
           id: "favorite_drink",
           header: "Drink",
           question: "Which drink do you want?",
-          options: [
-            { label: "Coffee", description: "Default" },
-            { label: "Tea" },
-          ],
+          options: [{ label: "Coffee", description: "Default" }, { label: "Tea" }],
         },
       ],
     });
@@ -411,10 +413,7 @@ describe("Codex app-server provider", () => {
                 id: "favorite_drink",
                 header: "Drink",
                 question: "Which drink do you want?",
-                options: [
-                  { label: "Coffee", description: "Default" },
-                  { label: "Tea" },
-                ],
+                options: [{ label: "Coffee", description: "Default" }, { label: "Tea" }],
               },
             ],
           },
@@ -441,10 +440,7 @@ describe("Codex app-server provider", () => {
                 id: "favorite_drink",
                 header: "Drink",
                 question: "Which drink do you want?",
-                options: [
-                  { label: "Coffee", description: "Default" },
-                  { label: "Tea" },
-                ],
+                options: [{ label: "Coffee", description: "Default" }, { label: "Tea" }],
               },
             ],
           },
@@ -457,10 +453,7 @@ describe("Codex app-server provider", () => {
                 id: "favorite_drink",
                 header: "Drink",
                 question: "Which drink do you want?",
-                options: [
-                  { label: "Coffee", description: "Default" },
-                  { label: "Tea" },
-                ],
+                options: [{ label: "Coffee", description: "Default" }, { label: "Tea" }],
               },
             ],
           },

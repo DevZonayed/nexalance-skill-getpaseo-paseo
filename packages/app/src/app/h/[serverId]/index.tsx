@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
+import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import { useSessionStore } from "@/stores/session-store";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import {
@@ -21,6 +22,14 @@ function getCurrentPathname(fallbackPathname: string): string {
 }
 
 export default function HostIndexRoute() {
+  return (
+    <HostRouteBootstrapBoundary>
+      <HostIndexRouteContent />
+    </HostRouteBootstrapBoundary>
+  );
+}
+
+function HostIndexRouteContent() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useLocalSearchParams<{ serverId?: string }>();
@@ -59,11 +68,6 @@ export default function HostIndexRoute() {
       );
 
       const visibleWorkspaces = sessionWorkspaces ? Array.from(sessionWorkspaces.values()) : [];
-      visibleWorkspaces.sort((left, right) => {
-        const leftTime = left.activityAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-        const rightTime = right.activityAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-        return rightTime - leftTime;
-      });
 
       const primaryAgent = visibleAgents[0];
       const primaryAgentWorkspaceId = resolveWorkspaceIdByExecutionDirectory({

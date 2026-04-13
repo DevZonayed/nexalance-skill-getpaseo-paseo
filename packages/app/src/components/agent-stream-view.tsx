@@ -261,7 +261,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
           return looseGap;
         }
-        if ((item.kind === "user_message" || item.kind === "assistant_message") && isToolSequenceItem(belowItem)) {
+        if (
+          (item.kind === "user_message" || item.kind === "assistant_message") &&
+          isToolSequenceItem(belowItem)
+        ) {
           return tightGap;
         }
         if (item.kind === "todo_list" && isToolSequenceItem(belowItem)) {
@@ -334,6 +337,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 timestamp={item.timestamp.getTime()}
                 onInlinePathPress={handleInlinePathPress}
                 workspaceRoot={workspaceRoot}
+                serverId={serverId}
+                client={client}
               />
             );
           case "thought": {
@@ -375,10 +380,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 data.detail.input.trim()
               ) {
                 return (
-                  <SpeakMessage
-                    message={data.detail.input}
-                    timestamp={item.timestamp.getTime()}
-                  />
+                  <SpeakMessage message={data.detail.input} timestamp={item.timestamp.getTime()} />
                 );
               }
 
@@ -921,7 +923,9 @@ function PermissionRequestCard({
         </Text>
       ) : null}
 
-      {planMarkdown ? <PlanCard title="Proposed plan" text={planMarkdown} disableOuterSpacing /> : null}
+      {planMarkdown ? (
+        <PlanCard title="Proposed plan" text={planMarkdown} disableOuterSpacing />
+      ) : null}
 
       {!isPlanRequest ? (
         <ToolCallDetailsContent

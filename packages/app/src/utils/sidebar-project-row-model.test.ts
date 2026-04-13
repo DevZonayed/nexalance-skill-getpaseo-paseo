@@ -16,7 +16,6 @@ function workspace(overrides: Partial<SidebarWorkspaceEntry> = {}): SidebarWorks
     projectKind: "git",
     workspaceKind: "checkout",
     name: "paseo",
-    activityAt: null,
     statusBucket: "done",
     diffStat: null,
     scripts: [],
@@ -34,7 +33,6 @@ function project(overrides: Partial<SidebarProjectEntry> = {}): SidebarProjectEn
     statusBucket: "done",
     activeCount: 0,
     totalWorkspaces: 1,
-    latestActivityAt: null,
     workspaces: [workspace()],
     ...overrides,
   };
@@ -132,7 +130,7 @@ describe("buildSidebarProjectRowModel", () => {
 });
 
 describe("isSidebarProjectFlattened", () => {
-  it("returns true only for single-workspace directory projects", () => {
+  it("returns true only for single-workspace non-git projects", () => {
     expect(
       isSidebarProjectFlattened(project({ projectKind: "git", workspaces: [workspace()] })),
     ).toBe(false);

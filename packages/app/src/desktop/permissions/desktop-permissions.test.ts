@@ -14,7 +14,9 @@ const originalGlobals: GlobalSnapshot = {
   navigatorDescriptor: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
   windowDescriptor: Object.getOwnPropertyDescriptor(globalThis, "window"),
   paseoDesktop:
-    typeof window === "undefined" ? undefined : (window as { paseoDesktop?: unknown }).paseoDesktop,
+    typeof globalThis.window === "undefined"
+      ? undefined
+      : (globalThis.window as { paseoDesktop?: unknown }).paseoDesktop,
 };
 
 function ensureWindow(): { paseoDesktop?: unknown } {
@@ -55,8 +57,8 @@ function restoreGlobals(): void {
     delete (globalThis as { window?: unknown }).window;
   }
 
-  if (typeof window !== "undefined") {
-    (window as { paseoDesktop?: unknown }).paseoDesktop = originalGlobals.paseoDesktop;
+  if (typeof globalThis.window !== "undefined") {
+    (globalThis.window as { paseoDesktop?: unknown }).paseoDesktop = originalGlobals.paseoDesktop;
   }
 }
 

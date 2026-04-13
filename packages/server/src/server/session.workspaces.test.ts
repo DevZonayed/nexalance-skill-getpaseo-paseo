@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { Session } from "./session.js";
 import type { AgentSnapshotPayload } from "../shared/messages.js";
+import type { WorkspaceGitRuntimeSnapshot } from "./workspace-git-service.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
@@ -66,7 +67,123 @@ function makeAgent(input: {
   };
 }
 
-function createSessionForWorkspaceTests(options: { appVersion?: string | null } = {}): {
+function createNoopWorkspaceGitService() {
+  return {
+    subscribe: async (params: { cwd: string }) => ({
+      initial: {
+        cwd: params.cwd,
+        git: {
+          isGit: false,
+          repoRoot: null,
+          mainRepoRoot: null,
+          currentBranch: null,
+          remoteUrl: null,
+          isPaseoOwnedWorktree: false,
+          isDirty: null,
+          aheadBehind: null,
+          aheadOfOrigin: null,
+          behindOfOrigin: null,
+          diffStat: null,
+        },
+        github: {
+          featuresEnabled: false,
+          pullRequest: null,
+          error: null,
+          refreshedAt: null,
+        },
+      },
+      unsubscribe: () => {},
+    }),
+    peekSnapshot: (_cwd: string) => null,
+    getSnapshot: async (cwd: string) => ({
+      cwd,
+      git: {
+        isGit: false,
+        repoRoot: null,
+        mainRepoRoot: null,
+        currentBranch: null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: false,
+        isDirty: null,
+        aheadBehind: null,
+        aheadOfOrigin: null,
+        behindOfOrigin: null,
+        diffStat: null,
+      },
+      github: {
+        featuresEnabled: false,
+        pullRequest: null,
+        error: null,
+        refreshedAt: null,
+      },
+    }),
+    refresh: async () => {},
+    dispose: () => {},
+  };
+}
+
+function createWorkspaceRuntimeSnapshot(
+  cwd: string,
+  overrides?: {
+    git?: Partial<WorkspaceGitRuntimeSnapshot["git"]>;
+    github?: Partial<WorkspaceGitRuntimeSnapshot["github"]>;
+  },
+): WorkspaceGitRuntimeSnapshot {
+  const base: WorkspaceGitRuntimeSnapshot = {
+    cwd,
+    git: {
+      isGit: true,
+      repoRoot: cwd,
+      mainRepoRoot: null,
+      currentBranch: "main",
+      remoteUrl: "https://github.com/acme/repo.git",
+      isPaseoOwnedWorktree: false,
+      isDirty: false,
+      aheadBehind: { ahead: 0, behind: 0 },
+      aheadOfOrigin: 0,
+      behindOfOrigin: 0,
+      diffStat: { additions: 1, deletions: 0 },
+    },
+    github: {
+      featuresEnabled: true,
+      pullRequest: {
+        url: "https://github.com/acme/repo/pull/123",
+        title: "Runtime payloads",
+        state: "open",
+        baseRefName: "main",
+        headRefName: "feature/runtime-payloads",
+        isMerged: false,
+      },
+      error: null,
+      refreshedAt: "2026-04-12T00:00:00.000Z",
+    },
+  };
+
+  return {
+    cwd,
+    git: {
+      ...base.git,
+      ...overrides?.git,
+    },
+    github: {
+      ...base.github,
+      ...overrides?.github,
+      pullRequest:
+        overrides?.github && "pullRequest" in overrides.github
+          ? (overrides.github.pullRequest ?? null)
+          : base.github.pullRequest,
+      error:
+        overrides?.github && "error" in overrides.github
+          ? (overrides.github.error ?? null)
+          : base.github.error,
+    },
+  };
+}
+
+function createSessionForWorkspaceTests(options: {
+  appVersion?: string | null;
+  workspaceGitService?: ReturnType<typeof createNoopWorkspaceGitService>;
+} = {}): {
   session: Session;
   emitted: Array<{ type: string; payload: unknown }>;
   projects: Map<number, ReturnType<typeof createPersistedProjectRecord>>;
@@ -85,10 +202,6 @@ function createSessionForWorkspaceTests(options: { appVersion?: string | null } 
     warn: vi.fn(),
     error: vi.fn(),
   };
-  const backgroundGitFetchManager = {
-    subscribe: vi.fn(async () => ({ unsubscribe: vi.fn() })),
-  };
-
   const session = new Session({
     clientId: "test-client",
     appVersion: options.appVersion ?? null,
@@ -179,10 +292,8 @@ function createSessionForWorkspaceTests(options: { appVersion?: string | null } 
       }),
       dispose: () => {},
     } as any,
-    backgroundGitFetchManager: backgroundGitFetchManager as any,
-    createAgentMcpTransport: async () => {
-      throw new Error("not used");
-    },
+    workspaceGitService: (options.workspaceGitService ?? createNoopWorkspaceGitService()) as any,
+    mcpBaseUrl: null,
     stt: null,
     tts: null,
     terminalManager: null,
@@ -361,9 +472,8 @@ describe("workspace aggregation", () => {
         }),
         dispose: () => {},
       } as any,
-      createAgentMcpTransport: async () => {
-        throw new Error("not used");
-      },
+      workspaceGitService: createNoopWorkspaceGitService() as any,
+      mcpBaseUrl: null,
       stt: null,
       tts: null,
       terminalManager: null,
@@ -498,9 +608,8 @@ describe("workspace aggregation", () => {
         }),
         dispose: () => {},
       } as any,
-      createAgentMcpTransport: async () => {
-        throw new Error("not used");
-      },
+      workspaceGitService: createNoopWorkspaceGitService() as any,
+      mcpBaseUrl: null,
       stt: null,
       tts: null,
       terminalManager: {
@@ -526,9 +635,8 @@ describe("workspace aggregation", () => {
 
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-1");
     expect(session.terminalManager.killTerminal).toHaveBeenCalledWith("term-1");
-    const closePayload = emitted.find((message) => message.type === "close_items_response")?.payload;
-    expect(closePayload).toEqual({
-      agents: [{ agentId: "agent-1", archivedAt: expect.any(String) }],
+    expect(emitted.find((message) => message.type === "close_items_response")?.payload).toEqual({
+      agents: [{ agentId: "agent-1", archivedAt }],
       terminals: [{ terminalId: "term-1", success: true }],
       requestId: "req-close-items",
     });
@@ -693,9 +801,8 @@ describe("workspace aggregation", () => {
         }),
         dispose: () => {},
       } as any,
-      createAgentMcpTransport: async () => {
-        throw new Error("not used");
-      },
+      workspaceGitService: createNoopWorkspaceGitService() as any,
+      mcpBaseUrl: null,
       stt: null,
       tts: null,
       terminalManager: {
@@ -838,9 +945,8 @@ describe("workspace aggregation", () => {
         }),
         dispose: () => {},
       } as any,
-      createAgentMcpTransport: async () => {
-        throw new Error("not used");
-      },
+      workspaceGitService: createNoopWorkspaceGitService() as any,
+      mcpBaseUrl: null,
       stt: null,
       tts: null,
       terminalManager: {
@@ -867,9 +973,8 @@ describe("workspace aggregation", () => {
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-bad");
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-good");
     expect(session.terminalManager.killTerminal).toHaveBeenCalledWith("term-1");
-    const closePayload = emitted.find((message) => message.type === "close_items_response")?.payload;
-    expect(closePayload).toEqual({
-      agents: [{ agentId: "agent-good", archivedAt: expect.any(String) }],
+    expect(emitted.find((message) => message.type === "close_items_response")?.payload).toEqual({
+      agents: [{ agentId: "agent-good", archivedAt }],
       terminals: [{ terminalId: "term-1", success: true }],
       requestId: "req-close-best-effort",
     });
@@ -967,10 +1072,9 @@ describe("workspace aggregation", () => {
     });
 
     expect(result.entries[0]).toMatchObject({
-      id: "/tmp/repo/.paseo/worktrees/feature-name",
-      name: "feature-name",
-      projectKind: "git",
-      workspaceKind: "worktree",
+      id: "/tmp/repo",
+      status: "running",
+      activityAt: null,
     });
   });
 
@@ -995,6 +1099,7 @@ describe("workspace aggregation", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     (session as any).reconcileActiveWorkspaceRecords = async () => new Set();
     (session as any).buildWorkspaceDescriptorMap = async () =>
@@ -1159,6 +1264,7 @@ describe("workspace aggregation", () => {
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
     };
     sessionAny.reconcileActiveWorkspaceRecords = async () => new Set();
     sessionAny.buildWorkspaceDescriptorMap = async () =>
@@ -1342,9 +1448,7 @@ describe("workspace aggregation", () => {
     });
 
     expect(calls).toEqual([{ editorId: "vscode", path: "/tmp/repo" }]);
-    const response = emitted.find(
-      (message) => message.type === "open_in_editor_response",
-    ) as any;
+    const response = emitted.find((message) => message.type === "open_in_editor_response") as any;
     expect(response?.payload.error).toBeNull();
   });
 
@@ -1522,6 +1626,102 @@ describe("workspace aggregation", () => {
           workspaceKind: "local_checkout",
         },
       });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("fetch_workspaces_request reconciles remote URL changes for existing workspaces", async () => {
+    const session = createSessionForWorkspaceTests().session as any;
+    const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+    const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+    const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-workspace-fetch-")));
+    const mainWorkspaceId = path.join(tempDir, "inkwell");
+    const worktreeWorkspaceId = path.join(mainWorkspaceId, ".paseo", "worktrees", "feature-a");
+    const oldProjectId = "remote:github.com/old-owner/inkwell";
+    const newProjectId = "remote:github.com/new-owner/inkwell";
+
+    execSync(`mkdir -p ${JSON.stringify(worktreeWorkspaceId)}`);
+
+    projects.set(
+      oldProjectId,
+      createPersistedProjectRecord({
+        projectId: oldProjectId,
+        rootPath: mainWorkspaceId,
+        kind: "git",
+        displayName: "old-owner/inkwell",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      }),
+    );
+
+    for (const [workspaceId, displayName] of [
+      [mainWorkspaceId, "main"],
+      [worktreeWorkspaceId, "feature-a"],
+    ] as const) {
+      workspaces.set(
+        workspaceId,
+        createPersistedWorkspaceRecord({
+          workspaceId,
+          projectId: oldProjectId,
+          cwd: workspaceId,
+          kind: workspaceId === mainWorkspaceId ? "local_checkout" : "worktree",
+          displayName,
+          createdAt: "2026-03-01T12:00:00.000Z",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+        }),
+      );
+    }
+
+    session.listAgentPayloads = async () => [];
+    session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+    session.projectRegistry.list = async () => Array.from(projects.values());
+    session.projectRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedProjectRecord>,
+    ) => {
+      projects.set(record.projectId, record);
+    };
+    session.projectRegistry.archive = async (projectId: string, archivedAt: string) => {
+      const existing = projects.get(projectId);
+      if (!existing) return;
+      projects.set(projectId, { ...existing, archivedAt, updatedAt: archivedAt });
+    };
+    session.workspaceRegistry.get = async (workspaceId: string) =>
+      workspaces.get(workspaceId) ?? null;
+    session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+    session.workspaceRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedWorkspaceRecord>,
+    ) => {
+      workspaces.set(record.workspaceId, record);
+    };
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: newProjectId,
+      projectName: "new-owner/inkwell",
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: cwd === mainWorkspaceId ? "main" : "feature-a",
+        remoteUrl: "https://github.com/new-owner/inkwell.git",
+        worktreeRoot: cwd,
+        isPaseoOwnedWorktree: cwd !== mainWorkspaceId,
+        mainRepoRoot: cwd === mainWorkspaceId ? null : mainWorkspaceId,
+      },
+    });
+
+    try {
+      await session.reconcileWorkspaceRecord(mainWorkspaceId);
+      await session.reconcileWorkspaceRecord(worktreeWorkspaceId);
+
+      const result = await session.listFetchWorkspacesEntries({
+        type: "fetch_workspaces_request",
+        requestId: "req-fetch-reconcile",
+      });
+
+      expect(result.entries.map((entry: any) => entry.projectId)).toEqual([
+        newProjectId,
+        newProjectId,
+      ]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -1837,14 +2037,234 @@ describe("backward compatibility", () => {
     sessionAny.describeWorkspaceRecord = vi.fn(async () => baselineDescriptor);
     sessionAny.describeWorkspaceRecordWithGitData = vi.fn(async () => gitDescriptor);
 
-    const descriptors = await sessionAny.listWorkspaceDescriptorsSnapshot();
+    const descriptors = Array.from(
+      (
+        await sessionAny.buildWorkspaceDescriptorMap({
+          includeGitData: false,
+        })
+      ).values(),
+    );
 
     expect(sessionAny.describeWorkspaceRecord).toHaveBeenCalledWith(workspace, project);
     expect(sessionAny.describeWorkspaceRecordWithGitData).not.toHaveBeenCalled();
     expect(descriptors).toEqual([baselineDescriptor]);
   });
 
-  test("subscribed fetch_workspaces emits git enrichment updates after the baseline snapshot", async () => {
+  test("fetch_workspaces_response reads runtime fields from passive workspace git service snapshots", async () => {
+    const emitted: Array<{ type: string; payload: any }> = [];
+    const runtimeSnapshot = createWorkspaceRuntimeSnapshot("/tmp/repo", {
+      git: {
+        currentBranch: "runtime-branch",
+        isDirty: true,
+        aheadBehind: { ahead: 3, behind: 1 },
+        aheadOfOrigin: 3,
+        behindOfOrigin: 1,
+      },
+      github: {
+        pullRequest: {
+          url: "https://github.com/acme/repo/pull/456",
+          title: "Ship runtime payloads",
+          state: "open",
+          baseRefName: "main",
+          headRefName: "runtime-branch",
+          isMerged: false,
+        },
+        refreshedAt: "2026-04-12T00:05:00.000Z",
+      },
+    });
+    const workspaceGitService = createNoopWorkspaceGitService();
+    workspaceGitService.peekSnapshot = vi.fn(() => runtimeSnapshot);
+    workspaceGitService.getSnapshot = vi.fn(async () => {
+      throw new Error("fetch_workspaces should not trigger per-workspace refreshes");
+    });
+    workspaceGitService.subscribe = vi.fn(async () => ({
+      initial: runtimeSnapshot,
+      unsubscribe: () => {},
+    }));
+
+    const { session } = createSessionForWorkspaceTests({
+      workspaceGitService,
+    });
+    const sessionAny = session as any;
+    const project = createPersistedProjectRecord({
+      projectId: "/tmp/repo",
+      rootPath: "/tmp/repo",
+      kind: "git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "/tmp/repo",
+      projectId: project.projectId,
+      cwd: "/tmp/repo",
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+
+    sessionAny.emit = (message: any) => emitted.push(message);
+    sessionAny.listAgentPayloads = async () => [];
+    sessionAny.projectRegistry.list = async () => [project];
+    sessionAny.workspaceRegistry.list = async () => [workspace];
+    sessionAny.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: cwd,
+      projectName: "repo",
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: runtimeSnapshot.git.currentBranch,
+        remoteUrl: runtimeSnapshot.git.remoteUrl,
+        worktreeRoot: cwd,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    });
+
+    await sessionAny.handleMessage({
+      type: "fetch_workspaces_request",
+      requestId: "req-fetch-workspaces-runtime",
+    });
+
+    const response = emitted.find((message) => message.type === "fetch_workspaces_response") as
+      | { type: "fetch_workspaces_response"; payload: any }
+      | undefined;
+
+    expect(workspaceGitService.peekSnapshot).toHaveBeenCalledWith("/tmp/repo");
+    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    expect(response?.payload.entries).toEqual([
+      expect.objectContaining({
+        id: "/tmp/repo",
+        gitRuntime: {
+          currentBranch: "runtime-branch",
+          remoteUrl: "https://github.com/acme/repo.git",
+          isPaseoOwnedWorktree: false,
+          isDirty: true,
+          aheadBehind: { ahead: 3, behind: 1 },
+          aheadOfOrigin: 3,
+          behindOfOrigin: 1,
+        },
+        githubRuntime: {
+          featuresEnabled: true,
+          pullRequest: {
+            url: "https://github.com/acme/repo/pull/456",
+            title: "Ship runtime payloads",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "runtime-branch",
+            isMerged: false,
+          },
+          error: null,
+          refreshedAt: "2026-04-12T00:05:00.000Z",
+        },
+      }),
+    ]);
+  });
+
+  test("workspace_update includes updated runtime fields", async () => {
+    const emitted: Array<{ type: string; payload: any }> = [];
+    const runtimeSnapshot = createWorkspaceRuntimeSnapshot("/tmp/repo", {
+      git: {
+        currentBranch: "feature/runtime-payloads",
+        isDirty: true,
+      },
+      github: {
+        pullRequest: {
+          url: "https://github.com/acme/repo/pull/789",
+          title: "Updated runtime payloads",
+          state: "merged",
+          baseRefName: "main",
+          headRefName: "feature/runtime-payloads",
+          isMerged: true,
+        },
+        refreshedAt: "2026-04-12T00:10:00.000Z",
+      },
+    });
+    const workspaceGitService = createNoopWorkspaceGitService();
+    workspaceGitService.peekSnapshot = vi.fn(() => runtimeSnapshot);
+    workspaceGitService.getSnapshot = vi.fn(async () => {
+      throw new Error("workspace updates should use passive workspace git snapshots");
+    });
+
+    const { session } = createSessionForWorkspaceTests({
+      workspaceGitService,
+    });
+    const sessionAny = session as any;
+    const project = createPersistedProjectRecord({
+      projectId: "/tmp/repo",
+      rootPath: "/tmp/repo",
+      kind: "git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "/tmp/repo",
+      projectId: project.projectId,
+      cwd: "/tmp/repo",
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+
+    sessionAny.emit = (message: any) => emitted.push(message);
+    sessionAny.workspaceUpdatesSubscription = {
+      subscriptionId: "sub-runtime",
+      filter: undefined,
+      isBootstrapping: false,
+      pendingUpdatesByWorkspaceId: new Map(),
+      lastEmittedByWorkspaceId: new Map(),
+    };
+    sessionAny.reconcileActiveWorkspaceRecords = async () => new Set();
+    sessionAny.listAgentPayloads = async () => [];
+    sessionAny.projectRegistry.list = async () => [project];
+    sessionAny.workspaceRegistry.list = async () => [workspace];
+    sessionAny.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: cwd,
+      projectName: "repo",
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: runtimeSnapshot.git.currentBranch,
+        remoteUrl: runtimeSnapshot.git.remoteUrl,
+        worktreeRoot: cwd,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    });
+
+    await sessionAny.emitWorkspaceUpdateForCwd("/tmp/repo", {
+      skipReconcile: true,
+    });
+
+    expect(workspaceGitService.peekSnapshot).toHaveBeenCalledWith("/tmp/repo");
+    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    expect(emitted).toContainEqual({
+      type: "workspace_update",
+      payload: {
+        kind: "upsert",
+        workspace: expect.objectContaining({
+          id: "/tmp/repo",
+          gitRuntime: expect.objectContaining({
+            currentBranch: "feature/runtime-payloads",
+            isDirty: true,
+          }),
+          githubRuntime: expect.objectContaining({
+            featuresEnabled: true,
+            pullRequest: expect.objectContaining({
+              title: "Updated runtime payloads",
+              isMerged: true,
+            }),
+            refreshedAt: "2026-04-12T00:10:00.000Z",
+          }),
+        }),
+      },
+    });
+  });
+
+  test("subscribed fetch_workspaces includes git enrichment in the initial snapshot", async () => {
     const emitted: Array<{ type: string; payload: any }> = [];
     const { session } = createSessionForWorkspaceTests();
     const sessionAny = session as any;
@@ -1940,31 +2360,25 @@ describe("backward compatibility", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const response = emitted.find(
-      (message) => message.type === "fetch_workspaces_response",
-    ) as { type: "fetch_workspaces_response"; payload: any } | undefined;
+    const response = emitted.find((message) => message.type === "fetch_workspaces_response") as
+      | { type: "fetch_workspaces_response"; payload: any }
+      | undefined;
     expect(
-      response?.payload.entries.map((entry: typeof baselineGitDescriptor | typeof directoryDescriptor) => [
-        entry.id,
-        entry.diffStat,
-      ]),
+      response?.payload.entries.map(
+        (entry: typeof baselineGitDescriptor | typeof directoryDescriptor) => [
+          entry.id,
+          entry.diffStat,
+        ],
+      ),
     ).toEqual([
       [directoryDescriptor.id, directoryDescriptor.diffStat],
-      [baselineGitDescriptor.id, baselineGitDescriptor.diffStat],
+      [enrichedGitDescriptor.id, enrichedGitDescriptor.diffStat],
     ]);
 
     const workspaceUpdates = emitted.filter(
       (message) => message.type === "workspace_update",
     ) as Array<{ type: "workspace_update"; payload: any }>;
-    expect(workspaceUpdates).toEqual([
-      {
-        type: "workspace_update",
-        payload: {
-          kind: "upsert",
-          workspace: enrichedGitDescriptor,
-        },
-      },
-    ]);
+    expect(workspaceUpdates).toEqual([]);
     expect(sessionAny.describeWorkspaceRecordWithGitData).toHaveBeenCalledWith(
       gitWorkspace,
       gitProject,

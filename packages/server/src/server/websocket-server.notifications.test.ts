@@ -66,6 +66,9 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     getLastAssistantMessage: vi.fn(async () => null),
     ...agentManagerOverrides,
   };
+  const daemonConfigStore = {
+    onChange: vi.fn(() => () => {}),
+  };
 
   const server = new VoiceAssistantWebSocketServer(
     {} as any,
@@ -75,9 +78,9 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     {} as any,
     {} as any,
     "/tmp/paseo-test",
-    async () => ({}) as any,
+    daemonConfigStore as any,
+    null,
     { allowedOrigins: new Set() },
-    undefined,
     undefined,
     undefined,
     undefined,

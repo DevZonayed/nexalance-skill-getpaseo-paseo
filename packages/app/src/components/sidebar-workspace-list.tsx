@@ -48,7 +48,7 @@ import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runtime";
-import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import { buildHostNewWorkspaceRoute, parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
@@ -57,7 +57,7 @@ import {
   type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -116,6 +116,19 @@ const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
+function getWorkspacePrIconColor(
+  theme: ReturnType<typeof useUnistyles>["theme"],
+  state: PrHint["state"],
+) {
+  switch (state) {
+    case "merged":
+      return theme.colors.palette.purple[500];
+    case "open":
+      return theme.colors.palette.green[500];
+    case "closed":
+      return theme.colors.palette.red[500];
+  }
+}
 
 interface SidebarWorkspaceListProps {
   projects: SidebarProjectEntry[];
@@ -306,11 +319,7 @@ function WorkspaceStatusIndicator({
   }
 
   const KindIcon =
-    workspaceKind === "local_checkout"
-      ? Monitor
-      : workspaceKind === "worktree"
-        ? FolderGit2
-        : null;
+    workspaceKind === "local_checkout" ? Monitor : workspaceKind === "worktree" ? FolderGit2 : null;
   if (!KindIcon) return null;
 
   const dotColor = getStatusDotColor({ theme, bucket, showDoneAsInactive: false });
@@ -1868,10 +1877,7 @@ export function SidebarWorkspaceList({
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
-  const isDesktopApp = getIsElectronRuntime();
-  const altDown = useKeyboardShortcutsStore((state) => state.altDown);
-  const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown);
-  const showShortcutBadges = altDown || (isDesktopApp && cmdOrCtrlDown);
+  const showShortcutBadges = useShowShortcutBadges();
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder);
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
@@ -2052,34 +2058,31 @@ export function SidebarWorkspaceList({
     [getWorkspaceOrder, serverId, setWorkspaceOrder],
   );
 
-  const handleWorktreeCreated = useCallback(
-    (workspaceId: string) => {
-      setCreatingWorkspaceIds((current) => {
-        const next = new Set(current);
-        next.add(workspaceId);
-        return next;
-      });
-      const existingTimeout = creatingWorkspaceTimeoutsRef.current.get(workspaceId);
-      if (existingTimeout) {
-        clearTimeout(existingTimeout);
-      }
-      creatingWorkspaceTimeoutsRef.current.set(
-        workspaceId,
-        setTimeout(() => {
-          creatingWorkspaceTimeoutsRef.current.delete(workspaceId);
-          setCreatingWorkspaceIds((current) => {
-            if (!current.has(workspaceId)) {
-              return current;
-            }
-            const next = new Set(current);
-            next.delete(workspaceId);
-            return next;
-          });
-        }, 3000),
-      );
-    },
-    [],
-  );
+  const handleWorktreeCreated = useCallback((workspaceId: string) => {
+    setCreatingWorkspaceIds((current) => {
+      const next = new Set(current);
+      next.add(workspaceId);
+      return next;
+    });
+    const existingTimeout = creatingWorkspaceTimeoutsRef.current.get(workspaceId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+    creatingWorkspaceTimeoutsRef.current.set(
+      workspaceId,
+      setTimeout(() => {
+        creatingWorkspaceTimeoutsRef.current.delete(workspaceId);
+        setCreatingWorkspaceIds((current) => {
+          if (!current.has(workspaceId)) {
+            return current;
+          }
+          const next = new Set(current);
+          next.delete(workspaceId);
+          return next;
+        });
+      }, 3000),
+    );
+  }, []);
 
   const renderProject = useCallback(
     ({ item, drag, isActive, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) => {
@@ -2129,12 +2132,7 @@ export function SidebarWorkspaceList({
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No projects yet</Text>
           <Text style={styles.emptyText}>Add a project to get started</Text>
-          <Button
-            variant="ghost"
-            size="sm"
-            leftIcon={Plus}
-            onPress={onAddProject}
-          >
+          <Button variant="ghost" size="sm" leftIcon={Plus} onPress={onAddProject}>
             Add project
           </Button>
         </View>

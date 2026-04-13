@@ -261,7 +261,7 @@ describe("keyboard-shortcuts", () => {
       action: "sidebar.toggle.left",
     },
     {
-      name: "binds Mod+. to toggle both sidebars on non-mac",
+      name: "routes Mod+. to toggle both sidebars on non-mac",
       event: { key: ".", code: "Period", ctrlKey: true },
       context: { isMac: false },
       action: "sidebar.toggle.both",
@@ -342,6 +342,11 @@ describe("keyboard-shortcuts", () => {
     {
       name: "does not match Ctrl+K for command center on non-mac in terminal",
       event: { key: "k", code: "KeyK", ctrlKey: true },
+      context: { isMac: false, focusScope: "terminal" },
+    },
+    {
+      name: "does not bind Ctrl+B on non-mac while terminal is focused",
+      event: { key: "b", code: "KeyB", ctrlKey: true },
       context: { isMac: false, focusScope: "terminal" },
     },
     {

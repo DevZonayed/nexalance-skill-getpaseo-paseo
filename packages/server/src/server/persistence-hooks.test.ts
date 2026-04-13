@@ -29,7 +29,7 @@ describe("persistence hooks", () => {
       config: {
         title: "Voice agent (created)",
         modeId: "default",
-        model: "gpt-5.1-codex-mini",
+        model: "gpt-5.4-mini",
         thinkingOptionId: "minimal",
         systemPrompt: "Use speak first.",
         mcpServers: {
@@ -45,7 +45,7 @@ describe("persistence hooks", () => {
     expect(buildConfigOverrides(record)).toMatchObject({
       cwd: "/tmp/project",
       modeId: "plan",
-      model: "gpt-5.1-codex-mini",
+      model: "gpt-5.4-mini",
       thinkingOptionId: "minimal",
       title: "Voice agent (created)",
       systemPrompt: "Use speak first.",
@@ -66,7 +66,7 @@ describe("persistence hooks", () => {
       config: {
         title: "Creation title",
         modeId: "default",
-        model: "gpt-5.1-codex-mini",
+        model: "gpt-5.4-mini",
         systemPrompt: "Confirm and speak first.",
         mcpServers: {
           paseo: {
@@ -82,7 +82,7 @@ describe("persistence hooks", () => {
       provider: "codex",
       cwd: "/tmp/project",
       modeId: "plan",
-      model: "gpt-5.1-codex-mini",
+      model: "gpt-5.4-mini",
       title: "Creation title",
       systemPrompt: "Confirm and speak first.",
       mcpServers: {
