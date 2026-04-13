@@ -851,8 +851,31 @@ function ProjectHeaderRow({
 
   if (menuController) {
     return (
-      <ContextMenuTrigger
-        enabledOnMobile={false}
+      <View onPointerEnter={() => setIsHovered(true)} onPointerLeave={() => setIsHovered(false)}>
+        <ContextMenuTrigger
+          enabledOnMobile={false}
+          style={({ pressed }) => [
+            styles.projectRow,
+            isDragging && styles.projectRowDragging,
+            selected && styles.sidebarRowSelected,
+            isHovered && styles.projectRowHovered,
+            pressed && styles.projectRowPressed,
+          ]}
+          onPressIn={interaction.handlePressIn}
+          onTouchMove={interaction.handleTouchMove}
+          onPressOut={interaction.handlePressOut}
+          onPress={handlePress}
+          testID={`sidebar-project-row-${project.projectKey}`}
+        >
+          {rowChildren}
+        </ContextMenuTrigger>
+      </View>
+    );
+  }
+
+  return (
+    <View onPointerEnter={() => setIsHovered(true)} onPointerLeave={() => setIsHovered(false)}>
+      <Pressable
         style={({ pressed }) => [
           styles.projectRow,
           isDragging && styles.projectRowDragging,
@@ -860,8 +883,6 @@ function ProjectHeaderRow({
           isHovered && styles.projectRowHovered,
           pressed && styles.projectRowPressed,
         ]}
-        onHoverIn={() => setIsHovered(true)}
-        onHoverOut={() => setIsHovered(false)}
         onPressIn={interaction.handlePressIn}
         onTouchMove={interaction.handleTouchMove}
         onPressOut={interaction.handlePressOut}
@@ -869,29 +890,8 @@ function ProjectHeaderRow({
         testID={`sidebar-project-row-${project.projectKey}`}
       >
         {rowChildren}
-      </ContextMenuTrigger>
-    );
-  }
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.projectRow,
-        isDragging && styles.projectRowDragging,
-        selected && styles.sidebarRowSelected,
-        isHovered && styles.projectRowHovered,
-        pressed && styles.projectRowPressed,
-      ]}
-      onHoverIn={() => setIsHovered(true)}
-      onHoverOut={() => setIsHovered(false)}
-      onPressIn={interaction.handlePressIn}
-      onTouchMove={interaction.handleTouchMove}
-      onPressOut={interaction.handlePressOut}
-      onPress={handlePress}
-      testID={`sidebar-project-row-${project.projectKey}`}
-    >
-      {rowChildren}
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -937,118 +937,121 @@ function WorkspaceRowInner({
   }, [interaction.didLongPressRef, onPress]);
 
   return (
-    <Pressable
-      disabled={isArchiving}
-      style={({ pressed }) => [
-        styles.workspaceRowContainer,
-        styles.workspaceRow,
-        isDragging && styles.workspaceRowDragging,
-        selected && styles.sidebarRowSelected,
-        isHovered && styles.workspaceRowHovered,
-        pressed && styles.workspaceRowPressed,
-      ]}
-      onHoverIn={() => setIsHovered(true)}
-      onHoverOut={() => setIsHovered(false)}
-      onPressIn={interaction.handlePressIn}
-      onTouchMove={interaction.handleTouchMove}
-      onPressOut={interaction.handlePressOut}
-      onPress={handlePress}
-      testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
+    <View
+      style={styles.workspaceRowContainer}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
     >
-      <View style={styles.workspaceRowMain}>
-        <View
-          {...(dragHandleProps?.attributes as any)}
-          {...(dragHandleProps?.listeners as any)}
-          ref={dragHandleProps?.setActivatorNodeRef as any}
-          style={styles.workspaceRowLeft}
-        >
-          <WorkspaceStatusIndicator
-            bucket={workspace.statusBucket}
-            workspaceKind={workspace.workspaceKind}
-            loading={isArchiving || isCreating}
-          />
-          <Text
-            style={[
-              styles.workspaceBranchText,
-              isHovered && styles.workspaceBranchTextHovered,
-              isCreating && styles.workspaceBranchTextCreating,
-            ]}
-            numberOfLines={1}
+      <Pressable
+        disabled={isArchiving}
+        style={({ pressed }) => [
+          styles.workspaceRow,
+          isDragging && styles.workspaceRowDragging,
+          selected && styles.sidebarRowSelected,
+          isHovered && styles.workspaceRowHovered,
+          pressed && styles.workspaceRowPressed,
+        ]}
+        onPressIn={interaction.handlePressIn}
+        onTouchMove={interaction.handleTouchMove}
+        onPressOut={interaction.handlePressOut}
+        onPress={handlePress}
+        testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
+      >
+        <View style={styles.workspaceRowMain}>
+          <View
+            {...(dragHandleProps?.attributes as any)}
+            {...(dragHandleProps?.listeners as any)}
+            ref={dragHandleProps?.setActivatorNodeRef as any}
+            style={styles.workspaceRowLeft}
           >
-            {workspace.name}
-          </Text>
-        </View>
-        <View style={styles.workspaceRowRight}>
-          {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
-          {onArchive && (isHovered || platformIsNative || isCompact) ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                hitSlop={8}
-                style={({ hovered = false }) => [
-                  styles.kebabButton,
-                  hovered && styles.kebabButtonHovered,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Workspace actions"
-                testID={`sidebar-workspace-kebab-${workspace.workspaceKey}`}
-              >
-                {({ hovered }) => (
-                  <MoreVertical
-                    size={14}
-                    color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                  />
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" width={260}>
-                {onCopyPath ? (
-                  <DropdownMenuItem
-                    testID={`sidebar-workspace-menu-copy-path-${workspace.workspaceKey}`}
-                    leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
-                    onSelect={onCopyPath}
-                  >
-                    Copy path
-                  </DropdownMenuItem>
-                ) : null}
-                {onCopyBranchName ? (
-                  <DropdownMenuItem
-                    testID={`sidebar-workspace-menu-copy-branch-name-${workspace.workspaceKey}`}
-                    leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
-                    onSelect={onCopyBranchName}
-                  >
-                    Copy branch name
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
-                  leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
-                  trailing={archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null}
-                  status={archiveStatus}
-                  pendingLabel={archivePendingLabel}
-                  onSelect={onArchive}
+            <WorkspaceStatusIndicator
+              bucket={workspace.statusBucket}
+              workspaceKind={workspace.workspaceKind}
+              loading={isArchiving || isCreating}
+            />
+            <Text
+              style={[
+                styles.workspaceBranchText,
+                isHovered && styles.workspaceBranchTextHovered,
+                isCreating && styles.workspaceBranchTextCreating,
+              ]}
+              numberOfLines={1}
+            >
+              {workspace.name}
+            </Text>
+          </View>
+          <View style={styles.workspaceRowRight}>
+            {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
+            {onArchive && (isHovered || platformIsNative || isCompact) ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  hitSlop={8}
+                  style={({ hovered = false }) => [
+                    styles.kebabButton,
+                    hovered && styles.kebabButtonHovered,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Workspace actions"
+                  testID={`sidebar-workspace-kebab-${workspace.workspaceKey}`}
                 >
-                  {archiveLabel ?? "Archive"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : workspace.diffStat ? (
-            <View style={styles.diffStatRow}>
-              <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
-              <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-            </View>
-          ) : null}
-          {showShortcutBadge && shortcutNumber !== null ? (
-            <View style={styles.shortcutBadge}>
-              <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
-            </View>
-          ) : null}
+                  {({ hovered }) => (
+                    <MoreVertical
+                      size={14}
+                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                    />
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" width={260}>
+                  {onCopyPath ? (
+                    <DropdownMenuItem
+                      testID={`sidebar-workspace-menu-copy-path-${workspace.workspaceKey}`}
+                      leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
+                      onSelect={onCopyPath}
+                    >
+                      Copy path
+                    </DropdownMenuItem>
+                  ) : null}
+                  {onCopyBranchName ? (
+                    <DropdownMenuItem
+                      testID={`sidebar-workspace-menu-copy-branch-name-${workspace.workspaceKey}`}
+                      leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
+                      onSelect={onCopyBranchName}
+                    >
+                      Copy branch name
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
+                    leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
+                    trailing={archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null}
+                    status={archiveStatus}
+                    pendingLabel={archivePendingLabel}
+                    onSelect={onArchive}
+                  >
+                    {archiveLabel ?? "Archive"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : workspace.diffStat ? (
+              <View style={styles.diffStatRow}>
+                <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
+                <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
+              </View>
+            ) : null}
+            {showShortcutBadge && shortcutNumber !== null ? (
+              <View style={styles.shortcutBadge}>
+                <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
-      </View>
-      {prHint ? (
-        <View style={styles.workspacePrBadgeRow}>
-          <WorkspacePrBadge hint={prHint} />
-        </View>
-      ) : null}
-    </Pressable>
+        {prHint ? (
+          <View style={styles.workspacePrBadgeRow}>
+            <WorkspacePrBadge hint={prHint} />
+          </View>
+        ) : null}
+      </Pressable>
+    </View>
   );
 }
 
