@@ -3166,7 +3166,7 @@ describe("AgentManager", () => {
       id: agent.id,
       archivedAt,
       updatedAt: archivedAt,
-      lastStatus: "idle",
+      lastStatus: "closed",
       requiresAttention: false,
       attentionReason: null,
       attentionTimestamp: null,

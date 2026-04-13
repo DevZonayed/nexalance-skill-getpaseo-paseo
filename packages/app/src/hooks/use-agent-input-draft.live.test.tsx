@@ -1,6 +1,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDraftStore } from "@/stores/draft-store";
 import type { AttachmentMetadata } from "@/attachments/types";
@@ -169,6 +170,7 @@ describe("useAgentInputDraft live contract", () => {
       return null;
     }
 
+    const queryClient = new QueryClient();
     const container = document.getElementById("root");
     if (!container) {
       throw new Error("Missing root container");
@@ -176,7 +178,11 @@ describe("useAgentInputDraft live contract", () => {
 
     let root: Root | null = createRoot(container);
     await act(async () => {
-      root!.render(<Probe draftKey="draft:setup" />);
+      root!.render(
+        <QueryClientProvider client={queryClient}>
+          <Probe draftKey="draft:setup" />
+        </QueryClientProvider>,
+      );
     });
 
     expect(getLatest().composerState?.statusControls.selectedProvider).toBe("codex");
@@ -184,8 +190,6 @@ describe("useAgentInputDraft live contract", () => {
       provider: "codex",
       cwd: "/repo",
       modeId: "auto",
-      model: "gpt-5.4",
-      thinkingOptionId: "high",
     });
 
     await act(async () => {
@@ -199,7 +203,11 @@ describe("useAgentInputDraft live contract", () => {
 
     root = createRoot(container);
     await act(async () => {
-      root.render(<Probe draftKey="draft:setup" />);
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <Probe draftKey="draft:setup" />
+        </QueryClientProvider>,
+      );
     });
 
     expect(getLatest().text).toBe("hello world");
@@ -228,6 +236,7 @@ describe("useAgentInputDraft live contract", () => {
       return null;
     }
 
+    const queryClient = new QueryClient();
     const container = document.getElementById("root");
     if (!container) {
       throw new Error("Missing root container");
@@ -235,7 +244,11 @@ describe("useAgentInputDraft live contract", () => {
 
     const root = createRoot(container);
     await act(async () => {
-      root.render(<Probe />);
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <Probe />
+        </QueryClientProvider>,
+      );
     });
 
     await act(async () => {

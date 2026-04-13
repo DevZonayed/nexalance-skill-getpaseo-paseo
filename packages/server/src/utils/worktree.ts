@@ -329,7 +329,6 @@ async function execSetupCommand(
     const { stdout, stderr } = await execFileAsync(shellInvocation.shell, shellInvocation.args, {
       cwd: options.cwd,
       env: options.env,
-      ...(process.platform === "win32" ? {} : { shell: "/bin/bash" }),
     });
     return {
       command,

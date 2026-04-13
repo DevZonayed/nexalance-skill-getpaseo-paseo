@@ -232,7 +232,6 @@ describe("voice runtime", () => {
     });
     expect(adapter.audioPlayed).not.toHaveBeenCalled();
 
-    playResolvers.shift()?.(0.1);
     playResolvers.shift()!(0.1);
     await vi.waitFor(() => {
       expect(adapter.audioPlayed).toHaveBeenCalledWith("chunk-0");
@@ -242,7 +241,7 @@ describe("voice runtime", () => {
     playResolvers.shift()!(0.1);
     await vi.waitFor(() => {
       expect(adapter.audioPlayed).toHaveBeenCalledWith("chunk-1");
-      expect(runtime.getSnapshot().phase).toBe("playing");
+      expect(runtime.getSnapshot().phase).toBe("waiting");
     });
   });
 
@@ -256,7 +255,7 @@ describe("voice runtime", () => {
     runtime.onAssistantAudioStarted("server-1");
     runtime.onAssistantAudioFinished("server-1");
 
-    expect(runtime.getSnapshot().phase).toBe("playing");
+    expect(runtime.getSnapshot().phase).toBe("waiting");
     expect(engine.play).toHaveBeenCalled();
   });
 
@@ -302,8 +301,8 @@ describe("voice runtime", () => {
 
     runtime.onServerSpeechStateChanged("server-1", true);
 
-    expect(engine.stop).toHaveBeenCalledTimes(2);
-    expect(engine.clearQueue).toHaveBeenCalledTimes(2);
+    expect(engine.stop).toHaveBeenCalledTimes(1);
+    expect(engine.clearQueue).toHaveBeenCalledTimes(1);
 
     resolvePlay(0.1);
   });

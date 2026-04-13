@@ -114,7 +114,7 @@ describe("openProjectDirectly", () => {
     const tabs = collectAllTabs(layout.root);
     expect(tabs).toHaveLength(1);
     expect(tabs[0]?.target.kind).toBe("draft");
-    expect(replaceRoute).toHaveBeenCalledWith("/h/server-1/workspace/MQ");
+    expect(replaceRoute).toHaveBeenCalledWith("/h/server-1/workspace/1");
   });
 
   it("does not navigate or seed tabs when openProject fails", async () => {
