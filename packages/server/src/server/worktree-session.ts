@@ -687,14 +687,6 @@ export async function handleCreatePaseoWorktreeRequest(
       branchName: createdWorktree.worktree.branchName,
     });
 
-    await createAgentWorktree({
-      cwd: repoRoot,
-      branchName: normalizedSlug,
-      baseBranch,
-      worktreeSlug: normalizedSlug,
-      paseoHome: dependencies.paseoHome,
-    });
-
     const descriptor = await dependencies.describeWorkspaceRecord(workspace);
     dependencies.emit({
       type: "create_paseo_worktree_response",

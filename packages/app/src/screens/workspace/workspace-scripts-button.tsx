@@ -184,7 +184,7 @@ export function WorkspaceScriptsButton({
                                 styles.externalLinkOverlay,
                                 {
                                   backgroundImage: `linear-gradient(to right, transparent, ${theme.colors.surface2} 40%)`,
-                                },
+                                } as any,
                               ]}
                             >
                               <ExternalLink size={12} color={theme.colors.foreground} />

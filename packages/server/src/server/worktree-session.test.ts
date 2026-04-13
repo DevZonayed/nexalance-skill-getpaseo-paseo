@@ -16,7 +16,7 @@ import { ScriptRouteStore } from "./script-proxy.js";
 import * as worktreeBootstrap from "./worktree-bootstrap.js";
 import {
   buildAgentSessionConfig,
-  createPaseoWorktreeInBackground,
+  runWorktreeSetupInBackground,
   handleCreatePaseoWorktreeRequest,
   handleWorkspaceSetupStatusRequest,
 } from "./worktree-session.js";
@@ -131,7 +131,7 @@ function createGitHubPrRemoteRepo() {
   return { tempDir, repoDir };
 }
 
-describe("createPaseoWorktreeInBackground", () => {
+describe("runWorktreeSetupInBackground", () => {
   const cleanupPaths: string[] = [];
 
   afterEach(() => {
@@ -169,7 +169,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
-    await createPaseoWorktreeInBackground(
+    await runWorktreeSetupInBackground(
       {
         paseoHome,
         emitWorkspaceUpdateForCwd,
@@ -183,12 +183,14 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId: 42,
+        workspaceId: "42",
         worktree: {
           branchName: "feature-no-setup",
           worktreePath,
         },
         shouldBootstrap: true,
+        slug: "feature-no-setup",
+        worktreePath,
       },
     );
 
@@ -266,7 +268,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const archiveWorkspaceRecord = vi.fn(async () => {});
     const workspaceId = 101;
 
-    await createPaseoWorktreeInBackground(
+    await runWorktreeSetupInBackground(
       {
         paseoHome,
         emitWorkspaceUpdateForCwd,
@@ -280,12 +282,14 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId,
+        workspaceId: String(workspaceId),
         worktree: {
           branchName: "broken-feature",
           worktreePath,
         },
         shouldBootstrap: true,
+        slug: "broken-feature",
+        worktreePath,
       },
     );
 
@@ -303,7 +307,7 @@ describe("createPaseoWorktreeInBackground", () => {
       status: "failed",
       error: expect.stringContaining("Failed to parse paseo.json"),
     });
-    expect(archiveWorkspaceRecord).toHaveBeenCalledWith(workspaceId);
+    expect(archiveWorkspaceRecord).toHaveBeenCalledWith(String(workspaceId));
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
   });
 
@@ -333,7 +337,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
-    await createPaseoWorktreeInBackground(
+    await runWorktreeSetupInBackground(
       {
         paseoHome,
         emitWorkspaceUpdateForCwd,
@@ -347,12 +351,14 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId: 43,
+        workspaceId: "43",
         worktree: {
           branchName: "feature-running-setup",
           worktreePath,
         },
         shouldBootstrap: true,
+        slug: "feature-running-setup",
+        worktreePath,
       },
     );
 
@@ -450,7 +456,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
-    await createPaseoWorktreeInBackground(
+    await runWorktreeSetupInBackground(
       {
         paseoHome,
         emitWorkspaceUpdateForCwd,
@@ -464,12 +470,14 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId: 44,
+        workspaceId: "44",
         worktree: {
           branchName: "reused-worktree",
           worktreePath: existingWorktree.worktreePath,
         },
         shouldBootstrap: false,
+        slug: "reused-worktree",
+        worktreePath: existingWorktree.worktreePath,
       },
     );
 
@@ -543,7 +551,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
-    await createPaseoWorktreeInBackground(
+    await runWorktreeSetupInBackground(
       {
         paseoHome,
         emitWorkspaceUpdateForCwd,
@@ -557,12 +565,14 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId: 45,
+        workspaceId: "45",
         worktree: {
           branchName: "feature-service-failure",
           worktreePath,
         },
         shouldBootstrap: true,
+        slug: "feature-service-failure",
+        worktreePath,
       },
     );
 
@@ -623,7 +633,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
 
-    await createPaseoWorktreeInBackground(
+    await runWorktreeSetupInBackground(
       {
         paseoHome,
         emitWorkspaceUpdateForCwd,
@@ -637,12 +647,14 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId: 46,
+        workspaceId: "46",
         worktree: {
           branchName: "feature-socket-mode",
           worktreePath,
         },
         shouldBootstrap: true,
+        slug: "feature-socket-mode",
+        worktreePath,
       },
     );
 
@@ -782,7 +794,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             archivedAt: null,
           }) as any,
         sessionLogger: logger,
-        createPaseoWorktreeInBackground: async () => {},
+        runWorktreeSetupInBackground: async () => {},
       },
       {
         type: "create_paseo_worktree_request",
@@ -906,7 +918,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             status: "done",
             activityAt: null,
           })),
-          createPaseoWorktreeInBackground: vi.fn(async () => {}),
+          runWorktreeSetupInBackground: vi.fn(async () => {}),
         },
         {
           type: "create_paseo_worktree_request",
@@ -960,7 +972,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             status: "done",
             activityAt: null,
           })),
-          createPaseoWorktreeInBackground: backgroundWork,
+          runWorktreeSetupInBackground: backgroundWork,
         },
         {
           type: "create_paseo_worktree_request",

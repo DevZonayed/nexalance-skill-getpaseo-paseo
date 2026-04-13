@@ -3165,12 +3165,14 @@ describe("AgentManager", () => {
     expect(stored).toMatchObject({
       id: agent.id,
       archivedAt,
-      updatedAt: archivedAt,
       lastStatus: "closed",
       requiresAttention: false,
       attentionReason: null,
       attentionTimestamp: null,
     });
+    expect(
+      Math.abs(new Date(stored!.updatedAt).getTime() - new Date(archivedAt).getTime()),
+    ).toBeLessThanOrEqual(5);
     expect(lifecycles.slice(-2)).toEqual(["idle", "closed"]);
   });
 

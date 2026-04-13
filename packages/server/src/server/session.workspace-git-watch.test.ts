@@ -5,6 +5,10 @@ import type {
   WorkspaceGitRuntimeSnapshot,
   WorkspaceGitService,
 } from "./workspace-git-service.js";
+import {
+  createPersistedProjectRecord,
+  createPersistedWorkspaceRecord,
+} from "./workspace-registry.js";
 
 function createWorkspaceRuntimeSnapshot(
   cwd: string,
@@ -60,6 +64,8 @@ function createWorkspaceRuntimeSnapshot(
 function createSessionForWorkspaceGitWatchTests(): {
   session: Session;
   emitted: Array<{ type: string; payload: unknown }>;
+  projects: Map<string, ReturnType<typeof createPersistedProjectRecord>>;
+  workspaces: Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>;
   workspaceGitService: WorkspaceGitService & {
     subscribe: ReturnType<typeof vi.fn>;
     peekSnapshot: ReturnType<typeof vi.fn>;
@@ -74,8 +80,8 @@ function createSessionForWorkspaceGitWatchTests(): {
   }>;
 } {
   const emitted: Array<{ type: string; payload: unknown }> = [];
-  const projects = new Map<string, any>();
-  const workspaces = new Map<string, any>();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
   const subscriptions: Array<{
     params: { cwd: string };
     listener: WorkspaceGitListener;
@@ -128,56 +134,34 @@ function createSessionForWorkspaceGitWatchTests(): {
       initialize: async () => {},
       existsOnDisk: async () => true,
       list: async () => Array.from(projects.values()),
-      get: async (id: number) => projects.get(id) ?? null,
-      insert: async (record: Omit<ReturnType<typeof createPersistedProjectRecord>, "id">) => {
-        const id = nextProjectId++;
-        projects.set(id, createPersistedProjectRecord({ id, ...record }));
-        return id;
+      get: async (projectId: string) => projects.get(projectId) ?? null,
+      upsert: async (record: ReturnType<typeof createPersistedProjectRecord>) => {
+        projects.set(record.projectId, record);
       },
-      upsert: async (record: any) => {
-        projects.set(record.id, record);
+      archive: async (projectId: string, archivedAt: string) => {
+        const existing = projects.get(projectId);
+        if (!existing) return;
+        projects.set(projectId, { ...existing, archivedAt, updatedAt: archivedAt });
       },
-      archive: async (id: number, archivedAt: string) => {
-        const existing = projects.get(id);
-        if (!existing) {
-          return;
-        }
-        projects.set(id, {
-          ...existing,
-          archivedAt,
-          updatedAt: archivedAt,
-        });
-      },
-      remove: async (id: number) => {
-        projects.delete(id);
+      remove: async (projectId: string) => {
+        projects.delete(projectId);
       },
     } as any,
     workspaceRegistry: {
       initialize: async () => {},
       existsOnDisk: async () => true,
       list: async () => Array.from(workspaces.values()),
-      get: async (id: number) => workspaces.get(id) ?? null,
-      insert: async (record: Omit<ReturnType<typeof createPersistedWorkspaceRecord>, "id">) => {
-        const id = nextWorkspaceId++;
-        workspaces.set(id, createPersistedWorkspaceRecord({ id, ...record }));
-        return id;
+      get: async (workspaceId: string) => workspaces.get(workspaceId) ?? null,
+      upsert: async (record: ReturnType<typeof createPersistedWorkspaceRecord>) => {
+        workspaces.set(record.workspaceId, record);
       },
-      upsert: async (record: any) => {
-        workspaces.set(record.id, record);
+      archive: async (workspaceId: string, archivedAt: string) => {
+        const existing = workspaces.get(workspaceId);
+        if (!existing) return;
+        workspaces.set(workspaceId, { ...existing, archivedAt, updatedAt: archivedAt });
       },
-      archive: async (id: number, archivedAt: string) => {
-        const existing = workspaces.get(id);
-        if (!existing) {
-          return;
-        }
-        workspaces.set(id, {
-          ...existing,
-          archivedAt,
-          updatedAt: archivedAt,
-        });
-      },
-      remove: async (id: number) => {
-        workspaces.delete(id);
+      remove: async (workspaceId: string) => {
+        workspaces.delete(workspaceId);
       },
     } as any,
     checkoutDiffManager: {
@@ -206,27 +190,28 @@ function createSessionForWorkspaceGitWatchTests(): {
   return {
     session,
     emitted,
+    projects,
+    workspaces,
     workspaceGitService: workspaceGitService as any,
     subscriptions,
   };
 }
 
 function seedGitWorkspace(input: {
-  projects: Map<number, ReturnType<typeof createPersistedProjectRecord>>;
-  workspaces: Map<number, ReturnType<typeof createPersistedWorkspaceRecord>>;
-  projectId: number;
-  workspaceId: number;
+  projects: Map<string, ReturnType<typeof createPersistedProjectRecord>>;
+  workspaces: Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>;
+  projectId: string;
+  workspaceId: string;
   cwd: string;
   name: string;
 }) {
   input.projects.set(
     input.projectId,
     createPersistedProjectRecord({
-      id: input.projectId,
-      directory: "/tmp/repo",
+      projectId: input.projectId,
+      rootPath: "/tmp/repo",
       displayName: "repo",
       kind: "git",
-      gitRemote: "https://github.com/acme/repo.git",
       createdAt: "2026-03-01T12:00:00.000Z",
       updatedAt: "2026-03-01T12:00:00.000Z",
     }),
@@ -234,11 +219,11 @@ function seedGitWorkspace(input: {
   input.workspaces.set(
     input.workspaceId,
     createPersistedWorkspaceRecord({
-      id: input.workspaceId,
+      workspaceId: input.workspaceId,
       projectId: input.projectId,
-      directory: input.cwd,
+      cwd: input.cwd,
       displayName: input.name,
-      kind: "checkout",
+      kind: "local_checkout",
       createdAt: "2026-03-01T12:00:00.000Z",
       updatedAt: "2026-03-01T12:00:00.000Z",
     }),
@@ -247,14 +232,14 @@ function seedGitWorkspace(input: {
 
 describe("workspace git watch targets", () => {
   test("emits one workspace_update when the workspace git service emits a changed snapshot", async () => {
-    const { session, emitted, workspaceGitService, subscriptions } =
+    const { session, emitted, projects, workspaces, workspaceGitService, subscriptions } =
       createSessionForWorkspaceGitWatchTests();
     const sessionAny = session as any;
     seedGitWorkspace({
       projects,
       workspaces,
-      projectId: 1,
-      workspaceId: 10,
+      projectId: "proj-1",
+      workspaceId: "ws-10",
       cwd: "/tmp/repo",
       name: "main",
     });
@@ -282,7 +267,7 @@ describe("workspace git watch targets", () => {
 
     sessionAny.buildWorkspaceDescriptorMap = async () => new Map([[descriptor.id, descriptor]]);
 
-    await sessionAny.ensureWorkspaceRegistered("/tmp/repo");
+    await sessionAny.syncWorkspaceGitWatchTarget("/tmp/repo", { isGit: true });
 
     expect(workspaceGitService.subscribe).toHaveBeenCalledWith(
       { cwd: "/tmp/repo" },
