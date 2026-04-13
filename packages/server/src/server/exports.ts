@@ -37,7 +37,6 @@ export {
 } from "./agent/provider-launch-config.js";
 export {
   findExecutable,
-  executableExists,
   quoteWindowsArgument,
   quoteWindowsCommand,
 } from "../utils/executable.js";

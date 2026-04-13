@@ -20,6 +20,7 @@ const mockState = vi.hoisted(() => {
         env?: Record<string, string>;
       }>,
     },
+    isCommandAvailable: vi.fn(async (_command: string) => false),
     runtimeModels: new Map<string, AgentModelDefinition[]>(),
     reset() {
       for (const key of Object.keys(this.constructorArgs) as Array<
@@ -27,10 +28,16 @@ const mockState = vi.hoisted(() => {
       >) {
         this.constructorArgs[key] = [];
       }
+      this.isCommandAvailable.mockReset();
+      this.isCommandAvailable.mockImplementation(async (_command: string) => false);
       this.runtimeModels.clear();
     },
   };
 });
+
+vi.mock("../../utils/executable.js", () => ({
+  isCommandAvailable: mockState.isCommandAvailable,
+}));
 
 vi.mock("./providers/claude-agent.js", () => ({
   ClaudeAgentClient: class ClaudeAgentClient {
@@ -69,6 +76,12 @@ vi.mock("./providers/claude-agent.js", () => ({
     }
 
     async isAvailable(): Promise<boolean> {
+      const command = (this.runtimeSettings as { command?: { mode?: string; argv?: string[] } })
+        ?.command;
+      if (command?.mode === "replace") {
+        const { isCommandAvailable } = await import("../../utils/executable.js");
+        return await isCommandAvailable(command.argv?.[0] ?? "");
+      }
       return true;
     }
   },
@@ -109,6 +122,12 @@ vi.mock("./providers/codex-app-server-agent.js", () => ({
     }
 
     async isAvailable(): Promise<boolean> {
+      const command = (this.runtimeSettings as { command?: { mode?: string; argv?: string[] } })
+        ?.command;
+      if (command?.mode === "replace") {
+        const { isCommandAvailable } = await import("../../utils/executable.js");
+        return await isCommandAvailable(command.argv?.[0] ?? "");
+      }
       return true;
     }
   },
@@ -151,6 +170,12 @@ vi.mock("./providers/copilot-acp-agent.js", () => ({
     }
 
     async isAvailable(): Promise<boolean> {
+      const command = (this.runtimeSettings as { command?: { mode?: string; argv?: string[] } })
+        ?.command;
+      if (command?.mode === "replace") {
+        const { isCommandAvailable } = await import("../../utils/executable.js");
+        return await isCommandAvailable(command.argv?.[0] ?? "");
+      }
       return true;
     }
   },
@@ -431,6 +456,21 @@ describe("buildProviderRegistry", () => {
     });
 
     expect(registry.claude).toBeUndefined();
+  });
+
+  test("provider override command can be PATH-resolved and still report available", async () => {
+    mockState.isCommandAvailable.mockResolvedValue(true);
+
+    const registry = buildProviderRegistry(logger, {
+      providerOverrides: {
+        claude: {
+          command: ["claude", "--flag"],
+        },
+      },
+    });
+
+    await expect(registry.claude.createClient(logger).isAvailable()).resolves.toBe(true);
+    expect(mockState.isCommandAvailable).toHaveBeenCalledWith("claude");
   });
 
   test("extension inherits base override — override claude command, zai extends claude gets overridden command", () => {

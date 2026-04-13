@@ -43,7 +43,7 @@ import {
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
-import { executableExists, findExecutable } from "../../../utils/executable.js";
+import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import { mapOpencodeToolCall } from "./opencode/tool-call-mapper.js";
 import {
@@ -916,7 +916,7 @@ export class OpenCodeAgentClient implements AgentClient {
   async isAvailable(): Promise<boolean> {
     const command = this.runtimeSettings?.command;
     if (command?.mode === "replace") {
-      return executableExists(command.argv[0]) !== null;
+      return await isCommandAvailable(command.argv[0]);
     }
     return true;
   }

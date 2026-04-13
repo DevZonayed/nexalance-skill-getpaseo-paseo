@@ -72,7 +72,7 @@ import type {
   PersistedAgentDescriptor,
 } from "../agent-sdk-types.js";
 import { applyProviderEnv, type ProviderRuntimeSettings } from "../provider-launch-config.js";
-import { executableExists, findExecutable } from "../../../utils/executable.js";
+import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { execCommand, spawnProcess } from "../../../utils/spawn.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
 
@@ -1128,7 +1128,7 @@ export class ClaudeAgentClient implements AgentClient {
   async isAvailable(): Promise<boolean> {
     const command = this.runtimeSettings?.command;
     if (command?.mode === "replace") {
-      return executableExists(command.argv[0]) !== null;
+      return await isCommandAvailable(command.argv[0]);
     }
     return true;
   }

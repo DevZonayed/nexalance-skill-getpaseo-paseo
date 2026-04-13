@@ -1,6 +1,8 @@
 import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { promisify } from "node:util";
 
+import { quoteWindowsArgument, quoteWindowsCommand } from "./executable.js";
+
 const execFileAsync = promisify(execFile);
 
 interface ExecCommandOptions {
@@ -16,12 +18,6 @@ interface ExecCommandResult {
   stderr: string;
 }
 
-function quoteForCmd(value: string): string {
-  if (!value.includes(" ")) return value;
-  if (value.startsWith('"') && value.endsWith('"')) return value;
-  return `"${value}"`;
-}
-
 export function spawnProcess(
   command: string,
   args: string[],
@@ -29,8 +25,8 @@ export function spawnProcess(
 ): ChildProcess {
   const isWindows = process.platform === "win32";
 
-  const resolvedCommand = isWindows ? quoteForCmd(command) : command;
-  const resolvedArgs = isWindows ? args.map(quoteForCmd) : args;
+  const resolvedCommand = isWindows ? quoteWindowsCommand(command) : command;
+  const resolvedArgs = isWindows ? args.map(quoteWindowsArgument) : args;
 
   return spawn(resolvedCommand, resolvedArgs, {
     ...options,
@@ -45,8 +41,8 @@ export async function execCommand(
   options?: ExecCommandOptions,
 ): Promise<ExecCommandResult> {
   const isWindows = process.platform === "win32";
-  const resolvedCommand = isWindows ? quoteForCmd(command) : command;
-  const resolvedArgs = isWindows ? args.map(quoteForCmd) : args;
+  const resolvedCommand = isWindows ? quoteWindowsCommand(command) : command;
+  const resolvedArgs = isWindows ? args.map(quoteWindowsArgument) : args;
 
   return execFileAsync(resolvedCommand, resolvedArgs, {
     cwd: options?.cwd,

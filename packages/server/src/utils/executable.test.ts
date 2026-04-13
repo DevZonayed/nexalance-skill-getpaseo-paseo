@@ -240,6 +240,46 @@ describe("quoteWindowsCommand", () => {
     expect(quoteWindowsCommand("C:\\nvm4w\\nodejs\\codex")).toBe("C:\\nvm4w\\nodejs\\codex");
   });
 
+  test("escapes ampersands", async () => {
+    setPlatform("win32");
+    const { quoteWindowsCommand } = await loadExecutableModule();
+    expect(quoteWindowsCommand("feature&bugfix")).toBe("feature^&bugfix");
+  });
+
+  test("escapes pipes", async () => {
+    setPlatform("win32");
+    const { quoteWindowsCommand } = await loadExecutableModule();
+    expect(quoteWindowsCommand("feature|bugfix")).toBe("feature^|bugfix");
+  });
+
+  test("doubles percent signs", async () => {
+    setPlatform("win32");
+    const { quoteWindowsCommand } = await loadExecutableModule();
+    expect(quoteWindowsCommand("100%")).toBe("100%%");
+  });
+
+  test("escapes carets", async () => {
+    setPlatform("win32");
+    const { quoteWindowsCommand } = await loadExecutableModule();
+    expect(quoteWindowsCommand("feature^bugfix")).toBe("feature^^bugfix");
+  });
+
+  test("escapes multiple metacharacters", async () => {
+    setPlatform("win32");
+    const { quoteWindowsCommand } = await loadExecutableModule();
+    expect(quoteWindowsCommand("build&(test|deploy)!<output>")).toBe(
+      "build^&^(test^|deploy^)^!^<output^>",
+    );
+  });
+
+  test("quotes commands with spaces after escaping metacharacters", async () => {
+    setPlatform("win32");
+    const { quoteWindowsCommand } = await loadExecutableModule();
+    expect(quoteWindowsCommand("C:\\Program Files\\My Tool&Stuff\\run 100%.cmd")).toBe(
+      '"C:\\Program Files\\My Tool^&Stuff\\run 100%%.cmd"',
+    );
+  });
+
   test("returns the command unchanged on non-Windows platforms", async () => {
     setPlatform("darwin");
     const { quoteWindowsCommand } = await loadExecutableModule();

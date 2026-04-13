@@ -47,7 +47,7 @@ import {
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
-import { executableExists, findExecutable } from "../../../utils/executable.js";
+import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import { spawnProcess } from "../../../utils/spawn.js";
 import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
@@ -4203,7 +4203,7 @@ export class CodexAppServerAgentClient implements AgentClient {
   async isAvailable(): Promise<boolean> {
     const command = this.runtimeSettings?.command;
     if (command?.mode === "replace") {
-      return executableExists(command.argv[0]) !== null;
+      return await isCommandAvailable(command.argv[0]);
     }
     return true;
   }
