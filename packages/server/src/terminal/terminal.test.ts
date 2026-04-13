@@ -9,9 +9,19 @@ import {
   resolveZshShellIntegrationDir,
   type TerminalSession,
 } from "./terminal.js";
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+const hasZsh = existsSync("/bin/zsh");
 
 // Extract text from a single row
 function getRowText(state: ReturnType<TerminalSession["getState"]>, rowIndex: number): string {
@@ -352,7 +362,7 @@ describe("Terminal", () => {
   });
 
   describe("terminal title", () => {
-    it("restores the user's ZDOTDIR through the zsh wrapper", async () => {
+    it.skipIf(!hasZsh)("restores the user's ZDOTDIR through the zsh wrapper", async () => {
       const homeDir = mkdtempSync(join(tmpdir(), "terminal-zsh-home-"));
       temporaryDirs.push(homeDir);
       const realZdotdir = join(homeDir, ".config", "zsh");
@@ -467,7 +477,7 @@ describe("Terminal", () => {
       unsubscribeTitle();
     });
 
-    it("emits zsh shell integration titles for commands and prompts", async () => {
+    it.skipIf(!hasZsh)("emits zsh shell integration titles for commands and prompts", async () => {
       const homeDir = mkdtempSync(join(tmpdir(), "terminal-zsh-integration-home-"));
       temporaryDirs.push(homeDir);
       const realZdotdir = join(homeDir, ".config", "zsh");
