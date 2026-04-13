@@ -49,6 +49,7 @@ async function loadExecutableModule(params?: {
 
 describe("findExecutable", () => {
   const originalPlatform = process.platform;
+  const missingBinaryName = "nonexistent-binary-xyz-12345";
 
   function setPlatform(value: string) {
     Object.defineProperty(process, "platform", { value, writable: true });
@@ -118,7 +119,7 @@ describe("findExecutable", () => {
       },
     });
 
-    await expect(findExecutable("codex")).resolves.toBeNull();
+    await expect(findExecutable(missingBinaryName)).resolves.toBeNull();
   });
 
   test("on Windows, falls back to the first extensionless candidate when needed", async () => {

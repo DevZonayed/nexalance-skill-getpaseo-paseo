@@ -16,10 +16,10 @@ describe("execCommand", () => {
   });
 
   test("returns stdout and stderr for a successful command", async () => {
-    await expect(execCommand("echo", ["hello"])).resolves.toEqual({
-      stdout: "hello\n",
-      stderr: "",
-    });
+    const result = await execCommand("echo", ["hello"]);
+
+    expect(result.stdout.trim()).toBe("hello");
+    expect(result.stderr).toBe("");
   });
 
   test("rejects when the command times out", async () => {
@@ -46,9 +46,9 @@ describe("execCommand", () => {
           }
         : { command: "pwd", args: [] };
 
-    await expect(execCommand(command.command, command.args, { cwd })).resolves.toEqual({
-      stdout: `${cwd}\n`,
-      stderr: "",
-    });
+    const result = await execCommand(command.command, command.args, { cwd });
+
+    expect(result.stdout.trim()).toBe(cwd);
+    expect(result.stderr).toBe("");
   });
 });
