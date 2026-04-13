@@ -3,6 +3,7 @@ import type { SingleResult } from "../../output/index.js";
 import {
   attachAgentNamesToMessages,
   connectChatClient,
+  resolveChatAuthorAgentId,
   toChatCommandError,
   type ChatCommandOptions,
 } from "./shared.js";
@@ -23,6 +24,7 @@ export async function runPostCommand(
     const payload = await client.postChatMessage({
       room,
       body,
+      authorAgentId: resolveChatAuthorAgentId(),
       replyToMessageId: options.replyTo,
     });
     const [message] = await attachAgentNamesToMessages(client, [
