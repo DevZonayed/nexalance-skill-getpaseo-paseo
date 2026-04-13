@@ -149,19 +149,22 @@ describe("findExecutable", () => {
     );
   });
 
-  test.skipIf(process.platform === "win32")("warns and returns null when the final which line is not an absolute path", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { findExecutable } = await loadExecutableModule({
-      execFileImpl: (_command, _args, _options, callback) => {
-        callback(null, "codex\n", "");
-      },
-    });
+  test.skipIf(process.platform === "win32")(
+    "warns and returns null when the final which line is not an absolute path",
+    async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { findExecutable } = await loadExecutableModule({
+        execFileImpl: (_command, _args, _options, callback) => {
+          callback(null, "codex\n", "");
+        },
+      });
 
-    await expect(findExecutable("codex")).resolves.toBeNull();
-    expect(warnSpy).toHaveBeenCalledOnce();
+      await expect(findExecutable("codex")).resolves.toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
 
-    warnSpy.mockRestore();
-  });
+      warnSpy.mockRestore();
+    },
+  );
 
   test("returns null when which lookup fails", async () => {
     const { findExecutable } = await loadExecutableModule({
