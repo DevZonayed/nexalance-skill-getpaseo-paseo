@@ -296,6 +296,7 @@ describe("workspace message schemas", () => {
             projectId: "remote:github.com/acme/repo",
             projectDisplayName: "acme/repo",
             projectRootPath: "/tmp/repo",
+            workspaceDirectory: "/tmp/repo",
             projectKind: "git",
             workspaceKind: "local_checkout",
             name: "main",
