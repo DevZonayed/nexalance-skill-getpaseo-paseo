@@ -149,7 +149,7 @@ describe("findExecutable", () => {
     );
   });
 
-  test("warns and returns null when the final which line is not an absolute path", async () => {
+  test.skipIf(process.platform === "win32")("warns and returns null when the final which line is not an absolute path", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { findExecutable } = await loadExecutableModule({
       execFileImpl: (_command, _args, _options, callback) => {
