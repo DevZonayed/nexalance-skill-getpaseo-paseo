@@ -802,7 +802,10 @@ function ProjectHeaderRow({
         ) : null}
         {onRemoveProject ? (
           <View
-            style={!(isHovered || platformIsNative || isMobileBreakpoint) && styles.projectKebabButtonHidden}
+            style={
+              !(isHovered || platformIsNative || isMobileBreakpoint) &&
+              styles.projectKebabButtonHidden
+            }
             pointerEvents={isHovered || platformIsNative || isMobileBreakpoint ? "auto" : "none"}
           >
             <DropdownMenu>
