@@ -173,7 +173,7 @@ import { ScheduleService } from "./schedule/service.js";
 import {
   assertSafeGitRef as assertWorktreeSafeGitRef,
   buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
-  createPaseoWorktreeInBackground as createWorktreeInBackgroundSession,
+  runWorktreeSetupInBackground as runWorktreeSetupInBackgroundSession,
   handleCreatePaseoWorktreeRequest as handleCreateWorktreeRequest,
   handlePaseoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
   handlePaseoWorktreeListRequest as handleWorktreeListRequest,
@@ -6157,20 +6157,19 @@ export class Session {
         registerPendingWorktreeWorkspace: (options) =>
           this.registerPendingWorktreeWorkspace(options),
         sessionLogger: this.sessionLogger,
-        createPaseoWorktreeInBackground: (options) => this.createPaseoWorktreeInBackground(options),
+        runWorktreeSetupInBackground: (options) => this.runWorktreeSetupInBackground(options),
       },
       request,
     );
   }
 
-  private async createPaseoWorktreeInBackground(options: {
+  private async runWorktreeSetupInBackground(options: {
     requestCwd: string;
     repoRoot: string;
-    baseBranch: string;
     slug: string;
     worktreePath: string;
   }): Promise<void> {
-    return createWorktreeInBackgroundSession(
+    return runWorktreeSetupInBackgroundSession(
       {
         paseoHome: this.paseoHome,
         emitWorkspaceUpdateForCwd: (cwd) => this.emitWorkspaceUpdateForCwd(cwd),
