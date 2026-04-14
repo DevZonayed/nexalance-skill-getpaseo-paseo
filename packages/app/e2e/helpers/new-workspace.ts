@@ -164,6 +164,14 @@ export async function clickNewWorkspaceButton(
   const button = page.getByTestId(`sidebar-project-new-worktree-${input.projectKey}`).first();
   await expect(button).toBeVisible({ timeout: 30_000 });
   await button.click();
+
+  await expect(page).toHaveURL(/\/h\/[^/]+\/new(?:\?.*)?$/, {
+    timeout: 30_000,
+  });
+
+  const createButton = page.getByRole("button", { name: "Create" });
+  await expect(createButton).toBeVisible({ timeout: 30_000 });
+  await createButton.click();
 }
 
 export async function assertNewWorkspaceSidebarAndHeader(
