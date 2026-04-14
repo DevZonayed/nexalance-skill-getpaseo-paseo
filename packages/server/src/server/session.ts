@@ -5880,8 +5880,6 @@ export class Session {
         buildPersistedWorkspaceRecord: (input) => this.buildPersistedWorkspaceRecord(input),
         buildProjectPlacement: (cwd) => this.buildProjectPlacement(cwd),
         projectRegistry: this.projectRegistry,
-        syncWorkspaceGitWatchTarget: (cwd, syncOptions) =>
-          this.syncWorkspaceGitWatchTarget(cwd, syncOptions),
         workspaceRegistry: this.workspaceRegistry,
         archiveProjectRecordIfEmpty: (projectId, archivedAt) =>
           this.archiveProjectRecordIfEmpty(projectId, archivedAt),
@@ -6269,6 +6267,8 @@ export class Session {
         emit: (message) => this.emit(message),
         registerPendingWorktreeWorkspace: (options) =>
           this.registerPendingWorktreeWorkspace(options),
+        syncWorkspaceGitWatchTarget: (cwd, syncOptions) =>
+          this.syncWorkspaceGitWatchTarget(cwd, syncOptions),
         sessionLogger: this.sessionLogger,
         runWorktreeSetupInBackground: (options) => this.runWorktreeSetupInBackground(options),
       },

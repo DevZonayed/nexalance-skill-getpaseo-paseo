@@ -87,7 +87,6 @@ type RegisterPendingWorktreeWorkspaceDependencies = {
   }) => PersistedWorkspaceRecord;
   buildProjectPlacement: (cwd: string) => Promise<ProjectPlacementPayload>;
   projectRegistry: Pick<ProjectRegistry, "get" | "upsert">;
-  syncWorkspaceGitWatchTarget: (cwd: string, options: { isGit: boolean }) => Promise<void>;
   workspaceRegistry: Pick<WorkspaceRegistry, "get" | "upsert">;
   archiveProjectRecordIfEmpty: (projectId: string, archivedAt: string) => Promise<void>;
 };
@@ -111,6 +110,7 @@ type HandleCreatePaseoWorktreeRequestDependencies = {
     worktreePath: string;
     branchName: string;
   }) => Promise<PersistedWorkspaceRecord>;
+  syncWorkspaceGitWatchTarget: (cwd: string, options: { isGit: boolean }) => Promise<void>;
   sessionLogger: Logger;
   runWorktreeSetupInBackground: (options: {
     requestCwd: string;
@@ -535,9 +535,6 @@ export async function registerPendingWorktreeWorkspace(
 
   await dependencies.projectRegistry.upsert(nextProjectRecord);
   await dependencies.workspaceRegistry.upsert(nextWorkspaceRecord);
-  await dependencies.syncWorkspaceGitWatchTarget(workspaceId, {
-    isGit: placement.checkout.isGit,
-  });
 
   if (
     existingWorkspace &&
@@ -592,6 +589,8 @@ export async function handleCreatePaseoWorktreeRequest(
       worktreeSlug: normalizedSlug,
       paseoHome: dependencies.paseoHome,
     });
+
+    await dependencies.syncWorkspaceGitWatchTarget(worktreePath, { isGit: true });
 
     const descriptor = await dependencies.describeWorkspaceRecord(workspace);
     dependencies.emit({
