@@ -141,6 +141,18 @@ function decodeSegment(value: string): string {
   }
 }
 
+function areHeaderLabelsEquivalent(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const normalizedA = trimNonEmpty(a)?.toLocaleLowerCase();
+  const normalizedB = trimNonEmpty(b)?.toLocaleLowerCase();
+  if (!normalizedA || !normalizedB) {
+    return false;
+  }
+  return normalizedA === normalizedB;
+}
+
 function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "draft") {
     return "New Agent";
@@ -747,6 +759,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
     : null;
   const isWorkspaceHeaderLoading = workspaceHeader === null;
+  const workspaceHeaderTitle = workspaceHeader?.title ?? "";
+  const workspaceHeaderSubtitle = workspaceHeader?.subtitle ?? "";
+  const shouldShowWorkspaceHeaderSubtitle = !areHeaderLabelsEquivalent(
+    workspaceHeaderTitle,
+    workspaceHeaderSubtitle,
+  );
 
   const isGitCheckout = checkoutQuery.data?.isGit ?? false;
   const currentBranchName =
@@ -1949,27 +1967,29 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                   <SidebarMenuToggle />
                   <View style={styles.headerTitleContainer}>
                     {isWorkspaceHeaderLoading ? (
-                      <>
+                      <View style={styles.headerTitleTextGroup}>
                         <View style={styles.headerTitleSkeleton} />
                         <View style={styles.headerProjectTitleSkeleton} />
-                      </>
+                      </View>
                     ) : (
-                      <>
+                      <View style={styles.headerTitleTextGroup}>
                         <BranchSwitcher
                           currentBranchName={currentBranchName}
-                          title={workspaceHeader.title}
+                          title={workspaceHeaderTitle}
                           serverId={normalizedServerId}
                           workspaceId={normalizedWorkspaceId}
                           isGitCheckout={isGitCheckout}
                         />
-                        <Text
-                          testID="workspace-header-subtitle"
-                          style={styles.headerProjectTitle}
-                          numberOfLines={1}
-                        >
-                          {workspaceHeader.subtitle}
-                        </Text>
-                      </>
+                        {shouldShowWorkspaceHeaderSubtitle ? (
+                          <Text
+                            testID="workspace-header-subtitle"
+                            style={styles.headerProjectTitle}
+                            numberOfLines={1}
+                          >
+                            {workspaceHeaderSubtitle}
+                          </Text>
+                        ) : null}
+                      </View>
                     )}
                     <DropdownMenu>
                       <DropdownMenuTrigger
@@ -2291,15 +2311,37 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   headerTitleContainer: {
+    flex: 1,
     flexShrink: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
   },
+  headerTitleTextGroup: {
+    minWidth: 0,
+    flexShrink: 1,
+    flexGrow: 1,
+    flexDirection: {
+      xs: "column",
+      md: "row",
+    },
+    alignItems: {
+      xs: "flex-start",
+      md: "center",
+    },
+    justifyContent: "center",
+    gap: {
+      xs: 0,
+      md: theme.spacing[2],
+    },
+  },
   headerProjectTitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
+    fontSize: {
+      xs: theme.fontSize.sm,
+      md: theme.fontSize.base,
+    },
     flexShrink: 1,
   },
   headerTitleSkeleton: {
