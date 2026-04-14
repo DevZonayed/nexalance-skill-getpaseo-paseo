@@ -43,12 +43,17 @@ export function BranchSwitcher({
     queryClient,
   });
 
-  if (!currentBranchName) {
-    return (
+  const titleContent = (
+    <>
+      <GitBranch size={14} color={theme.colors.foregroundMuted} />
       <Text testID="workspace-header-title" style={styles.headerTitle} numberOfLines={1}>
         {title}
       </Text>
-    );
+    </>
+  );
+
+  if (!currentBranchName) {
+    return <View style={styles.branchSwitcherTrigger}>{titleContent}</View>;
   }
 
   return (
@@ -63,10 +68,7 @@ export function BranchSwitcher({
         accessibilityRole="button"
         accessibilityLabel={`Current branch: ${currentBranchName}. Press to switch branch.`}
       >
-        <GitBranch size={14} color={theme.colors.foregroundMuted} />
-        <Text testID="workspace-header-title" style={styles.headerTitle} numberOfLines={1}>
-          {title}
-        </Text>
+        {titleContent}
         {!isCompact ? <ChevronDown size={12} color={theme.colors.foregroundMuted} /> : null}
       </Pressable>
       <Combobox
@@ -117,7 +119,10 @@ const styles = StyleSheet.create((theme) => ({
       xs: -theme.spacing[2],
       md: 0,
     },
-    paddingVertical: theme.spacing[1],
+    paddingVertical: {
+      xs: 0,
+      md: theme.spacing[1],
+    },
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
