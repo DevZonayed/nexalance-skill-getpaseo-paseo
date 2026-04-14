@@ -3,7 +3,6 @@ import { useIsFocused, useNavigation } from "@react-navigation/native";
 import {
   useGlobalSearchParams,
   useLocalSearchParams,
-  usePathname,
   useRouter,
   useRootNavigationState,
 } from "expo-router";
@@ -13,7 +12,6 @@ import { WorkspaceScreen } from "@/screens/workspace/workspace-screen";
 import {
   buildHostWorkspaceRoute,
   decodeWorkspaceIdFromPathSegment,
-  parseHostWorkspaceRouteFromPathname,
   parseWorkspaceOpenIntent,
   type WorkspaceOpenIntent,
 } from "@/utils/host-routes";
@@ -85,7 +83,6 @@ function HostWorkspaceLayoutContent() {
   const rootNavigationState = useRootNavigationState();
   const consumedIntentRef = useRef<string | null>(null);
   const [intentConsumed, setIntentConsumed] = useState(false);
-  const pathname = usePathname();
   const params = useLocalSearchParams<{
     serverId?: string | string[];
     workspaceId?: string | string[];
@@ -93,9 +90,11 @@ function HostWorkspaceLayoutContent() {
   const globalParams = useGlobalSearchParams<{
     open?: string | string[];
   }>();
-  const parsedWorkspaceRoute = parseHostWorkspaceRouteFromPathname(pathname);
-  const serverId = parsedWorkspaceRoute?.serverId ?? "";
-  const workspaceId = parsedWorkspaceRoute?.workspaceId ?? "";
+  const serverId = getParamValue(params.serverId);
+  const workspaceValue = getParamValue(params.workspaceId);
+  const workspaceId = workspaceValue
+    ? (decodeWorkspaceIdFromPathSegment(workspaceValue) ?? "")
+    : "";
   const openValue = getParamValue(globalParams.open);
 
   useEffect(() => {

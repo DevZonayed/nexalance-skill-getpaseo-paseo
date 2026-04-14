@@ -12,6 +12,7 @@ import {
 } from "./helpers/new-workspace";
 import { createTempGitRepo } from "./helpers/workspace";
 import {
+  expectSidebarWorkspaceSelected,
   expectWorkspaceHeader,
   switchWorkspaceViaSidebar,
   waitForSidebarHydration,
@@ -98,6 +99,87 @@ test.describe("New workspace flow", () => {
     } finally {
       await secondRepo.cleanup();
       await firstRepo.cleanup();
+    }
+  });
+
+  test("same-project workspaces switch content without requiring refresh", async ({ page }) => {
+    const serverId = process.env.E2E_SERVER_ID;
+    if (!serverId) {
+      throw new Error("E2E_SERVER_ID is not set.");
+    }
+
+    const repo = await createTempGitRepo("workspace-nav-same-project-");
+
+    try {
+      const rootWorkspace = await openProjectViaDaemon(client, repo.path);
+      const worktreeWorkspace = await createWorktreeViaDaemon(client, {
+        cwd: repo.path,
+        slug: `nav-${Date.now()}`,
+      });
+      localWorkspaceIds.add(rootWorkspace.workspaceId);
+      createdWorktreeIds.add(worktreeWorkspace.workspaceId);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: rootWorkspace.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: rootWorkspace.workspaceName,
+        subtitle: rootWorkspace.projectDisplayName,
+      });
+      await expectSidebarWorkspaceSelected({
+        page,
+        serverId,
+        workspaceId: rootWorkspace.workspaceId,
+      });
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: worktreeWorkspace.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: worktreeWorkspace.workspaceName,
+        subtitle: worktreeWorkspace.projectDisplayName,
+      });
+      await expectSidebarWorkspaceSelected({
+        page,
+        serverId,
+        workspaceId: worktreeWorkspace.workspaceId,
+      });
+      await expectSidebarWorkspaceSelected({
+        page,
+        serverId,
+        workspaceId: rootWorkspace.workspaceId,
+        selected: false,
+      });
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: rootWorkspace.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: rootWorkspace.workspaceName,
+        subtitle: rootWorkspace.projectDisplayName,
+      });
+      await expectSidebarWorkspaceSelected({
+        page,
+        serverId,
+        workspaceId: rootWorkspace.workspaceId,
+      });
+      await expectSidebarWorkspaceSelected({
+        page,
+        serverId,
+        workspaceId: worktreeWorkspace.workspaceId,
+        selected: false,
+      });
+    } finally {
+      await repo.cleanup();
     }
   });
 
