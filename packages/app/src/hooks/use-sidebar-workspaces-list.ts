@@ -9,6 +9,10 @@ import {
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
+import {
+  summarizeSidebarProjects,
+  summarizeWorkspaceCollection,
+} from "@/utils/workspace-fetch-debug";
 
 const EMPTY_ORDER: string[] = [];
 const EMPTY_PROJECTS: SidebarProjectEntry[] = [];
@@ -295,6 +299,20 @@ export function useSidebarWorkspacesList(options?: {
   }, [persistedProjectOrder, persistedWorkspaceOrderByScope, serverId, sessionWorkspaces]);
 
   useEffect(() => {
+    if (!serverId) {
+      return;
+    }
+
+    console.log("[WorkspaceFetch][sidebar] model", {
+      serverId,
+      connectionStatus,
+      hasHydratedWorkspaces,
+      sessionWorkspaces: summarizeWorkspaceCollection(sessionWorkspaces?.values()),
+      projects: summarizeSidebarProjects(projects),
+    });
+  }, [connectionStatus, hasHydratedWorkspaces, projects, serverId, sessionWorkspaces]);
+
+  useEffect(() => {
     if (!serverId || projects.length === 0) {
       return;
     }
@@ -337,9 +355,20 @@ export function useSidebarWorkspacesList(options?: {
       let cursor: string | null = null;
       try {
         while (true) {
+          console.log("[WorkspaceFetch][sidebar-refresh] request", {
+            serverId,
+            cursor,
+            existingWorkspaces: summarizeWorkspaceCollection(existingWorkspaces?.values()),
+          });
           const payload = await client.fetchWorkspaces({
             sort: [{ key: "activity_at", direction: "desc" }],
             page: cursor ? { limit: 200, cursor } : { limit: 200 },
+          });
+          console.log("[WorkspaceFetch][sidebar-refresh] response", {
+            serverId,
+            cursor,
+            pageInfo: payload.pageInfo,
+            payload: summarizeWorkspaceCollection(payload.entries),
           });
           for (const entry of payload.entries) {
             const workspace = toWorkspaceDescriptor(entry);
@@ -359,7 +388,16 @@ export function useSidebarWorkspacesList(options?: {
         const store = useSessionStore.getState();
         store.setWorkspaces(serverId, next);
         store.setHasHydratedWorkspaces(serverId, true);
-      } catch {
+        console.log("[WorkspaceFetch][sidebar-refresh] applied", {
+          serverId,
+          nextWorkspaces: summarizeWorkspaceCollection(next.values()),
+        });
+      } catch (error) {
+        console.error("[WorkspaceFetch][sidebar-refresh] failed", {
+          serverId,
+          cursor,
+          error,
+        });
         // ignore explicit refresh failures; hook keeps existing data
       }
     })();
