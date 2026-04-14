@@ -65,7 +65,7 @@ test.describe("New workspace flow", () => {
       });
       await expectWorkspaceHeader(page, {
         title: firstWorkspace.workspaceName,
-        subtitle: workspaceLabelFromPath(firstRepo.path),
+        subtitle: firstWorkspace.projectDisplayName,
       });
 
       await switchWorkspaceViaSidebar({
@@ -79,7 +79,7 @@ test.describe("New workspace flow", () => {
       });
       await expectWorkspaceHeader(page, {
         title: secondWorkspace.workspaceName,
-        subtitle: workspaceLabelFromPath(secondRepo.path),
+        subtitle: secondWorkspace.projectDisplayName,
       });
 
       await switchWorkspaceViaSidebar({
@@ -89,7 +89,7 @@ test.describe("New workspace flow", () => {
       });
       await expectWorkspaceHeader(page, {
         title: firstWorkspace.workspaceName,
-        subtitle: workspaceLabelFromPath(firstRepo.path),
+        subtitle: firstWorkspace.projectDisplayName,
       });
     } finally {
       await secondRepo.cleanup();
@@ -119,7 +119,7 @@ test.describe("New workspace flow", () => {
       });
       await expectWorkspaceHeader(page, {
         title: openedProject.workspaceName,
-        subtitle: workspaceLabelFromPath(tempRepo.path),
+        subtitle: openedProject.projectDisplayName,
       });
 
       await clickNewWorkspaceButton(page, {

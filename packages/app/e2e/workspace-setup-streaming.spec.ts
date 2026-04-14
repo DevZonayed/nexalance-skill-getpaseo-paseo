@@ -226,6 +226,7 @@ test.describe("Workspace setup streaming", () => {
   });
 
   test("launches script terminals after setup completes", async ({ page }) => {
+    test.setTimeout(90_000);
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-svc-ui-", {
       paseoConfig: {
@@ -272,9 +273,11 @@ test.describe("Workspace setup streaming", () => {
       // Verify the terminal surface rendered
       await expect(page.getByTestId("terminal-surface").first()).toBeVisible({ timeout: 10_000 });
 
-      // Verify the terminal output contains "listening on" (xterm renders text in .xterm-rows)
+      // Verify the terminal output contains "listening on" (xterm renders text in .xterm-rows).
+      // The script is spawned after setup completes and needs time for the shell to start,
+      // the command to be typed, and Node to boot the HTTP server. Give extra time on CI.
       await expect(page.locator(".xterm-rows").first()).toContainText("listening on", {
-        timeout: 30_000,
+        timeout: 60_000,
       });
     } finally {
       await client.close();

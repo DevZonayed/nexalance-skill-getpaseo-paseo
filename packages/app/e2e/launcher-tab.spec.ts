@@ -67,6 +67,8 @@ test.describe("Tab creation", () => {
       .toBe(countBefore + 1);
     const countAfterFirst = await countTabsOfKind(page, "draft");
 
+    // Blur the composer so the second shortcut isn't swallowed by the focused input
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur?.());
     await pressNewTabShortcut(page);
     await expect
       .poll(() => countTabsOfKind(page, "draft"), { timeout: 15_000 })
