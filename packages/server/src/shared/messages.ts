@@ -876,6 +876,7 @@ export const RefreshAgentRequestMessageSchema = z.object({
 export const CancelAgentRequestMessageSchema = z.object({
   type: z.literal("cancel_agent_request"),
   agentId: z.string(),
+  requestId: z.string().optional(),
 });
 
 export const RestartServerRequestMessageSchema = z.object({
@@ -1307,6 +1308,7 @@ export const FileDownloadTokenRequestSchema = z.object({
 export const ClearAgentAttentionMessageSchema = z.object({
   type: z.literal("clear_agent_attention"),
   agentId: z.union([z.string(), z.array(z.string())]),
+  requestId: z.string().optional(),
 });
 
 export const ClientHeartbeatMessageSchema = z.object({
@@ -2102,6 +2104,24 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
   }),
 });
 
+export const CancelAgentResponseMessageSchema = z.object({
+  type: z.literal("cancel_agent_response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    agent: AgentSnapshotPayloadSchema.nullable(),
+  }),
+});
+
+export const ClearAgentAttentionResponseMessageSchema = z.object({
+  type: z.literal("clear_agent_attention_response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string().or(z.array(z.string())),
+    agents: z.array(AgentSnapshotPayloadSchema),
+  }),
+});
+
 export const SendAgentMessageResponseMessageSchema = z.object({
   type: z.literal("send_agent_message_response"),
   payload: z.object({
@@ -2771,6 +2791,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
+  CancelAgentResponseMessageSchema,
+  ClearAgentAttentionResponseMessageSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   GetDaemonConfigResponseMessageSchema,
@@ -2883,6 +2905,7 @@ export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessage
 export type FetchAgentTimelineResponseMessage = z.infer<
   typeof FetchAgentTimelineResponseMessageSchema
 >;
+export type CancelAgentResponseMessage = z.infer<typeof CancelAgentResponseMessageSchema>;
 export type SendAgentMessageResponseMessage = z.infer<typeof SendAgentMessageResponseMessageSchema>;
 export type SetVoiceModeResponseMessage = z.infer<typeof SetVoiceModeResponseMessageSchema>;
 export type SetAgentModeResponseMessage = z.infer<typeof SetAgentModeResponseMessageSchema>;
@@ -3048,6 +3071,9 @@ export type FileDownloadTokenResponse = z.infer<typeof FileDownloadTokenResponse
 export type RestartServerRequestMessage = z.infer<typeof RestartServerRequestMessageSchema>;
 export type ShutdownServerRequestMessage = z.infer<typeof ShutdownServerRequestMessageSchema>;
 export type ClearAgentAttentionMessage = z.infer<typeof ClearAgentAttentionMessageSchema>;
+export type ClearAgentAttentionResponseMessage = z.infer<
+  typeof ClearAgentAttentionResponseMessageSchema
+>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;
