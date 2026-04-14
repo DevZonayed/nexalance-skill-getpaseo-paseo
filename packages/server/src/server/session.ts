@@ -5443,7 +5443,17 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null,
   ): Promise<WorkspaceDescriptorPayload> {
     const base = await this.describeWorkspaceRecord(workspace, projectRecord);
-    const snapshot = await this.workspaceGitService.getSnapshot(workspace.cwd);
+
+    let snapshot: WorkspaceGitRuntimeSnapshot;
+    try {
+      snapshot = await this.workspaceGitService.getSnapshot(workspace.cwd);
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, cwd: workspace.cwd },
+        "Failed to load git snapshot for workspace",
+      );
+      return base;
+    }
 
     const checkout = checkoutLiteFromGitSnapshot(workspace.cwd, snapshot.git);
     const displayName = deriveWorkspaceDisplayName({ cwd: workspace.cwd, checkout });
