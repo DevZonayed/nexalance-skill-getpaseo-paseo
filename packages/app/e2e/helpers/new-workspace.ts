@@ -169,7 +169,9 @@ export async function clickNewWorkspaceButton(
     timeout: 30_000,
   });
 
-  const createButton = page.getByRole("button", { name: "Create" });
+  const createButton = page
+    .getByTestId("message-input-root")
+    .getByRole("button", { name: "Create" });
   await expect(createButton).toBeVisible({ timeout: 30_000 });
   await createButton.click();
 }
