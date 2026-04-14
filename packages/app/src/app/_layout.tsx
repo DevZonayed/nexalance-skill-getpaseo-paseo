@@ -437,7 +437,6 @@ function AppContainer({
     enabled: chromeEnabled,
     isMobile: isCompactLayout,
     toggleAgentList,
-    selectedAgentId,
     toggleFileExplorer,
     toggleBothSidebars,
     toggleFocusMode,
