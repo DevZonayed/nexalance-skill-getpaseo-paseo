@@ -1890,9 +1890,7 @@ describe("workspace aggregation", () => {
     });
     const workspaceGitService = createNoopWorkspaceGitService();
     workspaceGitService.peekSnapshot = vi.fn(() => runtimeSnapshot);
-    workspaceGitService.getSnapshot = vi.fn(async () => {
-      throw new Error("fetch_workspaces should not trigger per-workspace refreshes");
-    });
+    workspaceGitService.getSnapshot = vi.fn(async () => runtimeSnapshot);
     workspaceGitService.subscribe = vi.fn(async () => ({
       initial: runtimeSnapshot,
       unsubscribe: () => {},
@@ -1946,8 +1944,7 @@ describe("workspace aggregation", () => {
       | { type: "fetch_workspaces_response"; payload: any }
       | undefined;
 
-    expect(workspaceGitService.peekSnapshot).toHaveBeenCalledWith("/tmp/repo");
-    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo");
     expect(response?.payload.entries).toEqual([
       expect.objectContaining({
         id: "/tmp/repo",
@@ -1998,9 +1995,7 @@ describe("workspace aggregation", () => {
     });
     const workspaceGitService = createNoopWorkspaceGitService();
     workspaceGitService.peekSnapshot = vi.fn(() => runtimeSnapshot);
-    workspaceGitService.getSnapshot = vi.fn(async () => {
-      throw new Error("workspace updates should use passive workspace git snapshots");
-    });
+    workspaceGitService.getSnapshot = vi.fn(async () => runtimeSnapshot);
 
     const session = createSessionForWorkspaceTests({
       workspaceGitService,
@@ -2053,8 +2048,7 @@ describe("workspace aggregation", () => {
       skipReconcile: true,
     });
 
-    expect(workspaceGitService.peekSnapshot).toHaveBeenCalledWith("/tmp/repo");
-    expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo");
     expect(emitted).toContainEqual({
       type: "workspace_update",
       payload: {

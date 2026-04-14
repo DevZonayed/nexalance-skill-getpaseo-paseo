@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
 import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
@@ -24,6 +25,7 @@ export function BranchSwitcher({
   isGitCheckout,
 }: BranchSwitcherProps) {
   const { theme } = useUnistyles();
+  const isCompact = useIsCompactFormFactor();
   const anchorRef = useRef<View>(null);
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -65,7 +67,7 @@ export function BranchSwitcher({
         <Text testID="workspace-header-title" style={styles.headerTitle} numberOfLines={1}>
           {title}
         </Text>
-        <ChevronDown size={12} color={theme.colors.foregroundMuted} />
+        {!isCompact ? <ChevronDown size={12} color={theme.colors.foregroundMuted} /> : null}
       </Pressable>
       <Combobox
         options={branchOptions}
@@ -111,6 +113,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+    marginLeft: {
+      xs: -theme.spacing[2],
+      md: 0,
+    },
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,

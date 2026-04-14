@@ -113,6 +113,7 @@ import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import { AGENT_PROVIDER_IDS } from "./agent/provider-manifest.js";
 import {
+  checkoutLiteFromGitSnapshot,
   normalizeWorkspaceId as normalizePersistedWorkspaceId,
   deriveWorkspaceId,
   deriveProjectRootPath,
@@ -5716,8 +5717,14 @@ export class Session {
     if (!snapshot) {
       return base;
     }
+
+    const checkout = checkoutLiteFromGitSnapshot(workspace.cwd, snapshot.git);
+    const displayName = deriveWorkspaceDisplayName({ cwd: workspace.cwd, checkout });
+
     return {
       ...base,
+      name: displayName,
+      diffStat: snapshot.git.diffStat ?? null,
       gitRuntime: this.buildWorkspaceGitRuntimePayload(snapshot) ?? undefined,
       githubRuntime: this.buildWorkspaceGitHubRuntimePayload(snapshot),
     };
