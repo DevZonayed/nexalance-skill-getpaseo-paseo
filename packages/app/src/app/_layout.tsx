@@ -811,7 +811,17 @@ function RootStack() {
         getId={({ params }) => {
           const serverId = getRouteParamValue(params?.serverId);
           const workspaceId = getRouteParamValue(params?.workspaceId);
-          return serverId && workspaceId ? `${serverId}:${workspaceId}` : undefined;
+          const openIntent = getRouteParamValue(
+            params && typeof params === "object" && "open" in params
+              ? (params as { open?: string | string[] }).open
+              : undefined,
+          );
+          if (!serverId || !workspaceId) {
+            return undefined;
+          }
+          return openIntent
+            ? `${serverId}:${workspaceId}:open:${openIntent}`
+            : `${serverId}:${workspaceId}`;
         }}
       />
       <Stack.Screen name="h/[serverId]/agent/[agentId]" options={{ gestureEnabled: false }} />

@@ -46,6 +46,29 @@ function workspaceRowLocator(page: Page, serverId: string, workspacePath: string
   return page.locator(ids.join(",")).first();
 }
 
+export async function expectSidebarWorkspaceSelected(input: {
+  page: Page;
+  serverId: string;
+  workspaceId: string;
+  selected?: boolean;
+}): Promise<void> {
+  const row = workspaceRowLocator(input.page, input.serverId, input.workspaceId);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  const expected = input.selected === false ? "false" : "true";
+
+  const hasDataSelected = await row.getAttribute("data-selected");
+  if (hasDataSelected !== null) {
+    await expect(row).toHaveAttribute("data-selected", expected, {
+      timeout: 30_000,
+    });
+    return;
+  }
+
+  await expect(row).toHaveAttribute("aria-selected", expected, {
+    timeout: 30_000,
+  });
+}
+
 export async function switchWorkspaceViaSidebar(input: {
   page: Page;
   serverId: string;

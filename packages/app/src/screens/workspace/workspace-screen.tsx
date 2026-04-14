@@ -99,7 +99,6 @@ import {
 } from "@/screens/workspace/workspace-header-source";
 import {
   deriveWorkspaceAgentVisibility,
-  shouldPruneWorkspaceAgentTab,
   workspaceAgentVisibilityEqual,
 } from "@/screens/workspace/workspace-agent-visibility";
 import { deriveWorkspacePaneState } from "@/screens/workspace/workspace-pane-state";
@@ -1010,7 +1009,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       return;
     }
 
-    const terminalIds = new Set(terminals.map((terminal) => terminal.id));
     const hasActivePendingDraftCreateInWorkspace = uiTabs.some((tab) => {
       if (tab.target.kind !== "draft") {
         return false;
@@ -1019,56 +1017,16 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
     });
 
-    for (const agentId of workspaceAgentVisibility.activeAgentIds) {
-      if (hiddenAgentIds.has(agentId)) {
-        continue;
-      }
-      const representedByTarget = uiTabs.some(
-        (tab) => tab.target.kind === "agent" && tab.target.agentId === agentId,
-      );
-      const representedByDeterministicTabId = uiTabs.some(
-        (tab) => tab.tabId === `agent_${agentId}`,
-      );
-      if (
-        hasActivePendingDraftCreateInWorkspace &&
-        !representedByTarget &&
-        !representedByDeterministicTabId
-      ) {
-        continue;
-      }
-      ensureWorkspaceTab({ kind: "agent", agentId });
-    }
-    for (const terminal of terminals) {
-      ensureWorkspaceTab({ kind: "terminal", terminalId: terminal.id });
-    }
-
-    const canPruneAgentTabs = hasHydratedAgents;
-    const canPruneTerminalTabs = terminalsQuery.isSuccess;
-    for (const tab of uiTabs) {
-      if (
-        canPruneAgentTabs &&
-        tab.target.kind === "agent" &&
-        !pinnedAgentIds.has(tab.target.agentId) &&
-        shouldPruneWorkspaceAgentTab({
-          agentId: tab.target.agentId,
-          agentsHydrated: hasHydratedAgents,
-          knownAgentIds: workspaceAgentVisibility.knownAgentIds,
-          activeAgentIds: workspaceAgentVisibility.activeAgentIds,
-        })
-      ) {
-        closeWorkspaceTabWithCleanup({ tabId: tab.tabId, target: tab.target });
-      }
-      if (
-        canPruneTerminalTabs &&
-        tab.target.kind === "terminal" &&
-        !terminalIds.has(tab.target.terminalId)
-      ) {
-        closeWorkspaceTabWithCleanup({ tabId: tab.tabId, target: tab.target });
-      }
-    }
+    reconcileWorkspaceTabs(persistenceKey, {
+      agentsHydrated: hasHydratedAgents,
+      terminalsHydrated: terminalsQuery.isSuccess,
+      activeAgentIds: Array.from(workspaceAgentVisibility.activeAgentIds),
+      knownAgentIds: Array.from(workspaceAgentVisibility.knownAgentIds),
+      standaloneTerminalIds: terminals.map((terminal) => terminal.id),
+      hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
+    });
   }, [
     hasHydratedAgents,
-    hiddenAgentIds,
     pendingByDraftId,
     persistenceKey,
     reconcileWorkspaceTabs,

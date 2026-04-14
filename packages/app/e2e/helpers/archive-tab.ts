@@ -27,10 +27,15 @@ type ArchiveTabDaemonClient = {
     modeId: string;
     cwd: string;
     title: string;
-    initialPrompt: string;
+    initialPrompt?: string;
   }): Promise<{ id: string }>;
   archiveAgent(agentId: string): Promise<{ archivedAt: string }>;
   waitForFinish(agentId: string, timeout?: number): Promise<{ status: string }>;
+  waitForAgentUpsert(
+    agentId: string,
+    predicate: (snapshot: { status: string }) => boolean,
+    timeout?: number,
+  ): Promise<{ status: string }>;
 };
 
 function getDaemonPort(): string {
@@ -110,16 +115,17 @@ export async function createIdleAgent(
   const created = await client.createAgent({
     provider: "opencode",
     model: "opencode/gpt-5-nano",
-    modeId: "default",
+    modeId: "bypassPermissions",
     cwd: input.cwd,
     title: input.title,
-    initialPrompt: "Reply with exactly READY.",
   });
-  const finished = await client.waitForFinish(created.id, 120_000);
-  if (finished.status !== "idle") {
-    throw new Error(
-      `Expected agent ${created.id} to become idle, got ${finished.status}. Error: ${JSON.stringify((finished as Record<string, unknown>).error ?? "unknown")}`,
-    );
+  const snapshot = await client.waitForAgentUpsert(
+    created.id,
+    (agent) => agent.status === "idle",
+    30_000,
+  );
+  if (snapshot.status !== "idle") {
+    throw new Error(`Expected agent ${created.id} to become idle, got ${snapshot.status}.`);
   }
   return {
     id: created.id,

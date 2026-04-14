@@ -1009,6 +1009,9 @@ function WorkspaceRowInner({
       >
         <Pressable
           disabled={isArchiving}
+          aria-selected={selected}
+          accessibilityRole="button"
+          accessibilityState={{ selected }}
           style={({ pressed }) => [
             styles.workspaceRow,
             isDragging && styles.workspaceRowDragging,
