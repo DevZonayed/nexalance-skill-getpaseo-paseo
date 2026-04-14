@@ -2321,7 +2321,10 @@ const styles = StyleSheet.create((theme) => ({
   headerTitleTextGroup: {
     minWidth: 0,
     flexShrink: 1,
-    flexGrow: 1,
+    flexGrow: {
+      xs: 1,
+      md: 0,
+    },
     flexDirection: {
       xs: "column",
       md: "row",
@@ -2330,7 +2333,7 @@ const styles = StyleSheet.create((theme) => ({
       xs: "flex-start",
       md: "center",
     },
-    justifyContent: "center",
+    justifyContent: "flex-start",
     gap: {
       xs: 0,
       md: theme.spacing[2],
