@@ -440,7 +440,7 @@ export function Combobox({
         ? clampedMeasuredTopStartLeft !== null && measuredTopStartBottom !== null
         : floatingLeft !== null &&
           floatingTop !== null &&
-          (hasNonZeroFloatingPosition || !referenceAtOrigin));
+          (hasNonZeroFloatingPosition || referenceAtOrigin));
   const shouldHideDesktopContent = desktopPreventInitialFlash && !hasResolvedDesktopPosition;
   const shouldUseDesktopFade = !desktopPreventInitialFlash;
 
