@@ -24,6 +24,7 @@ This is an npm workspace monorepo:
 | [docs/TESTING.md](docs/TESTING.md) | TDD workflow, determinism, real dependencies over mocks, test organization |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP |
 | [docs/RELEASE.md](docs/RELEASE.md) | Release playbook, draft releases, completion checklist |
+| [docs/CUSTOM-PROVIDERS.md](docs/CUSTOM-PROVIDERS.md) | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries |
 | [docs/ANDROID.md](docs/ANDROID.md) | App variants, local/cloud builds, EAS workflows |
 | [docs/DESIGN.md](docs/DESIGN.md) | How to design features before implementation |
 | [SECURITY.md](SECURITY.md) | Relay threat model, E2E encryption, DNS rebinding, agent auth |
