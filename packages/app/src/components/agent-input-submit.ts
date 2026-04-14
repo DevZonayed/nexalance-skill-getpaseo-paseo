@@ -3,6 +3,7 @@ export type AgentInputSubmitResult = "noop" | "queued" | "submitted" | "failed";
 export interface AgentInputSubmitActionInput<TImage> {
   message: string;
   imageAttachments?: TImage[];
+  allowEmptySubmit?: boolean;
   forceSend?: boolean;
   isAgentRunning: boolean;
   canSubmit: boolean;
@@ -22,7 +23,7 @@ export async function submitAgentInput<TImage>(
   const trimmedMessage = input.message.trim();
   const imageAttachments = input.imageAttachments;
 
-  if (!trimmedMessage && !imageAttachments?.length) {
+  if (!trimmedMessage && !imageAttachments?.length && !input.allowEmptySubmit) {
     return "noop";
   }
 

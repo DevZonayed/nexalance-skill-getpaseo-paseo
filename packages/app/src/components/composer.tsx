@@ -354,6 +354,7 @@ export function Composer({
     await submitAgentInput({
       message,
       imageAttachments,
+      allowEmptySubmit,
       forceSend,
       isAgentRunning: agentState.status === "running",
       // Parent-managed submits are still valid submit paths even when the
