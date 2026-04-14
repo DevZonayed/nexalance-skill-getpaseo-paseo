@@ -646,8 +646,7 @@ export async function createPaseoDaemon(
                 relay: { endpoint: relayPublicEndpoint },
               });
 
-              const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
-              logger.info({ url }, "pairing_offer");
+              encodeOfferToFragmentUrl({ offer, appBaseUrl });
 
               relayTransport?.stop().catch(() => undefined);
               relayTransport = startRelayTransport({
