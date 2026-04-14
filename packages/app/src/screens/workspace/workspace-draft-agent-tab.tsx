@@ -287,7 +287,6 @@ export function WorkspaceDraftAgentTab({
             serverId={serverId}
             isInputActive={isPaneFocused}
             onSubmitMessage={handleCreateFromInput}
-            allowEmptySubmit={false}
             isSubmitLoading={isSubmitting}
             blurOnSubmit={true}
             value={draftInput.text}

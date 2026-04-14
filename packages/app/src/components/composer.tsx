@@ -65,9 +65,8 @@ interface ComposerProps {
   serverId: string;
   isInputActive: boolean;
   onSubmitMessage?: (payload: MessagePayload) => Promise<void>;
-  allowEmptySubmit?: boolean;
-  /** Label to show on the submit button when the input is empty and allowEmptySubmit is true. */
-  emptySubmitLabel?: string;
+  /** When true, the submit button is enabled even without text or images (e.g. external attachment selected). */
+  hasExternalContent?: boolean;
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
   /** When true, blurs the input immediately when submitting. */
@@ -105,8 +104,7 @@ export function Composer({
   serverId,
   isInputActive,
   onSubmitMessage,
-  allowEmptySubmit = false,
-  emptySubmitLabel,
+  hasExternalContent = false,
   isSubmitLoading = false,
   blurOnSubmit = false,
   value,
@@ -354,7 +352,7 @@ export function Composer({
     await submitAgentInput({
       message,
       imageAttachments,
-      allowEmptySubmit,
+      hasExternalContent,
       forceSend,
       isAgentRunning: agentState.status === "running",
       // Parent-managed submits are still valid submit paths even when the
@@ -746,8 +744,7 @@ export function Composer({
               value={userInput}
               onChangeText={setUserInput}
               onSubmit={handleSubmit}
-              allowEmptySubmit={allowEmptySubmit}
-              emptySubmitLabel={emptySubmitLabel}
+              hasExternalContent={hasExternalContent}
               isSubmitDisabled={isProcessing || isSubmitLoading}
               isSubmitLoading={isProcessing || isSubmitLoading}
               images={selectedImages}

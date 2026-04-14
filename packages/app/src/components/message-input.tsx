@@ -62,9 +62,8 @@ export interface MessageInputProps {
   value: string;
   onChangeText: (text: string) => void;
   onSubmit: (payload: MessagePayload) => void;
-  allowEmptySubmit?: boolean;
-  /** Label to show on the submit button when the input is empty and allowEmptySubmit is true. */
-  emptySubmitLabel?: string;
+  /** When true, the submit button is enabled even without text or images (e.g. external attachment selected). */
+  hasExternalContent?: boolean;
   isSubmitDisabled?: boolean;
   isSubmitLoading?: boolean;
   images?: ImageAttachment[];
@@ -201,8 +200,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     value,
     onChangeText,
     onSubmit,
-    allowEmptySubmit = false,
-    emptySubmitLabel,
+    hasExternalContent = false,
     isSubmitDisabled = false,
     isSubmitLoading = false,
     images = [],
@@ -573,7 +571,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   const handleSendMessage = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed && images.length === 0 && !allowEmptySubmit) return;
+    if (!trimmed && images.length === 0 && !hasExternalContent) return;
     const payload = {
       text: trimmed,
       images: images.length > 0 ? images : undefined,
@@ -583,7 +581,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     inputHeightRef.current = MIN_INPUT_HEIGHT;
     setInputHeight(MIN_INPUT_HEIGHT);
     onHeightChange?.(MIN_INPUT_HEIGHT);
-  }, [value, images, onSubmit, isAgentRunning, onHeightChange, allowEmptySubmit]);
+  }, [value, images, onSubmit, isAgentRunning, onHeightChange, hasExternalContent]);
 
   const handleQueueMessage = useCallback(() => {
     if (!onQueue) return;
@@ -935,10 +933,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   const hasImages = images.length > 0;
   const hasRealContent = value.trim().length > 0 || hasImages;
-  const hasSendableContent = hasRealContent || allowEmptySubmit;
+  const hasSendableContent = hasRealContent || hasExternalContent;
   const shouldShowSendButton = hasSendableContent || isSubmitLoading;
-  const showEmptySubmitLabel =
-    allowEmptySubmit && emptySubmitLabel && !hasRealContent && !isSubmitLoading;
   const canPressLoadingButton = isSubmitLoading && typeof onSubmitLoadingPress === "function";
   const isSendButtonDisabled =
     disabled || (!canPressLoadingButton && (isSubmitDisabled || isSubmitLoading));
@@ -1170,19 +1166,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipTrigger
                   onPress={canPressLoadingButton ? onSubmitLoadingPress : handleDefaultSendAction}
                   disabled={isSendButtonDisabled}
-                  accessibilityLabel={
-                    showEmptySubmitLabel ? emptySubmitLabel : submitAccessibilityLabel
-                  }
+                  accessibilityLabel={submitAccessibilityLabel}
                   accessibilityRole="button"
                   style={[
-                    showEmptySubmitLabel ? styles.emptySubmitButton : styles.sendButton,
+                    styles.sendButton,
                     isSendButtonDisabled && styles.buttonDisabled,
                   ]}
                 >
                   {isSubmitLoading ? (
                     <ActivityIndicator size="small" color="white" />
-                  ) : showEmptySubmitLabel ? (
-                    <Text style={styles.emptySubmitLabel}>{emptySubmitLabel}</Text>
                   ) : (
                     <ArrowUp size={buttonIconSize} color="white" />
                   )}
@@ -1190,11 +1182,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>
-                      {showEmptySubmitLabel
-                        ? emptySubmitLabel
-                        : defaultActionQueues
-                          ? "Queue"
-                          : "Send"}
+                      {defaultActionQueues ? "Queue" : "Send"}
                     </Text>
                     {sendKeys ? <Shortcut chord={sendKeys} style={styles.tooltipShortcut} /> : null}
                   </View>
@@ -1378,18 +1366,6 @@ const styles = StyleSheet.create(((theme: any) => ({
     backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
-  },
-  emptySubmitButton: {
-    height: 28,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing[3],
-  },
-  emptySubmitLabel: {
-    color: "white",
-    fontSize: theme.fontSize.sm,
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,

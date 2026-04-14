@@ -289,8 +289,7 @@ export function NewWorkspaceScreen({
             serverId={serverId}
             isInputActive={true}
             onSubmitMessage={handleCreateChatAgent}
-            allowEmptySubmit
-            emptySubmitLabel="Create"
+            hasExternalContent={selectedGithubItem !== null}
             isSubmitLoading={pendingAction === "chat"}
             blurOnSubmit={true}
             value={chatDraft.text}
