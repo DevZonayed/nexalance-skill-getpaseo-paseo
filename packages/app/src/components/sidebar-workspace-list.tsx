@@ -302,7 +302,14 @@ function WorkspaceStatusIndicator({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.workspaceStatusDot}>
-        <SyncedLoader size={11} color={theme.colorScheme === "light" ? theme.colors.palette.amber[700] : theme.colors.palette.amber[500]} />
+        <SyncedLoader
+          size={11}
+          color={
+            theme.colorScheme === "light"
+              ? theme.colors.palette.amber[700]
+              : theme.colors.palette.amber[500]
+          }
+        />
       </View>
     );
   }
@@ -406,7 +413,14 @@ function ProjectLeadingVisual({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <SyncedLoader size={11} color={theme.colorScheme === "light" ? theme.colors.palette.amber[700] : theme.colors.palette.amber[500]} />
+        <SyncedLoader
+          size={11}
+          color={
+            theme.colorScheme === "light"
+              ? theme.colors.palette.amber[700]
+              : theme.colors.palette.amber[500]
+          }
+        />
       </View>
     );
   }
