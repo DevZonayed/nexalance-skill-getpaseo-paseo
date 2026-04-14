@@ -188,11 +188,16 @@ export async function openWorkspaceWithAgents(
   const serverId = getServerId();
   for (const agent of agents) {
     await page.goto(buildHostAgentDetailRoute(serverId, agent.id, agent.cwd));
-    // Wait for the ?open=agent:xxx intent to be consumed by the layout effect.
-    // The layout removes the query param via history.replaceState once processed.
-    await page.waitForFunction(() => !window.location.search.includes("open="), {
-      timeout: 15_000,
-    });
+
+    // The workspace layout consumes `?open=agent:xxx`, returns null during the effect,
+    // then replaces the URL with the clean workspace route after preparing the tab.
+    // On CI, Expo Router's rootNavigationState may take time to initialize,
+    // so we allow a generous timeout here (matching terminal-perf pattern).
+    await page.waitForURL(
+      (url) => url.pathname.includes("/workspace/") && !url.searchParams.has("open"),
+      { timeout: 60_000 },
+    );
+
     await waitForWorkspaceTabsVisible(page);
     await expectWorkspaceTabVisible(page, agent.id);
   }

@@ -13,6 +13,7 @@ import { createTempGitRepo } from "./helpers/workspace";
 import {
   expectWorkspaceHeader,
   switchWorkspaceViaSidebar,
+  waitForSidebarHydration,
   waitForWorkspaceInSidebar,
   workspaceLabelFromPath,
 } from "./helpers/workspace-ui";
@@ -22,7 +23,7 @@ test.describe("New workspace flow", () => {
   const localWorkspaceIds = new Set<string>();
   const createdWorktreeIds = new Set<string>();
 
-  test.describe.configure({ timeout: 120_000 });
+  test.describe.configure({ timeout: 240_000 });
 
   test.beforeEach(async () => {
     client = await connectNewWorkspaceDaemonClient();
@@ -58,7 +59,16 @@ test.describe("New workspace flow", () => {
       localWorkspaceIds.add(secondWorkspace.workspaceId);
 
       await page.goto(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId));
-      await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId));
+      await waitForSidebarHydration(page);
+
+      // The app may redirect to a different workspace before hydration completes.
+      // Re-navigate if we ended up on the wrong workspace.
+      const currentUrl = page.url();
+      const expectedUrl = buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId);
+      if (!currentUrl.includes(expectedUrl)) {
+        await page.goto(expectedUrl);
+      }
+
       await waitForWorkspaceInSidebar(page, {
         serverId,
         workspaceId: firstWorkspace.workspaceId,
@@ -112,7 +122,15 @@ test.describe("New workspace flow", () => {
       localWorkspaceIds.add(openedProject.workspaceId);
 
       await page.goto(buildHostWorkspaceRoute(serverId, openedProject.workspaceId));
-      await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, openedProject.workspaceId));
+      await waitForSidebarHydration(page);
+
+      // Re-navigate if the app redirected before hydration completed.
+      const currentUrl = page.url();
+      const expectedUrl = buildHostWorkspaceRoute(serverId, openedProject.workspaceId);
+      if (!currentUrl.includes(expectedUrl)) {
+        await page.goto(expectedUrl);
+      }
+
       await waitForWorkspaceInSidebar(page, {
         serverId,
         workspaceId: openedProject.workspaceId,

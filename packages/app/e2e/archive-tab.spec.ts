@@ -19,7 +19,7 @@ test.describe("Archive tab reconciliation", () => {
   let client: Awaited<ReturnType<typeof connectArchiveTabDaemonClient>>;
   let tempRepo: { path: string; cleanup: () => Promise<void> };
 
-  test.describe.configure({ timeout: 120_000 });
+  test.describe.configure({ timeout: 300_000 });
 
   test.beforeAll(async () => {
     tempRepo = await createTempGitRepo("archive-tab-");

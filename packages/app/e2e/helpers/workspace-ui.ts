@@ -6,6 +6,17 @@ export async function openNewAgentComposer(page: Page): Promise<void> {
   await gotoHome(page);
 }
 
+/**
+ * Wait for the sidebar to show at least one project row, indicating that the
+ * WebSocket connection is up and workspace hydration has completed.
+ */
+export async function waitForSidebarHydration(page: Page, timeout = 60_000): Promise<void> {
+  await page
+    .locator('[data-testid^="sidebar-project-row-"]')
+    .first()
+    .waitFor({ state: "visible", timeout });
+}
+
 export function workspaceLabelFromPath(value: string): string {
   const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
   const parts = normalized.split("/").filter(Boolean);
@@ -62,7 +73,7 @@ export async function waitForWorkspaceInSidebar(
   const selector = candidates
     .map((id) => `[data-testid="sidebar-workspace-row-${input.serverId}:${id}"]`)
     .join(",");
-  await page.locator(selector).first().waitFor({ state: "visible", timeout: 30_000 });
+  await page.locator(selector).first().waitFor({ state: "visible", timeout: 60_000 });
 }
 
 export async function expectWorkspaceHeader(

@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { createTempGitRepo } from "./helpers/workspace";
 import { waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
+import { waitForTerminalContent } from "./helpers/terminal-perf";
 import {
   connectWorkspaceSetupClient,
   createWorkspaceThroughDaemon,
@@ -271,14 +272,22 @@ test.describe("Workspace setup streaming", () => {
       await terminalTab.click();
 
       // Verify the terminal surface rendered
-      await expect(page.getByTestId("terminal-surface").first()).toBeVisible({ timeout: 10_000 });
+      const terminalSurface = page.getByTestId("terminal-surface").first();
+      await expect(terminalSurface).toBeVisible({ timeout: 10_000 });
 
-      // Verify the terminal output contains "listening on" (xterm renders text in .xterm-rows).
-      // The script is spawned after setup completes and needs time for the shell to start,
-      // the command to be typed, and Node to boot the HTTP server. Give extra time on CI.
-      await expect(page.locator(".xterm-rows").first()).toContainText("listening on", {
-        timeout: 60_000,
-      });
+      // Wait for terminal to fully attach (loading overlay gone)
+      await page
+        .locator('[data-testid="terminal-attach-loading"]')
+        .waitFor({ state: "hidden", timeout: 10_000 })
+        .catch(() => {
+          // overlay may never appear if attachment is instant
+        });
+
+      await terminalSurface.click();
+
+      // Verify the terminal output contains "listening on" via xterm buffer API.
+      // The .xterm-rows CSS selector is fragile; reading the buffer directly is reliable.
+      await waitForTerminalContent(page, (text) => text.includes("listening on"), 60_000);
     } finally {
       await client.close();
       await repo.cleanup();

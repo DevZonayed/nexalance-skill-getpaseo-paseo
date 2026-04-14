@@ -79,9 +79,10 @@ export async function clickNewTerminalButton(page: Page): Promise<void> {
   await button.click();
 }
 
-/** Press Cmd+T (macOS) to open a new tab. */
+/** Press Cmd+T (macOS) or Ctrl+T (Linux/Windows) to open a new tab. */
 export async function pressNewTabShortcut(page: Page): Promise<void> {
-  await page.keyboard.press("Meta+t");
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+t`);
 }
 
 // ─── Tab bar assertions ───────────────────────────────────────────────────
