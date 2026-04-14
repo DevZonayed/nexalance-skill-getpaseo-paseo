@@ -13,6 +13,7 @@ import { createTempGitRepo } from "./helpers/workspace";
 import {
   expectWorkspaceHeader,
   switchWorkspaceViaSidebar,
+  waitForWorkspaceInSidebar,
   workspaceLabelFromPath,
 } from "./helpers/workspace-ui";
 
@@ -58,6 +59,10 @@ test.describe("New workspace flow", () => {
 
       await page.goto(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId));
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId));
+      await waitForWorkspaceInSidebar(page, {
+        serverId,
+        workspaceId: firstWorkspace.workspaceId,
+      });
       await expectWorkspaceHeader(page, {
         title: firstWorkspace.workspaceName,
         subtitle: workspaceLabelFromPath(firstRepo.path),
@@ -67,6 +72,10 @@ test.describe("New workspace flow", () => {
         page,
         serverId,
         targetWorkspacePath: secondWorkspace.workspaceId,
+      });
+      await waitForWorkspaceInSidebar(page, {
+        serverId,
+        workspaceId: secondWorkspace.workspaceId,
       });
       await expectWorkspaceHeader(page, {
         title: secondWorkspace.workspaceName,
@@ -104,6 +113,10 @@ test.describe("New workspace flow", () => {
 
       await page.goto(buildHostWorkspaceRoute(serverId, openedProject.workspaceId));
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, openedProject.workspaceId));
+      await waitForWorkspaceInSidebar(page, {
+        serverId,
+        workspaceId: openedProject.workspaceId,
+      });
       await expectWorkspaceHeader(page, {
         title: openedProject.workspaceName,
         subtitle: workspaceLabelFromPath(tempRepo.path),

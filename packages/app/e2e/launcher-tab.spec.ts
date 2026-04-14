@@ -59,11 +59,18 @@ test.describe("Tab creation", () => {
   test("opening two new tabs creates two draft tabs", async ({ page }) => {
     await gotoWorkspace(page, workspaceId);
 
+    const countBefore = await countTabsOfKind(page, "draft");
+
     await pressNewTabShortcut(page);
+    await expect
+      .poll(() => countTabsOfKind(page, "draft"), { timeout: 15_000 })
+      .toBe(countBefore + 1);
     const countAfterFirst = await countTabsOfKind(page, "draft");
 
     await pressNewTabShortcut(page);
-    await expect.poll(() => countTabsOfKind(page, "draft")).toBe(countAfterFirst + 1);
+    await expect
+      .poll(() => countTabsOfKind(page, "draft"), { timeout: 15_000 })
+      .toBe(countAfterFirst + 1);
   });
 
   test("clicking new agent tab creates a draft tab", async ({ page }) => {

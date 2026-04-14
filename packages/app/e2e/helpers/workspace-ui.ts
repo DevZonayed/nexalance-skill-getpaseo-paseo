@@ -50,6 +50,21 @@ export async function switchWorkspaceViaSidebar(input: {
   });
 }
 
+/**
+ * Wait for a workspace's sidebar row to appear, confirming the workspace
+ * descriptor has been hydrated into the session store.
+ */
+export async function waitForWorkspaceInSidebar(
+  page: Page,
+  input: { serverId: string; workspaceId: string },
+): Promise<void> {
+  const candidates = candidateWorkspaceIds(input.workspaceId);
+  const selector = candidates
+    .map((id) => `[data-testid="sidebar-workspace-row-${input.serverId}:${id}"]`)
+    .join(",");
+  await page.locator(selector).first().waitFor({ state: "visible", timeout: 30_000 });
+}
+
 export async function expectWorkspaceHeader(
   page: Page,
   input: { title: string; subtitle: string },

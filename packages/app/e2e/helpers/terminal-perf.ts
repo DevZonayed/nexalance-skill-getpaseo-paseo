@@ -139,21 +139,25 @@ export async function navigateToTerminal(
 
   // The workspace layout consumes `?open=...`, returns null during the effect,
   // then replaces the URL with the clean workspace route after preparing the tab.
+  // On CI, Expo Router's rootNavigationState may take time to initialize,
+  // so we allow a generous timeout here.
   const cleanWorkspaceRoute = buildWorkspaceUrl(input.cwd);
   await page.waitForURL(
     (url) => url.pathname === cleanWorkspaceRoute && !url.searchParams.has("open"),
-    { timeout: 15_000 },
+    { timeout: 30_000 },
   );
 
   // Wait for daemon connection (sidebar shows host label)
   await page
     .getByText("localhost", { exact: true })
     .first()
-    .waitFor({ state: "visible", timeout: 15_000 });
+    .waitFor({ state: "visible", timeout: 30_000 });
 
   // The open intent should have prepared and focused the exact pre-created terminal tab.
+  // The tab reconciliation effect also auto-creates terminal tabs once hydration completes,
+  // so we give it enough time for the full workspace hydration + tab creation cycle.
   const terminalTab = page.locator(`[data-testid="workspace-tab-terminal_${input.terminalId}"]`);
-  await terminalTab.waitFor({ state: "visible", timeout: 15_000 });
+  await terminalTab.waitFor({ state: "visible", timeout: 30_000 });
   await terminalTab.click();
 
   const terminalSurface = page.locator('[data-testid="terminal-surface"]');

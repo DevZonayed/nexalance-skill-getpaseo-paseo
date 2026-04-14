@@ -6704,6 +6704,13 @@ export class Session {
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
         archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+        scriptRouteStore: this.scriptRouteStore,
+        scriptRuntimeStore: this.scriptRuntimeStore,
+        getDaemonTcpPort: this.getDaemonTcpPort,
+        getDaemonTcpHost: this.getDaemonTcpHost,
+        onScriptsChanged: (workspaceDirectory) => {
+          this.emitWorkspaceScriptStatusUpdate(workspaceDirectory);
+        },
       },
       options,
     );

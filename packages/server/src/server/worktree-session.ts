@@ -28,8 +28,11 @@ import {
   createAgentWorktree,
   createWorktreeSetupProgressAccumulator,
   getWorktreeSetupProgressResults,
+  spawnWorktreeScripts,
 } from "./worktree-bootstrap.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { ScriptRouteStore } from "./script-proxy.js";
+import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import { getCheckoutStatusLite, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
@@ -103,6 +106,11 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
   archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
+  scriptRouteStore: ScriptRouteStore | null;
+  scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
+  getDaemonTcpPort: (() => number | null) | null;
+  getDaemonTcpHost: (() => string | null) | null;
+  onScriptsChanged: ((workspaceDirectory: string) => void) | null;
 };
 
 type HandleWorkspaceSetupStatusRequestDependencies = {
@@ -827,6 +835,28 @@ export async function runWorktreeSetupInBackground(
           });
           emitSetupProgress("completed", null);
         }
+      }
+
+      if (
+        options.shouldBootstrap &&
+        dependencies.terminalManager &&
+        dependencies.scriptRouteStore &&
+        dependencies.scriptRuntimeStore
+      ) {
+        await spawnWorktreeScripts({
+          repoRoot: worktree.worktreePath,
+          workspaceId: worktree.worktreePath,
+          branchName: worktree.branchName,
+          daemonPort: dependencies.getDaemonTcpPort?.() ?? null,
+          daemonListenHost: dependencies.getDaemonTcpHost?.() ?? null,
+          routeStore: dependencies.scriptRouteStore,
+          runtimeStore: dependencies.scriptRuntimeStore,
+          terminalManager: dependencies.terminalManager,
+          logger: dependencies.sessionLogger,
+          onLifecycleChanged: () => {
+            dependencies.onScriptsChanged?.(worktree.worktreePath);
+          },
+        });
       }
     } catch (error) {
       if (error instanceof WorktreeSetupError) {
