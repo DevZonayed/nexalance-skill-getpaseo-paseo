@@ -808,7 +808,12 @@ function ProjectHeaderRow({
           <NewWorktreeButton
             displayName={displayName}
             onPress={() => createWorktreeMutation.mutate()}
-            visible={isHovered || platformIsNative || isMobileBreakpoint}
+            visible={
+              isHovered ||
+              platformIsNative ||
+              isMobileBreakpoint ||
+              createWorktreeMutation.isPending
+            }
             loading={createWorktreeMutation.isPending}
             showShortcutHint={isProjectActive}
             testID={`sidebar-project-new-worktree-${project.projectKey}`}
