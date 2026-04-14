@@ -9,6 +9,24 @@ import {
   openHomeWithProject,
 } from "./helpers/workspace-setup";
 
+function getServerId(): string {
+  const serverId = process.env.E2E_SERVER_ID;
+  if (!serverId) {
+    throw new Error("E2E_SERVER_ID is not set.");
+  }
+  return serverId;
+}
+
+async function navigateToWorkspaceViaSidebar(
+  page: import("@playwright/test").Page,
+  workspaceId: string,
+): Promise<void> {
+  const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspaceId}`);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.click();
+  await waitForTabBar(page);
+}
+
 test.describe("Workspace setup runtime authority", () => {
   test.describe.configure({ retries: 1 });
 
@@ -24,6 +42,7 @@ test.describe("Workspace setup runtime authority", () => {
         cwd: repo.path,
         worktreeSlug: `setup-chat-${Date.now()}`,
       });
+      const workspaceId = String(workspace.id);
 
       const wsInfo = await findWorktreeWorkspaceForProject(client, repo.path);
       expect(wsInfo.workspaceDirectory).not.toBe(repo.path);
@@ -31,9 +50,7 @@ test.describe("Workspace setup runtime authority", () => {
 
       // Navigate to the workspace via sidebar
       await openHomeWithProject(page, repo.path);
-      const wsButton = page.getByRole("button", { name: workspace.name });
-      await expect(wsButton).toBeVisible({ timeout: 30_000 });
-      await wsButton.click();
+      await navigateToWorkspaceViaSidebar(page, workspaceId);
       await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
     } finally {
       await client.close();
@@ -61,16 +78,13 @@ test.describe("Workspace setup runtime authority", () => {
         throw new Error(result.error ?? "Failed to create workspace");
       }
       const workspaceDir = result.workspace.workspaceDirectory;
-      const workspaceName = result.workspace.name;
+      const workspaceId = String(result.workspace.id);
 
       // Navigate to the worktree workspace via sidebar click (direct URL
       // navigation for freshly created worktree workspaces can race with
       // Expo Router hydration, so we use the sidebar which is authoritative).
       await openHomeWithProject(page, repo.path);
-      const sidebarWorkspace = page.getByRole("button", { name: workspaceName });
-      await expect(sidebarWorkspace).toBeVisible({ timeout: 30_000 });
-      await sidebarWorkspace.click();
-      await waitForTabBar(page);
+      await navigateToWorkspaceViaSidebar(page, workspaceId);
 
       await clickTerminal(page);
 

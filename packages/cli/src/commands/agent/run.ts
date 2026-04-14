@@ -18,6 +18,8 @@ import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
 import { resolveProviderAndModel } from "../../utils/provider-model.js";
 
+export { resolveProviderAndModel } from "../../utils/provider-model.js";
+
 export function addRunOptions(cmd: Command): Command {
   return cmd
     .description("Create and start an agent with a task")

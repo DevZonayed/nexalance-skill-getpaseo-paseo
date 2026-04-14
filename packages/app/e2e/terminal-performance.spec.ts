@@ -20,6 +20,7 @@ const KEYSTROKE_P95_BUDGET_MS = 150;
 test.describe("Terminal wire performance", () => {
   let client: TerminalPerfDaemonClient;
   let tempRepo: { path: string; cleanup: () => Promise<void> };
+  let workspaceId: string;
 
   test.beforeAll(async () => {
     tempRepo = await createTempGitRepo("perf-");
@@ -27,6 +28,7 @@ test.describe("Terminal wire performance", () => {
     // Seed the workspace in the daemon so the app can resolve the path
     const seedResult = await client.openProject(tempRepo.path);
     if (!seedResult.workspace) throw new Error(seedResult.error ?? "Failed to seed workspace");
+    workspaceId = seedResult.workspace.id;
   });
 
   test.afterAll(async () => {
@@ -48,7 +50,7 @@ test.describe("Terminal wire performance", () => {
     const terminalId = result.terminal.id;
 
     try {
-      await navigateToTerminal(page, { cwd: tempRepo.path, terminalId });
+      await navigateToTerminal(page, { workspaceId, terminalId });
       await setupDeterministicPrompt(page);
 
       const sentinel = `PERF_DONE_${Date.now()}`;
@@ -107,7 +109,7 @@ test.describe("Terminal wire performance", () => {
     const terminalId = result.terminal.id;
 
     try {
-      await navigateToTerminal(page, { cwd: tempRepo.path, terminalId });
+      await navigateToTerminal(page, { workspaceId, terminalId });
       await setupDeterministicPrompt(page);
 
       // Ensure clean prompt state

@@ -83,14 +83,14 @@ export async function connectTerminalClient(): Promise<TerminalPerfDaemonClient>
   return client;
 }
 
-export function buildTerminalWorkspaceUrl(cwd: string, terminalId: string): string {
+export function buildTerminalWorkspaceUrl(workspaceId: string, terminalId: string): string {
   const serverId = getServerId();
-  const route = buildHostWorkspaceRoute(serverId, cwd);
+  const route = buildHostWorkspaceRoute(serverId, workspaceId);
   return `${route}?open=${encodeURIComponent(`terminal:${terminalId}`)}`;
 }
 
-function buildWorkspaceUrl(cwd: string): string {
-  return buildHostWorkspaceRoute(getServerId(), cwd);
+function buildWorkspaceUrl(workspaceId: string): string {
+  return buildHostWorkspaceRoute(getServerId(), workspaceId);
 }
 
 export async function getTerminalBufferText(page: Page): Promise<string> {
@@ -129,19 +129,19 @@ export async function waitForTerminalContent(
 
 export async function navigateToTerminal(
   page: Page,
-  input: { cwd: string; terminalId: string },
+  input: { workspaceId: string; terminalId: string },
 ): Promise<void> {
   // Boot the app at the workspace route directly.
   // The fixtures.ts beforeEach addInitScript seeds localStorage on every navigation,
   // so the daemon registry is already configured when the app starts.
-  const workspaceRoute = buildTerminalWorkspaceUrl(input.cwd, input.terminalId);
+  const workspaceRoute = buildTerminalWorkspaceUrl(input.workspaceId, input.terminalId);
   await page.goto(workspaceRoute);
 
   // The workspace layout consumes `?open=...`, returns null during the effect,
   // then replaces the URL with the clean workspace route after preparing the tab.
   // On CI, Expo Router's rootNavigationState may take time to initialize,
   // so we allow a generous timeout here.
-  const cleanWorkspaceRoute = buildWorkspaceUrl(input.cwd);
+  const cleanWorkspaceRoute = buildWorkspaceUrl(input.workspaceId);
   await page.waitForURL(
     (url) => url.pathname === cleanWorkspaceRoute && !url.searchParams.has("open"),
     { timeout: 30_000 },

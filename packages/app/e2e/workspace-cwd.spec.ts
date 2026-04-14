@@ -95,15 +95,12 @@ test.describe("Workspace cwd correctness", () => {
       if (!workspaceResult.workspace) {
         throw new Error(workspaceResult.error ?? `Failed to open project ${worktreePath}`);
       }
-      const workspaceName = workspaceResult.workspace.name;
+      const workspaceId = String(workspaceResult.workspace.id);
 
       // Use sidebar navigation to avoid Expo Router hydration issues
       // with direct URL navigation to the 2nd+ workspace.
       await openHomeWithProject(page, repo.path);
-      const sidebarWorkspace = page.getByRole("button", { name: workspaceName });
-      await expect(sidebarWorkspace).toBeVisible({ timeout: 30_000 });
-      await sidebarWorkspace.click();
-      await waitForTabBar(page);
+      await navigateToWorkspaceViaSidebar(page, workspaceId);
 
       await clickTerminal(page);
 
