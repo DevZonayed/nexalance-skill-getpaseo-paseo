@@ -17,10 +17,11 @@ import type {
   ProjectRegistry,
   WorkspaceRegistry,
 } from "./workspace-registry.js";
+import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
 import { createAgentWorktree } from "./worktree-bootstrap.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
-import { getCheckoutStatusLite, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
+import { resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
   computeWorktreePath,
@@ -51,6 +52,7 @@ type EmitSessionMessage = (message: SessionOutboundMessage) => void;
 type BuildAgentSessionConfigDependencies = {
   paseoHome?: string;
   sessionLogger: Logger;
+  workspaceGitService: WorkspaceGitService;
   checkoutExistingBranch: (cwd: string, branch: string) => Promise<void>;
   createBranchFromBase: (params: {
     cwd: string;
@@ -99,6 +101,7 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
 
 type HandleCreatePaseoWorktreeRequestDependencies = {
   paseoHome?: string;
+  workspaceGitService: WorkspaceGitService;
   describeWorkspaceRecord: (
     workspace: PersistedWorkspaceRecord,
   ) => Promise<WorkspaceDescriptorPayload>;
@@ -167,7 +170,8 @@ export async function buildAgentSessionConfig(
     );
 
     const baseBranch =
-      normalized.baseBranch ?? (await resolveGitCreateBaseBranch(cwd, dependencies.paseoHome));
+      normalized.baseBranch ??
+      (await resolveGitCreateBaseBranch(cwd, dependencies.workspaceGitService));
     const createdWorktree = await createAgentWorktree({
       branchName: targetBranch,
       cwd,
@@ -179,7 +183,8 @@ export async function buildAgentSessionConfig(
     worktreeConfig = createdWorktree;
   } else if (normalized.createNewBranch) {
     const baseBranch =
-      normalized.baseBranch ?? (await resolveGitCreateBaseBranch(cwd, dependencies.paseoHome));
+      normalized.baseBranch ??
+      (await resolveGitCreateBaseBranch(cwd, dependencies.workspaceGitService));
     await dependencies.createBranchFromBase({
       cwd,
       baseBranch,
@@ -264,13 +269,18 @@ export function assertSafeGitRef(ref: string, label: string): void {
   }
 }
 
-export async function resolveGitCreateBaseBranch(cwd: string, paseoHome?: string): Promise<string> {
-  const checkout = await getCheckoutStatusLite(cwd, { paseoHome });
-  if (!checkout.isGit) {
+export async function resolveGitCreateBaseBranch(
+  cwd: string,
+  workspaceGitService: WorkspaceGitService,
+): Promise<string> {
+  const snapshot = await workspaceGitService.getSnapshot(cwd);
+  if (!snapshot.git.isGit) {
     throw new Error("Cannot create a worktree outside a git repository");
   }
 
-  const repoRoot = checkout.isPaseoOwnedWorktree ? checkout.mainRepoRoot : cwd;
+  const repoRoot = snapshot.git.isPaseoOwnedWorktree
+    ? (snapshot.git.mainRepoRoot ?? snapshot.git.repoRoot ?? cwd)
+    : (snapshot.git.repoRoot ?? cwd);
   const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
   if (!baseBranch) {
     throw new Error("Unable to resolve repository default branch");
@@ -545,14 +555,14 @@ export async function handleCreatePaseoWorktreeRequest(
   request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
 ): Promise<void> {
   try {
-    const checkout = await getCheckoutStatusLite(request.cwd, {
-      paseoHome: dependencies.paseoHome,
-    });
-    if (!checkout.isGit) {
+    const snapshot = await dependencies.workspaceGitService.getSnapshot(request.cwd);
+    if (!snapshot.git.isGit) {
       throw new Error("Create worktree requires a git repository");
     }
 
-    const repoRoot = checkout.isPaseoOwnedWorktree ? checkout.mainRepoRoot : request.cwd;
+    const repoRoot = snapshot.git.isPaseoOwnedWorktree
+      ? (snapshot.git.mainRepoRoot ?? snapshot.git.repoRoot ?? request.cwd)
+      : (snapshot.git.repoRoot ?? request.cwd);
     const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
     if (!baseBranch) {
       throw new Error("Unable to resolve repository default branch");

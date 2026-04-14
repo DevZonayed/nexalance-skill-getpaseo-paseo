@@ -66,6 +66,66 @@ type WebSocketServerConfig = {
 
 type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
 
+function createFallbackWorkspaceGitService(): WorkspaceGitServiceImpl {
+  return {
+    subscribe: async ({ cwd }: { cwd: string }) => ({
+      initial: {
+        cwd,
+        git: {
+          isGit: false,
+          repoRoot: null,
+          mainRepoRoot: null,
+          currentBranch: null,
+          remoteUrl: null,
+          isPaseoOwnedWorktree: false,
+          isDirty: null,
+          aheadBehind: null,
+          aheadOfOrigin: null,
+          behindOfOrigin: null,
+          diffStat: null,
+        },
+        github: {
+          featuresEnabled: false,
+          pullRequest: null,
+          error: null,
+          refreshedAt: null,
+        },
+      },
+      unsubscribe: () => {},
+    }),
+    peekSnapshot: () => null,
+    getSnapshot: async (cwd: string) => ({
+      cwd,
+      git: {
+        isGit: false,
+        repoRoot: null,
+        mainRepoRoot: null,
+        currentBranch: null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: false,
+        isDirty: null,
+        aheadBehind: null,
+        aheadOfOrigin: null,
+        behindOfOrigin: null,
+        diffStat: null,
+      },
+      github: {
+        featuresEnabled: false,
+        pullRequest: null,
+        error: null,
+        refreshedAt: null,
+      },
+    }),
+    refresh: async () => {},
+    requestWorkingTreeWatch: async (cwd: string) => ({
+      repoRoot: cwd,
+      unsubscribe: () => {},
+    }),
+    scheduleRefreshForCwd: () => {},
+    dispose: () => {},
+  } as unknown as WorkspaceGitServiceImpl;
+}
+
 function createNoopProjectRegistry(): ProjectRegistry {
   return {
     initialize: async () => {},
@@ -307,6 +367,7 @@ export class VoiceAssistantWebSocketServer {
     loopService?: LoopService,
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
+    workspaceGitService?: WorkspaceGitServiceImpl,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -334,10 +395,7 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("VoiceAssistantWebSocketServer requires a checkout diff manager.");
     }
     this.checkoutDiffManager = checkoutDiffManager;
-    this.workspaceGitService = new WorkspaceGitServiceImpl({
-      logger: this.logger,
-      paseoHome,
-    });
+    this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
     this.daemonConfigStore = daemonConfigStore;
@@ -515,8 +573,8 @@ export class VoiceAssistantWebSocketServer {
 
     await Promise.all(cleanupPromises);
     this.providerSnapshotManager.destroy();
-    this.workspaceGitService.dispose();
     this.checkoutDiffManager.dispose();
+    this.workspaceGitService.dispose();
     this.pendingConnections.clear();
     this.sessions.clear();
     this.externalSessionsByKey.clear();

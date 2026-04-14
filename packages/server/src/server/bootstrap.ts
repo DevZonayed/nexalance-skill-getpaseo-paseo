@@ -107,6 +107,7 @@ import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore } from "./daemon-config-store.js";
+import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
@@ -368,6 +369,10 @@ export async function createPaseoDaemon(
     });
 
     const terminalManager = createTerminalManager();
+    const workspaceGitService = new WorkspaceGitServiceImpl({
+      logger,
+      paseoHome: config.paseoHome,
+    });
 
     const detachAgentStoragePersistence = attachAgentStoragePersistence(
       logger,
@@ -381,6 +386,7 @@ export async function createPaseoDaemon(
       agentStorage,
       projectRegistry,
       workspaceRegistry,
+      workspaceGitService,
       logger,
     });
     logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
@@ -389,6 +395,7 @@ export async function createPaseoDaemon(
     const checkoutDiffManager = new CheckoutDiffManager({
       logger,
       paseoHome: config.paseoHome,
+      workspaceGitService,
     });
     const loopService = new LoopService({
       paseoHome: config.paseoHome,
@@ -619,6 +626,7 @@ export async function createPaseoDaemon(
               loopService,
               scheduleService,
               checkoutDiffManager,
+              workspaceGitService,
             );
 
             if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {

@@ -1404,7 +1404,7 @@ export class Session {
   private async buildProjectPlacement(cwd: string): Promise<ProjectPlacementPayload> {
     return buildProjectPlacementForCwd({
       cwd,
-      paseoHome: this.paseoHome,
+      workspaceGitService: this.workspaceGitService,
     });
   }
 
@@ -3209,6 +3209,7 @@ export class Session {
       {
         paseoHome: this.paseoHome,
         sessionLogger: this.sessionLogger,
+        workspaceGitService: this.workspaceGitService,
         checkoutExistingBranch: (cwd, branch) => this.checkoutExistingBranch(cwd, branch),
         createBranchFromBase: (params) => this.createBranchFromBase(params),
       },
@@ -6263,6 +6264,7 @@ export class Session {
     return handleCreateWorktreeRequest(
       {
         paseoHome: this.paseoHome,
+        workspaceGitService: this.workspaceGitService,
         describeWorkspaceRecord: (workspace) => this.describeWorkspaceRecordWithGitData(workspace),
         emit: (message) => this.emit(message),
         registerPendingWorktreeWorkspace: (options) =>

@@ -482,38 +482,6 @@ export type CheckoutStatusGit = CheckoutStatusGitNonPaseo | CheckoutStatusGitPas
 
 export type CheckoutStatusResult = CheckoutStatus | CheckoutStatusGit;
 
-export type CheckoutStatusLiteNotGit = {
-  isGit: false;
-  currentBranch: null;
-  remoteUrl: null;
-  worktreeRoot: null;
-  isPaseoOwnedWorktree: false;
-  mainRepoRoot: null;
-};
-
-export type CheckoutStatusLiteGitNonPaseo = {
-  isGit: true;
-  currentBranch: string | null;
-  remoteUrl: string | null;
-  worktreeRoot: string;
-  isPaseoOwnedWorktree: false;
-  mainRepoRoot: null;
-};
-
-export type CheckoutStatusLiteGitPaseo = {
-  isGit: true;
-  currentBranch: string | null;
-  remoteUrl: string | null;
-  worktreeRoot: string;
-  isPaseoOwnedWorktree: true;
-  mainRepoRoot: string;
-};
-
-export type CheckoutStatusLiteResult =
-  | CheckoutStatusLiteNotGit
-  | CheckoutStatusLiteGitNonPaseo
-  | CheckoutStatusLiteGitPaseo;
-
 export interface CheckoutDiffResult {
   diff: string;
   structured?: ParsedDiffFile[];
@@ -1153,43 +1121,6 @@ export async function getCheckoutStatus(
     hasRemote,
     remoteUrl,
     isPaseoOwnedWorktree: false,
-  };
-}
-
-export async function getCheckoutStatusLite(
-  cwd: string,
-  context?: CheckoutContext,
-): Promise<CheckoutStatusLiteResult> {
-  const inspected = await inspectCheckoutContext(cwd, context);
-  if (!inspected) {
-    return {
-      isGit: false,
-      currentBranch: null,
-      remoteUrl: null,
-      worktreeRoot: null,
-      isPaseoOwnedWorktree: false,
-      mainRepoRoot: null,
-    };
-  }
-
-  if (inspected.configured.isPaseoOwnedWorktree) {
-    return {
-      isGit: true,
-      currentBranch: inspected.currentBranch,
-      remoteUrl: inspected.remoteUrl,
-      worktreeRoot: inspected.worktreeRoot,
-      isPaseoOwnedWorktree: true,
-      mainRepoRoot: await getMainRepoRoot(cwd),
-    };
-  }
-
-  return {
-    isGit: true,
-    currentBranch: inspected.currentBranch,
-    remoteUrl: inspected.remoteUrl,
-    worktreeRoot: inspected.worktreeRoot,
-    isPaseoOwnedWorktree: false,
-    mainRepoRoot: null,
   };
 }
 

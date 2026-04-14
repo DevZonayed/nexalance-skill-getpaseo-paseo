@@ -22,7 +22,6 @@ import {
   getCheckoutShortstat,
   getPullRequestStatus,
   getCheckoutStatus,
-  getCheckoutStatusLite,
   listBranchSuggestions,
   mergeToBase,
   mergeFromBase,
@@ -162,15 +161,6 @@ const x = 1;
 
     expect(addedLine?.tokens).toEqual([{ text: "new comment line", style: "comment" }]);
     expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
-  });
-
-  it("returns lightweight checkout status for normal repos", async () => {
-    const status = await getCheckoutStatusLite(repoDir);
-    expect(status.isGit).toBe(true);
-    expect(status.currentBranch).toBe("main");
-    expect(status.worktreeRoot).toBe(repoDir);
-    expect(status.isPaseoOwnedWorktree).toBe(false);
-    expect(status.mainRepoRoot).toBeNull();
   });
 
   it("exposes hasRemote when origin is configured", async () => {
@@ -378,22 +368,6 @@ const x = 1;
       .toString()
       .trim();
     expect(message).toBe("worktree update");
-  });
-
-  it("returns lightweight checkout status for .paseo worktrees", async () => {
-    const result = await createWorktree({
-      branchName: "main",
-      cwd: repoDir,
-      baseBranch: "main",
-      worktreeSlug: "lite-alpha",
-      paseoHome,
-    });
-
-    const status = await getCheckoutStatusLite(result.worktreePath, { paseoHome });
-    expect(status.isGit).toBe(true);
-    expect(status.worktreeRoot).toBe(result.worktreePath);
-    expect(status.isPaseoOwnedWorktree).toBe(true);
-    expect(status.mainRepoRoot).toBe(repoDir);
   });
 
   it("returns mainRepoRoot pointing to first non-bare worktree for bare repos", async () => {

@@ -288,7 +288,6 @@ export function useSidebarWorkspacesList(options?: {
     if (!serverId) {
       return;
     }
-
   }, [connectionStatus, hasHydratedWorkspaces, projects, serverId, sessionWorkspaces]);
 
   useEffect(() => {
