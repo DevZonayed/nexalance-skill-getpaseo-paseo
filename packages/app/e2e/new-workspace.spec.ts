@@ -1,5 +1,6 @@
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { expect, test } from "./fixtures";
+import { gotoAppShell } from "./helpers/app";
 import {
   archiveWorkspaceFromDaemon,
   archiveLocalWorkspaceFromDaemon,
@@ -58,20 +59,13 @@ test.describe("New workspace flow", () => {
       localWorkspaceIds.add(firstWorkspace.workspaceId);
       localWorkspaceIds.add(secondWorkspace.workspaceId);
 
-      await page.goto(buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId));
+      await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      // The app may redirect to a different workspace before hydration completes.
-      // Re-navigate if we ended up on the wrong workspace.
-      const currentUrl = page.url();
-      const expectedUrl = buildHostWorkspaceRoute(serverId, firstWorkspace.workspaceId);
-      if (!currentUrl.includes(expectedUrl)) {
-        await page.goto(expectedUrl);
-      }
-
-      await waitForWorkspaceInSidebar(page, {
+      await switchWorkspaceViaSidebar({
+        page,
         serverId,
-        workspaceId: firstWorkspace.workspaceId,
+        targetWorkspacePath: firstWorkspace.workspaceId,
       });
       await expectWorkspaceHeader(page, {
         title: firstWorkspace.workspaceName,
@@ -121,19 +115,13 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await page.goto(buildHostWorkspaceRoute(serverId, openedProject.workspaceId));
+      await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      // Re-navigate if the app redirected before hydration completed.
-      const currentUrl = page.url();
-      const expectedUrl = buildHostWorkspaceRoute(serverId, openedProject.workspaceId);
-      if (!currentUrl.includes(expectedUrl)) {
-        await page.goto(expectedUrl);
-      }
-
-      await waitForWorkspaceInSidebar(page, {
+      await switchWorkspaceViaSidebar({
+        page,
         serverId,
-        workspaceId: openedProject.workspaceId,
+        targetWorkspacePath: openedProject.workspaceId,
       });
       await expectWorkspaceHeader(page, {
         title: openedProject.workspaceName,
