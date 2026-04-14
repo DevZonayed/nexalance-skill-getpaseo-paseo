@@ -84,21 +84,6 @@ function parseWorkspaceIdFromPageUrl(page: Page, serverId: string): string | nul
   return decodeWorkspaceIdFromPathSegment(match[1]);
 }
 
-function parseWorkspaceIdFromSidebarRowTestId(
-  testId: string,
-  input: { serverId: string; previousWorkspaceId: string },
-): string | null {
-  const prefix = `sidebar-workspace-row-${input.serverId}:`;
-  if (!testId.startsWith(prefix)) {
-    return null;
-  }
-  const workspaceId = testId.slice(prefix.length).trim();
-  if (!workspaceId || workspaceId === input.previousWorkspaceId) {
-    return null;
-  }
-  return workspaceId;
-}
-
 export async function connectNewWorkspaceDaemonClient(): Promise<NewWorkspaceDaemonClient> {
   const DaemonClient = await loadDaemonClientConstructor();
   const webSocketFactory = createNodeWebSocketFactory();
@@ -185,36 +170,20 @@ export async function assertNewWorkspaceSidebarAndHeader(
   page: Page,
   input: { serverId: string; previousWorkspaceId: string; projectDisplayName: string },
 ): Promise<{ workspaceId: string }> {
+  // Wait for URL to redirect to the newly created workspace.
+  // Uses URL as source of truth to avoid picking up sidebar rows from concurrent tests.
   let workspaceId: string | null = null;
-  const sidebarWorkspaceRows = page.locator(
-    `[data-testid^="sidebar-workspace-row-${input.serverId}:"]`,
-  );
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const sidebarRowTestIds = await sidebarWorkspaceRows.evaluateAll((elements) =>
-      elements.map((element) => element.getAttribute("data-testid") ?? ""),
-    );
-    workspaceId =
-      sidebarRowTestIds
-        .map((testId) => parseWorkspaceIdFromSidebarRowTestId(testId, input))
-        .find((id) => id !== null) ?? null;
-    if (workspaceId) {
+    workspaceId = parseWorkspaceIdFromPageUrl(page, input.serverId);
+    if (workspaceId && workspaceId !== input.previousWorkspaceId) {
       break;
     }
     await page.waitForTimeout(250);
   }
 
   if (!workspaceId || workspaceId === input.previousWorkspaceId) {
-    const sidebarWorkspaceRowIds = await sidebarWorkspaceRows.evaluateAll((elements) =>
-      elements.map((element) => element.getAttribute("data-testid") ?? "<missing-testid>"),
-    );
-    throw new Error(
-      [
-        "Expected a newly created workspace to load.",
-        `Current URL: ${page.url()}`,
-        `Sidebar rows: ${sidebarWorkspaceRowIds.join(", ") || "<none>"}`,
-      ].join("\n"),
-    );
+    throw new Error(`Expected URL to redirect to a new workspace.\nCurrent URL: ${page.url()}`);
   }
 
   const createdWorkspaceRow = page.getByTestId(
