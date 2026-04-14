@@ -158,10 +158,8 @@ test.describe("New workspace flow", () => {
         subtitle: openedProject.projectDisplayName,
       });
 
-      const draftTabs = page.locator('[data-testid^="workspace-tab-"]').filter({
-        has: page.getByText("New Agent", { exact: true }),
-      });
-      await expect(draftTabs).toHaveCount(1, { timeout: 30_000 });
+      const agentTabs = page.locator('[data-testid^="workspace-tab-agent_"]');
+      await expect(agentTabs).toHaveCount(1, { timeout: 30_000 });
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeEditable({ timeout: 30_000 });
