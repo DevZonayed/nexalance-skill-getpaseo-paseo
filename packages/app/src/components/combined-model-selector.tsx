@@ -634,7 +634,9 @@ export function CombinedModelSelector({
         ) : (
           <>
             <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-            <Text style={styles.triggerText}>{triggerLabel}</Text>
+            <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
+              {triggerLabel}
+            </Text>
             <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </>
         )}
@@ -704,6 +706,8 @@ export function CombinedModelSelector({
 const styles = StyleSheet.create((theme) => ({
   trigger: {
     height: 28,
+    minWidth: 0,
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
@@ -721,6 +725,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   triggerText: {
+    minWidth: 0,
+    flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
