@@ -1225,6 +1225,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   prefsButton: {
     height: 28,
+    minWidth: 0,
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
