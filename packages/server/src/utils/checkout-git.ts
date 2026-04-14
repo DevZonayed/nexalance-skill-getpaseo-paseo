@@ -525,12 +525,16 @@ async function requireGitRepo(cwd: string): Promise<void> {
 }
 
 export async function getCurrentBranch(cwd: string): Promise<string | null> {
-  const { stdout } = await runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], {
-    cwd,
-    env: READ_ONLY_GIT_ENV,
-  });
-  const branch = stdout.trim();
-  return branch.length > 0 ? branch : null;
+  try {
+    const { stdout } = await runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+    });
+    const branch = stdout.trim();
+    return branch.length > 0 ? branch : null;
+  } catch {
+    return null;
+  }
 }
 
 async function getWorktreeRoot(cwd: string): Promise<string | null> {

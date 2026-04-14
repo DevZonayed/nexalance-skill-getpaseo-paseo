@@ -18,6 +18,7 @@ import {
   __setGhPathForTests,
   __setPullRequestStatusCacheTtlForTests,
   commitAll,
+  getCurrentBranch,
   getCheckoutDiff,
   getCheckoutShortstat,
   getPullRequestStatus,
@@ -82,6 +83,15 @@ describe("checkout git utilities", () => {
     await expect(getCheckoutDiff(nonGitDir, { mode: "uncommitted" })).rejects.toBeInstanceOf(
       NotGitRepoError,
     );
+  });
+
+  it("returns null for getCurrentBranch in a repo with no commits", async () => {
+    const emptyRepo = join(tempDir, "empty-repo");
+    execSync(`mkdir -p ${emptyRepo}`);
+    execSync("git init -b main", { cwd: emptyRepo });
+
+    const branch = await getCurrentBranch(emptyRepo);
+    expect(branch).toBeNull();
   });
 
   it("handles status/diff/commit in a normal repo", async () => {

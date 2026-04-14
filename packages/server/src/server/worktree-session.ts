@@ -21,7 +21,7 @@ import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
 import { createAgentWorktree } from "./worktree-bootstrap.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
-import { resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
+import { getCurrentBranch, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
   computeWorktreePath,
@@ -35,8 +35,7 @@ import {
   validateBranchSlug,
   type WorktreeConfig,
 } from "../utils/worktree.js";
-import { runGitCommand } from "../utils/run-git-command.js";
-import { READ_ONLY_GIT_ENV, toCheckoutError } from "./checkout-git-utils.js";
+import { toCheckoutError } from "./checkout-git-utils.js";
 const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
 
 export type NormalizedGitOptions = {
@@ -153,11 +152,7 @@ export async function buildAgentSessionConfig(
     if (normalized.createNewBranch) {
       targetBranch = normalized.newBranchName!;
     } else {
-      const { stdout } = await runGitCommand(["rev-parse", "--abbrev-ref", "HEAD"], {
-        cwd,
-        env: READ_ONLY_GIT_ENV,
-      });
-      targetBranch = stdout.trim();
+      targetBranch = (await getCurrentBranch(cwd)) ?? "";
     }
 
     if (!targetBranch) {
