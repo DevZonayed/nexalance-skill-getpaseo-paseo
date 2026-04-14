@@ -65,20 +65,20 @@ export function useProvidersSnapshot(
       return;
     }
 
-      return client.on("providers_snapshot_update", (message) => {
-        if (message.type !== "providers_snapshot_update") {
-          return;
-        }
-        const messageCwdKey = normalizeProvidersSnapshotCwdKey(message.payload.cwd);
-        if (messageCwdKey !== normalizedCwdKey) {
-          return;
-        }
-        queryClient.setQueryData(queryKey, {
-          entries: message.payload.entries,
-          generatedAt: message.payload.generatedAt,
-          requestId: "providers_snapshot_update",
-        });
+    return client.on("providers_snapshot_update", (message) => {
+      if (message.type !== "providers_snapshot_update") {
+        return;
+      }
+      const messageCwdKey = normalizeProvidersSnapshotCwdKey(message.payload.cwd);
+      if (messageCwdKey !== normalizedCwdKey) {
+        return;
+      }
+      queryClient.setQueryData(queryKey, {
+        entries: message.payload.entries,
+        generatedAt: message.payload.generatedAt,
+        requestId: "providers_snapshot_update",
       });
+    });
   }, [client, isConnected, normalizedCwdKey, queryClient, queryKey, serverId, supportsSnapshot]);
 
   const refresh = useCallback(() => {
