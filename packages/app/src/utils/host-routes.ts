@@ -1,6 +1,7 @@
 import { Buffer } from "buffer";
 
 type NullableString = string | null | undefined;
+const BASE64_WORKSPACE_ID_PREFIX = "b64_";
 
 function stripSearchAndHash(pathname: string): string {
   const hashIndex = pathname.indexOf("#");
@@ -87,12 +88,16 @@ function tryDecodeBase64UrlNoPadUtf8(input: string): string | null {
   return decoded;
 }
 
-function isPathLikeWorkspaceIdentity(value: string): boolean {
-  return value.includes("/") || value.includes("\\") || /^[A-Za-z]:[\\/]/.test(value);
+function normalizeWorkspaceId(value: string): string {
+  return value.trim();
 }
 
-function normalizeWorkspaceId(value: string): string {
-  return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+function isUrlSafeWorkspaceId(value: string): boolean {
+  return /^[A-Za-z0-9._~-]+$/.test(value);
+}
+
+function isLegacyPathLikeWorkspaceValue(value: string): boolean {
+  return value.includes("/") || value.includes("\\") || /^[A-Za-z]:[\\/]/.test(value);
 }
 
 export type WorkspaceOpenIntent =
@@ -163,13 +168,11 @@ export function encodeWorkspaceIdForPathSegment(workspaceId: string): string {
   if (!normalized) {
     return "";
   }
-  // Numeric string IDs are URL-safe and don't need encoding.
-  // Legacy path-based IDs still get base64-encoded for safety.
   const id = normalizeWorkspaceId(normalized);
-  if (isPathLikeWorkspaceIdentity(id)) {
-    return toBase64UrlNoPad(id);
+  if (isUrlSafeWorkspaceId(id)) {
+    return id;
   }
-  return encodeURIComponent(id);
+  return `${BASE64_WORKSPACE_ID_PREFIX}${toBase64UrlNoPad(id)}`;
 }
 
 export function decodeWorkspaceIdFromPathSegment(workspaceIdSegment: string): string | null {
@@ -178,32 +181,25 @@ export function decodeWorkspaceIdFromPathSegment(workspaceIdSegment: string): st
     return null;
   }
 
-  // Decode %2F etc first (legacy scheme), but keep the raw segment to decide if base64 applies.
   const decoded = trimNonEmpty(decodeSegment(normalizedSegment));
   if (!decoded) {
     return null;
   }
 
-  // Legacy: if it already looks like a path after decoding, keep it.
-  if (decoded.includes("/") || decoded.includes("\\")) {
-    return normalizeWorkspaceId(decoded);
-  }
-
-  // If the segment looks like a plain numeric ID, return it directly.
-  // Do NOT attempt base64 decode on short alphanumeric strings.
-  if (/^\d+$/.test(decoded)) {
-    return decoded;
+  if (decoded.startsWith(BASE64_WORKSPACE_ID_PREFIX)) {
+    const encodedPayload = decoded.slice(BASE64_WORKSPACE_ID_PREFIX.length);
+    const prefixedDecoded =
+      tryDecodeBase64UrlNoPadUtf8(encodedPayload) ?? decodeBase64UrlNoPadUtf8(encodedPayload);
+    return prefixedDecoded ? normalizeWorkspaceId(prefixedDecoded) : null;
   }
 
   const base64Decoded = tryDecodeBase64UrlNoPadUtf8(decoded);
-  if (base64Decoded) {
+  if (base64Decoded && isLegacyPathLikeWorkspaceValue(base64Decoded)) {
     return normalizeWorkspaceId(base64Decoded);
   }
 
-  // Some older links use non-canonical base64url (non-zero pad bits). Accept
-  // decoded values only when they clearly represent filesystem paths.
   const relaxedBase64Decoded = decodeBase64UrlNoPadUtf8(decoded);
-  if (relaxedBase64Decoded && isPathLikeWorkspaceIdentity(relaxedBase64Decoded)) {
+  if (relaxedBase64Decoded && isLegacyPathLikeWorkspaceValue(relaxedBase64Decoded)) {
     return normalizeWorkspaceId(relaxedBase64Decoded);
   }
 

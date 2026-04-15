@@ -1,8 +1,8 @@
 import type { Agent } from "@/stores/session-store";
-import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
+import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 
 function normalizeWorkspaceId(value: string | null | undefined): string {
-  return normalizeWorkspaceIdentity(value) ?? "";
+  return normalizeWorkspacePath(value) ?? "";
 }
 
 export interface WorkspaceAgentVisibility {

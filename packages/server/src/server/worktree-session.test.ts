@@ -266,7 +266,7 @@ describe("runWorktreeSetupInBackground", () => {
     const logger = createLogger();
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
-    const workspaceId = 101;
+    const workspaceId = "ws-broken-feature";
 
     await runWorktreeSetupInBackground(
       {
@@ -282,7 +282,7 @@ describe("runWorktreeSetupInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
-        workspaceId: String(workspaceId),
+        workspaceId,
         worktree: {
           branchName: "broken-feature",
           worktreePath,
@@ -303,11 +303,11 @@ describe("runWorktreeSetupInBackground", () => {
     expect(progressMessages[1]?.payload.status).toBe("failed");
     expect(progressMessages[1]?.payload.error).toContain("Failed to parse paseo.json");
     expect(progressMessages[1]?.payload.detail.commands).toEqual([]);
-    expect(snapshots.get("101")).toMatchObject({
+    expect(snapshots.get(workspaceId)).toMatchObject({
       status: "failed",
       error: expect.stringContaining("Failed to parse paseo.json"),
     });
-    expect(archiveWorkspaceRecord).toHaveBeenCalledWith(String(workspaceId));
+    expect(archiveWorkspaceRecord).toHaveBeenCalledWith(workspaceId);
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
   });
 
@@ -671,7 +671,7 @@ describe("runWorktreeSetupInBackground", () => {
     const emitted: SessionOutboundMessage[] = [];
     const snapshots = new Map([
       [
-        "/repo/.paseo/worktrees/feature-a",
+        "ws-feature-a",
         {
           status: "completed",
           detail: {
@@ -694,7 +694,7 @@ describe("runWorktreeSetupInBackground", () => {
       },
       {
         type: "workspace_setup_status_request",
-        workspaceId: "/repo/.paseo/worktrees/feature-a",
+        workspaceId: "ws-feature-a",
         requestId: "req-status",
       },
     );
@@ -703,7 +703,7 @@ describe("runWorktreeSetupInBackground", () => {
       type: "workspace_setup_status_response",
       payload: {
         requestId: "req-status",
-        workspaceId: "/repo/.paseo/worktrees/feature-a",
+        workspaceId: "ws-feature-a",
         snapshot: {
           status: "completed",
           detail: {
@@ -730,7 +730,7 @@ describe("runWorktreeSetupInBackground", () => {
       },
       {
         type: "workspace_setup_status_request",
-        workspaceId: "/repo/.paseo/worktrees/missing",
+        workspaceId: "ws-missing",
         requestId: "req-missing",
       },
     );
@@ -739,7 +739,7 @@ describe("runWorktreeSetupInBackground", () => {
       type: "workspace_setup_status_response",
       payload: {
         requestId: "req-missing",
-        workspaceId: "/repo/.paseo/worktrees/missing",
+        workspaceId: "ws-missing",
         snapshot: null,
       },
     });
@@ -784,8 +784,8 @@ describe("handleCreatePaseoWorktreeRequest", () => {
         emit: (message) => emitted.push(message),
         registerPendingWorktreeWorkspace: async ({ worktreePath, branchName }) =>
           ({
-            id: 1,
-            projectId: 1,
+            id: "ws-pr-worktree",
+            projectId: "proj-pr-worktree",
             directory: worktreePath,
             displayName: branchName,
             kind: "worktree",
@@ -904,8 +904,8 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           sessionLogger: createLogger(),
           emit: (message) => emitted.push(message),
           registerPendingWorktreeWorkspace: vi.fn(async (options) => ({
-            workspaceId: options.worktreePath,
-            projectId: options.repoRoot,
+            workspaceId: "ws-single-call",
+            projectId: "proj-single-call",
           })),
           describeWorkspaceRecord: vi.fn(async (workspace) => ({
             id: workspace.workspaceId,
@@ -914,7 +914,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             projectRootPath: repoDir,
             projectKind: "git",
             workspaceKind: "worktree",
-            name: path.basename(workspace.workspaceId),
+            name: "single-call",
             status: "done",
             activityAt: null,
           })),
@@ -947,6 +947,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     const paseoHome = path.join(tempDir, ".paseo");
     const emitted: SessionOutboundMessage[] = [];
     const backgroundWork = vi.fn(async () => {});
+    let registeredWorktreePath: string | null = null;
 
     try {
       await handleCreatePaseoWorktreeRequest(
@@ -956,9 +957,10 @@ describe("handleCreatePaseoWorktreeRequest", () => {
           emit: (message) => emitted.push(message),
           registerPendingWorktreeWorkspace: vi.fn(async (options) => {
             expect(existsSync(options.worktreePath)).toBe(true);
+            registeredWorktreePath = options.worktreePath;
             return {
-              workspaceId: options.worktreePath,
-              projectId: options.repoRoot,
+              workspaceId: "ws-response-after-create",
+              projectId: "proj-response-after-create",
             } as any;
           }),
           describeWorkspaceRecord: vi.fn(async (workspace) => ({
@@ -968,7 +970,7 @@ describe("handleCreatePaseoWorktreeRequest", () => {
             projectRootPath: repoDir,
             projectKind: "git",
             workspaceKind: "worktree",
-            name: path.basename(workspace.workspaceId),
+            name: "response-after-create",
             status: "done",
             activityAt: null,
           })),
@@ -990,14 +992,15 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       );
       expect(response?.payload.error).toBeNull();
       expect(response?.payload.workspace?.id).toBeTruthy();
-      expect(existsSync(response!.payload.workspace!.id)).toBe(true);
+      expect(registeredWorktreePath).toBeTruthy();
+      expect(existsSync(registeredWorktreePath!)).toBe(true);
       expect(backgroundWork).toHaveBeenCalledWith(
         expect.objectContaining({
           requestCwd: repoDir,
           repoRoot: repoDir,
           worktree: {
             branchName: "response-after-create",
-            worktreePath: response!.payload.workspace!.id,
+            worktreePath: registeredWorktreePath,
           },
           shouldBootstrap: true,
         }),

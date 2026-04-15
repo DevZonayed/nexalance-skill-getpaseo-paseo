@@ -38,6 +38,7 @@ function createWorkspaceRepo(options?: {
 }
 
 function buildPayloads(input: {
+  workspaceId: string;
   workspaceDirectory: string;
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
@@ -49,6 +50,7 @@ function buildPayloads(input: {
 
 describe("script-status-projection", () => {
   it("projects plain scripts and services differently", () => {
+    const workspaceId = "workspace-plain-and-service";
     const workspace = createWorkspaceRepo({
       paseoConfig: {
         scripts: {
@@ -60,7 +62,7 @@ describe("script-status-projection", () => {
     const routeStore = new ScriptRouteStore();
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     runtimeStore.set({
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "typecheck",
       type: "script",
       lifecycle: "stopped",
@@ -71,6 +73,7 @@ describe("script-status-projection", () => {
     try {
       expect(
         buildPayloads({
+          workspaceId,
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
@@ -104,6 +107,7 @@ describe("script-status-projection", () => {
   });
 
   it("overlays runtime, route, and health state for running services", () => {
+    const workspaceId = "workspace-running-service";
     const workspace = createWorkspaceRepo({
       branchName: "feature/card",
       paseoConfig: {
@@ -116,12 +120,12 @@ describe("script-status-projection", () => {
     routeStore.registerRoute({
       hostname: "feature-card.web.localhost",
       port: 4321,
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "web",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     runtimeStore.set({
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "web",
       type: "service",
       lifecycle: "running",
@@ -132,6 +136,7 @@ describe("script-status-projection", () => {
     try {
       expect(
         buildPayloads({
+          workspaceId,
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
@@ -156,6 +161,7 @@ describe("script-status-projection", () => {
   });
 
   it("maps internal pending health to null on the wire", () => {
+    const workspaceId = "workspace-pending-health";
     const workspace = createWorkspaceRepo({
       paseoConfig: {
         scripts: {
@@ -167,12 +173,12 @@ describe("script-status-projection", () => {
     routeStore.registerRoute({
       hostname: "web.localhost",
       port: 4321,
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "web",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     runtimeStore.set({
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "web",
       type: "service",
       lifecycle: "running",
@@ -183,6 +189,7 @@ describe("script-status-projection", () => {
     try {
       expect(
         buildPayloads({
+          workspaceId,
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
@@ -207,17 +214,18 @@ describe("script-status-projection", () => {
   });
 
   it("includes orphaned running runtime entries even after config removal", () => {
+    const workspaceId = "workspace-orphaned-service";
     const workspace = createWorkspaceRepo();
     const routeStore = new ScriptRouteStore();
     routeStore.registerRoute({
       hostname: "docs.localhost",
       port: 3002,
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "docs",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     runtimeStore.set({
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "docs",
       type: "service",
       lifecycle: "running",
@@ -228,6 +236,7 @@ describe("script-status-projection", () => {
     try {
       expect(
         buildPayloads({
+          workspaceId,
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
@@ -251,11 +260,12 @@ describe("script-status-projection", () => {
   });
 
   it("projects orphaned plain scripts as scripts instead of services", () => {
+    const workspaceId = "workspace-orphaned-script";
     const workspace = createWorkspaceRepo();
     const routeStore = new ScriptRouteStore();
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     runtimeStore.set({
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "typecheck",
       type: "script",
       lifecycle: "running",
@@ -266,6 +276,7 @@ describe("script-status-projection", () => {
     try {
       expect(
         buildPayloads({
+          workspaceId,
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
@@ -288,7 +299,8 @@ describe("script-status-projection", () => {
     }
   });
 
-  it("createScriptStatusEmitter overlays health onto the projected workspace script list", () => {
+  it("createScriptStatusEmitter overlays health onto the projected workspace script list", async () => {
+    const workspaceId = "workspace-emitter";
     const workspace = createWorkspaceRepo({
       paseoConfig: {
         scripts: {
@@ -301,12 +313,12 @@ describe("script-status-projection", () => {
     routeStore.registerRoute({
       hostname: "api.localhost",
       port: 3001,
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "api",
     });
     const runtimeStore = new WorkspaceScriptRuntimeStore();
     runtimeStore.set({
-      workspaceId: workspace.repoDir,
+      workspaceId,
       scriptName: "api",
       type: "service",
       lifecycle: "running",
@@ -320,10 +332,12 @@ describe("script-status-projection", () => {
       routeStore,
       runtimeStore,
       daemonPort: 6767,
+      resolveWorkspaceDirectory: async (workspaceId) =>
+        workspaceId === "workspace-emitter" ? workspace.repoDir : null,
     });
 
     try {
-      emitUpdate(workspace.repoDir, [
+      emitUpdate(workspaceId, [
         {
           scriptName: "api",
           hostname: "api.localhost",
@@ -331,11 +345,12 @@ describe("script-status-projection", () => {
           health: "healthy",
         },
       ]);
+      await Promise.resolve();
 
       expect(session.emit).toHaveBeenCalledWith({
         type: "script_status_update",
         payload: {
-          workspaceId: workspace.repoDir,
+          workspaceId,
           scripts: [
             {
               scriptName: "api",

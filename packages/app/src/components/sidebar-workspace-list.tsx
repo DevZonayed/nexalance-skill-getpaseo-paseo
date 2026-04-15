@@ -1280,7 +1280,7 @@ function WorkspaceRowWithMenu({
 
       void (async () => {
         try {
-          const payload = await client.archiveWorkspace(Number(workspace.workspaceId));
+          const payload = await client.archiveWorkspace(workspace.workspaceId);
           if (payload.error) {
             throw new Error(payload.error);
           }
@@ -1438,7 +1438,7 @@ function NonGitProjectRowWithMenuContent({
 
       void (async () => {
         try {
-          const payload = await client.archiveWorkspace(Number(workspace.workspaceId));
+          const payload = await client.archiveWorkspace(workspace.workspaceId);
           if (payload.error) {
             throw new Error(payload.error);
           }
@@ -1792,7 +1792,7 @@ function ProjectBlock({
 
       void Promise.allSettled(
         project.workspaces.map(async (ws) => {
-          const payload = await client.archiveWorkspace(Number(ws.workspaceId));
+          const payload = await client.archiveWorkspace(ws.workspaceId);
           if (payload.error) {
             throw new Error(payload.error);
           }

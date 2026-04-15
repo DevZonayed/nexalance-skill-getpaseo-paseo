@@ -27,8 +27,10 @@ function createWorkspace(
 }
 
 describe("resolveWorkspaceRouteId", () => {
-  it("normalizes route workspace ids", () => {
-    expect(resolveWorkspaceRouteId({ routeWorkspaceId: " /tmp/repo/ " })).toBe("/tmp/repo");
+  it("trims route workspace ids without path normalization", () => {
+    expect(resolveWorkspaceRouteId({ routeWorkspaceId: "  C:\\tmp\\repo\\  " })).toBe(
+      "C:\\tmp\\repo\\",
+    );
   });
 
   it("returns null for empty values", () => {
@@ -87,12 +89,12 @@ describe("resolveWorkspaceMapKeyByIdentity", () => {
     expect(
       resolveWorkspaceMapKeyByIdentity({
         workspaces,
-        workspaceIdentity: "workspace-1",
+        workspaceId: "workspace-1",
       }),
     ).toBe("workspace-1");
   });
 
-  it("resolves a workspace directory identity to the canonical map key", () => {
+  it("does not resolve workspace directories when an id is required", () => {
     const workspaces = new Map<string, WorkspaceDescriptor>([
       [
         "workspace-1",
@@ -106,9 +108,9 @@ describe("resolveWorkspaceMapKeyByIdentity", () => {
     expect(
       resolveWorkspaceMapKeyByIdentity({
         workspaces,
-        workspaceIdentity: "C:/repo/feature",
+        workspaceId: "C:/repo/feature",
       }),
-    ).toBe("workspace-1");
+    ).toBeNull();
   });
 });
 

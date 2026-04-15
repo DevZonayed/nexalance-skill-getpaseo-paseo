@@ -1,5 +1,5 @@
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
+import { normalizeWorkspaceOpaqueId, normalizeWorkspacePath } from "@/utils/workspace-identity";
 
 export type WorkspaceAuthorityResult = {
   workspaceId: string;
@@ -23,20 +23,20 @@ export type WorkspaceExecutionAuthorityResult =
 export function resolveWorkspaceRouteId(input: {
   routeWorkspaceId: string | null | undefined;
 }): string | null {
-  return normalizeWorkspaceIdentity(input.routeWorkspaceId);
+  return normalizeWorkspaceOpaqueId(input.routeWorkspaceId);
 }
 
 export function resolveWorkspaceIdByExecutionDirectory(input: {
   workspaces: Iterable<WorkspaceDescriptor> | null | undefined;
   workspaceDirectory: string | null | undefined;
 }): string | null {
-  const normalizedWorkspaceDirectory = normalizeWorkspaceIdentity(input.workspaceDirectory);
+  const normalizedWorkspaceDirectory = normalizeWorkspacePath(input.workspaceDirectory);
   if (!normalizedWorkspaceDirectory) {
     return null;
   }
 
   for (const workspace of input.workspaces ?? []) {
-    if (normalizeWorkspaceIdentity(workspace.workspaceDirectory) === normalizedWorkspaceDirectory) {
+    if (normalizeWorkspacePath(workspace.workspaceDirectory) === normalizedWorkspaceDirectory) {
       return workspace.id;
     }
   }
@@ -46,10 +46,10 @@ export function resolveWorkspaceIdByExecutionDirectory(input: {
 
 export function resolveWorkspaceMapKeyByIdentity(input: {
   workspaces: Map<string, WorkspaceDescriptor> | null | undefined;
-  workspaceIdentity: string | null | undefined;
+  workspaceId: string | null | undefined;
 }): string | null {
-  const normalizedWorkspaceIdentity = normalizeWorkspaceIdentity(input.workspaceIdentity);
-  if (!normalizedWorkspaceIdentity) {
+  const normalizedWorkspaceId = normalizeWorkspaceOpaqueId(input.workspaceId);
+  if (!normalizedWorkspaceId) {
     return null;
   }
 
@@ -58,15 +58,12 @@ export function resolveWorkspaceMapKeyByIdentity(input: {
     return null;
   }
 
-  if (workspaces.has(normalizedWorkspaceIdentity)) {
-    return normalizedWorkspaceIdentity;
+  if (workspaces.has(normalizedWorkspaceId)) {
+    return normalizedWorkspaceId;
   }
 
   for (const [workspaceKey, workspace] of workspaces) {
-    if (
-      normalizeWorkspaceIdentity(workspace.id) === normalizedWorkspaceIdentity ||
-      normalizeWorkspaceIdentity(workspace.workspaceDirectory) === normalizedWorkspaceIdentity
-    ) {
+    if (normalizeWorkspaceOpaqueId(workspace.id) === normalizedWorkspaceId) {
       return workspaceKey;
     }
   }
@@ -90,7 +87,7 @@ export function getWorkspaceExecutionAuthority(
       : (() => {
           const workspaceKey = resolveWorkspaceMapKeyByIdentity({
             workspaces: input.workspaces,
-            workspaceIdentity: input.workspaceId,
+            workspaceId: input.workspaceId,
           });
           if (!workspaceKey) {
             return null;
@@ -99,7 +96,7 @@ export function getWorkspaceExecutionAuthority(
         })();
 
   if ("workspaces" in input) {
-    const normalizedWorkspaceId = normalizeWorkspaceIdentity(input.workspaceId);
+    const normalizedWorkspaceId = normalizeWorkspaceOpaqueId(input.workspaceId);
     if (!normalizedWorkspaceId) {
       return {
         ok: false,
@@ -120,7 +117,7 @@ export function getWorkspaceExecutionAuthority(
     };
   }
 
-  const workspaceDirectory = normalizeWorkspaceIdentity(workspace.workspaceDirectory);
+  const workspaceDirectory = normalizeWorkspacePath(workspace.workspaceDirectory);
   if (!workspaceDirectory) {
     return {
       ok: false,
@@ -156,24 +153,10 @@ export function requireWorkspaceExecutionAuthority(
   return result.authority;
 }
 
-export function requireWorkspaceRecordId(workspaceId: string): number {
-  const normalizedWorkspaceId = normalizeWorkspaceIdentity(workspaceId);
-  if (!normalizedWorkspaceId) {
-    throw new Error("Workspace ID is required");
-  }
-
-  const parsedWorkspaceId = Number(normalizedWorkspaceId);
-  if (!Number.isInteger(parsedWorkspaceId)) {
-    throw new Error(`Workspace ID is not a persisted record ID: ${workspaceId}`);
-  }
-
-  return parsedWorkspaceId;
-}
-
 export function resolveWorkspaceExecutionDirectory(input: {
   workspaceDirectory: string | null | undefined;
 }): string | null {
-  return normalizeWorkspaceIdentity(input.workspaceDirectory);
+  return normalizeWorkspacePath(input.workspaceDirectory);
 }
 
 export function requireWorkspaceExecutionDirectory(input: {
@@ -206,5 +189,3 @@ export function resolveWorkspaceExecutionAuthority(
   const result = getWorkspaceExecutionAuthority(input);
   return result.ok ? result.authority : null;
 }
-
-export const parseWorkspaceRecordId = requireWorkspaceRecordId;

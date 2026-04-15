@@ -32,7 +32,7 @@ import {
 } from "@/stores/workspace-layout-store";
 
 const SERVER_ID = "server-1";
-const WORKSPACE_ID = "/repo/worktree";
+const WORKSPACE_ID = "ws-main";
 
 function createTab(tabId: string): WorkspaceTab {
   return {
@@ -813,7 +813,7 @@ describe("workspace-layout-store actions", () => {
     const workspaceKey = createWorkspaceKey();
     const otherWorkspaceKey = buildWorkspaceTabPersistenceKey({
       serverId: SERVER_ID,
-      workspaceId: "/repo/other-worktree",
+      workspaceId: "ws-other-worktree",
     });
 
     expect(otherWorkspaceKey).toBeTruthy();
@@ -849,7 +849,7 @@ describe("workspace-layout-store actions", () => {
     const workspaceKey = createWorkspaceKey();
     const otherWorkspaceKey = buildWorkspaceTabPersistenceKey({
       serverId: SERVER_ID,
-      workspaceId: "/repo/other-worktree",
+      workspaceId: "ws-other-worktree",
     });
 
     expect(otherWorkspaceKey).toBeTruthy();

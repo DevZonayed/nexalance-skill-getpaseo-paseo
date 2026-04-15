@@ -80,7 +80,6 @@ function compareWorkspaceBaseline(
   }
 
   return left.workspaceId.localeCompare(right.workspaceId, undefined, {
-    numeric: true,
     sensitivity: "base",
   });
 }

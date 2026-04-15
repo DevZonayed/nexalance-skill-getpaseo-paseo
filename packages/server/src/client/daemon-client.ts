@@ -210,7 +210,7 @@ export type CreateAgentRequestOptions = {
   config?: AgentSessionConfig;
   provider?: AgentProvider;
   cwd?: string;
-  workspaceId?: string | number;
+  workspaceId?: string;
   initialPrompt?: string;
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
@@ -1400,7 +1400,7 @@ export class DaemonClient {
   }
 
   async archiveWorkspace(
-    workspaceId: string | number,
+    workspaceId: string,
     requestId?: string,
   ): Promise<ArchiveWorkspacePayload> {
     return this.sendCorrelatedSessionRequest({

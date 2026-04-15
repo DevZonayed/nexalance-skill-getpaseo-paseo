@@ -15,6 +15,7 @@ type SessionEmitter = {
 };
 
 type BuildWorkspaceScriptPayloadsOptions = {
+  workspaceId: string;
   workspaceDirectory: string;
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
@@ -83,17 +84,18 @@ function sortPayloads(payloads: WorkspaceScriptPayload[]): WorkspaceScriptPayloa
 export function buildWorkspaceScriptPayloads(
   options: BuildWorkspaceScriptPayloadsOptions,
 ): WorkspaceScriptPayload[] {
+  const workspaceId = options.workspaceId;
   const workspaceDirectory = options.workspaceDirectory;
   const branchName = resolveWorkspaceBranchName(workspaceDirectory);
   const scriptConfigs = getScriptConfigs(workspaceDirectory);
   const runtimeEntries = new Map(
     options.runtimeStore
-      .listForWorkspace(workspaceDirectory)
+      .listForWorkspace(workspaceId)
       .map((entry) => [entry.scriptName, entry] as const),
   );
   const routesByScriptName = new Map(
     options.routeStore
-      .listRoutesForWorkspace(workspaceDirectory)
+      .listRoutesForWorkspace(workspaceId)
       .map((entry) => [entry.scriptName, entry] as const),
   );
 
@@ -177,33 +179,43 @@ export function createScriptStatusEmitter({
   routeStore,
   runtimeStore,
   daemonPort,
+  resolveWorkspaceDirectory,
 }: {
   sessions: () => SessionEmitter[];
   routeStore: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
   daemonPort: number | null | (() => number | null);
+  resolveWorkspaceDirectory: (workspaceId: string) => string | null | Promise<string | null>;
 }): (workspaceId: string, scripts: ScriptHealthEntry[]) => void {
   return (workspaceId, scripts) => {
-    const resolvedDaemonPort = resolveDaemonPort(daemonPort);
-    const scriptHealthByHostname = new Map(
-      scripts.map((script) => [script.hostname, script.health] as const),
-    );
+    void (async () => {
+      const workspaceDirectory = await resolveWorkspaceDirectory(workspaceId);
+      if (!workspaceDirectory) {
+        return;
+      }
 
-    const projected = buildWorkspaceScriptPayloads({
-      workspaceDirectory: workspaceId,
-      routeStore,
-      runtimeStore,
-      daemonPort: resolvedDaemonPort,
-      resolveHealth: (hostname) => scriptHealthByHostname.get(hostname) ?? null,
-    });
+      const resolvedDaemonPort = resolveDaemonPort(daemonPort);
+      const scriptHealthByHostname = new Map(
+        scripts.map((script) => [script.hostname, script.health] as const),
+      );
 
-    const message = buildScriptStatusUpdateMessage({
-      workspaceId,
-      scripts: projected,
-    });
+      const projected = buildWorkspaceScriptPayloads({
+        workspaceId,
+        workspaceDirectory,
+        routeStore,
+        runtimeStore,
+        daemonPort: resolvedDaemonPort,
+        resolveHealth: (hostname) => scriptHealthByHostname.get(hostname) ?? null,
+      });
 
-    for (const session of sessions()) {
-      session.emit(message);
-    }
+      const message = buildScriptStatusUpdateMessage({
+        workspaceId,
+        scripts: projected,
+      });
+
+      for (const session of sessions()) {
+        session.emit(message);
+      }
+    })();
   };
 }

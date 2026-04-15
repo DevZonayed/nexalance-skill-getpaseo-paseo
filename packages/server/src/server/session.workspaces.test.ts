@@ -899,8 +899,8 @@ describe("workspace aggregation", () => {
     const session = createSessionForWorkspaceTests() as any;
     session.workspaceRegistry.list = async () => [
       createPersistedWorkspaceRecord({
-        workspaceId: "/tmp/non-git",
-        projectId: "/tmp/non-git",
+        workspaceId: "ws-non-git",
+        projectId: "proj-non-git",
         cwd: "/tmp/non-git",
         kind: "directory",
         displayName: "non-git",
@@ -930,8 +930,8 @@ describe("workspace aggregation", () => {
     const session = createSessionForWorkspaceTests() as any;
     session.workspaceRegistry.list = async () => [
       createPersistedWorkspaceRecord({
-        workspaceId: "/tmp/repo-branch",
-        projectId: "/tmp/repo-branch",
+        workspaceId: "ws-repo-branch",
+        projectId: "proj-repo-branch",
         cwd: "/tmp/repo-branch",
         kind: "local_checkout",
         displayName: "feature/name-from-server",
@@ -973,8 +973,8 @@ describe("workspace aggregation", () => {
     const session = createSessionForWorkspaceTests() as any;
     session.workspaceRegistry.list = async () => [
       createPersistedWorkspaceRecord({
-        workspaceId: "/tmp/repo",
-        projectId: "/tmp/repo",
+        workspaceId: "ws-repo-status",
+        projectId: "proj-repo-status",
         cwd: "/tmp/repo",
         kind: "local_checkout",
         displayName: "repo",
@@ -1017,8 +1017,8 @@ describe("workspace aggregation", () => {
     const session = createSessionForWorkspaceTests() as any;
     session.workspaceRegistry.list = async () => [
       createPersistedWorkspaceRecord({
-        workspaceId: "/tmp/repo",
-        projectId: "/tmp/repo",
+        workspaceId: "ws-repo-subdir",
+        projectId: "proj-repo-subdir",
         cwd: "/tmp/repo",
         kind: "local_checkout",
         displayName: "main",
@@ -1042,7 +1042,7 @@ describe("workspace aggregation", () => {
 
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]).toMatchObject({
-      id: "/tmp/repo",
+      id: "ws-repo-subdir",
       status: "done",
       activityAt: null,
     });
@@ -1128,8 +1128,8 @@ describe("workspace aggregation", () => {
         [
           "/tmp/repo",
           {
-            id: "/tmp/repo",
-            projectId: "/tmp/repo",
+            id: "ws-repo-running",
+            projectId: "proj-repo-running",
             projectDisplayName: "repo",
             projectRootPath: "/tmp/repo",
             projectKind: "non_git",
@@ -1147,8 +1147,8 @@ describe("workspace aggregation", () => {
         [
           "/tmp/repo",
           {
-            id: "/tmp/repo",
-            projectId: "/tmp/repo",
+            id: "ws-repo-running",
+            projectId: "proj-repo-running",
             projectDisplayName: "repo",
             projectRootPath: "/tmp/repo",
             projectKind: "non_git",
@@ -1167,8 +1167,8 @@ describe("workspace aggregation", () => {
     expect((workspaceUpdates[1] as any).payload).toEqual({
       kind: "upsert",
       workspace: {
-        id: "/tmp/repo",
-        projectId: "/tmp/repo",
+        id: "ws-repo-running",
+        projectId: "proj-repo-running",
         projectDisplayName: "repo",
         projectRootPath: "/tmp/repo",
         projectKind: "non_git",
@@ -1280,6 +1280,26 @@ describe("workspace aggregation", () => {
   test("workspace update fanout for multiple cwd values is deduplicated", async () => {
     const emitted: Array<{ type: string; payload: unknown }> = [];
     const session = createSessionForWorkspaceTests() as any;
+    session.workspaceRegistry.list = async () => [
+      createPersistedWorkspaceRecord({
+        workspaceId: "ws-repo-main",
+        projectId: "proj-repo-main",
+        cwd: "/tmp/repo",
+        kind: "local_checkout",
+        displayName: "main",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      }),
+      createPersistedWorkspaceRecord({
+        workspaceId: "ws-repo-feature",
+        projectId: "proj-repo-main",
+        cwd: "/tmp/repo/worktree",
+        kind: "worktree",
+        displayName: "feature",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      }),
+    ];
     session.workspaceUpdatesSubscription = {
       subscriptionId: "sub-dedup",
       filter: undefined,
@@ -1288,14 +1308,14 @@ describe("workspace aggregation", () => {
       lastEmittedByWorkspaceId: new Map(),
     };
     session.reconcileActiveWorkspaceRecords = async () =>
-      new Set(["/tmp/repo", "/tmp/repo/worktree"]);
+      new Set(["ws-repo-main", "ws-repo-feature"]);
     session.buildWorkspaceDescriptorMap = async () =>
       new Map([
         [
-          "/tmp/repo",
+          "ws-repo-main",
           {
-            id: "/tmp/repo",
-            projectId: "/tmp/repo",
+            id: "ws-repo-main",
+            projectId: "proj-repo-main",
             projectDisplayName: "repo",
             projectRootPath: "/tmp/repo",
             projectKind: "git",
@@ -1306,10 +1326,10 @@ describe("workspace aggregation", () => {
           },
         ],
         [
-          "/tmp/repo/worktree",
+          "ws-repo-feature",
           {
-            id: "/tmp/repo/worktree",
-            projectId: "/tmp/repo",
+            id: "ws-repo-feature",
+            projectId: "proj-repo-main",
             projectDisplayName: "repo",
             projectRootPath: "/tmp/repo",
             projectKind: "git",
@@ -1333,8 +1353,8 @@ describe("workspace aggregation", () => {
     expect(workspaceUpdates).toHaveLength(2);
     expect(workspaceUpdates.map((entry) => entry.payload.kind)).toEqual(["upsert", "upsert"]);
     expect(workspaceUpdates.map((entry) => entry.payload.workspace.id).sort()).toEqual([
-      "/tmp/repo",
-      "/tmp/repo/worktree",
+      "ws-repo-feature",
+      "ws-repo-main",
     ]);
   });
 
@@ -1521,8 +1541,8 @@ describe("workspace aggregation", () => {
     const emitted: Array<{ type: string; payload: unknown }> = [];
     const session = createSessionForWorkspaceTests() as any;
     const workspace = createPersistedWorkspaceRecord({
-      workspaceId: "/tmp/repo",
-      projectId: "/tmp/repo",
+      workspaceId: "ws-repo-archive",
+      projectId: "proj-repo-archive",
       cwd: "/tmp/repo",
       kind: "directory",
       displayName: "repo",
@@ -1540,7 +1560,7 @@ describe("workspace aggregation", () => {
 
     await session.handleMessage({
       type: "archive_workspace_request",
-      workspaceId: "/tmp/repo",
+      workspaceId: "ws-repo-archive",
       requestId: "req-archive",
     });
 
@@ -1855,7 +1875,7 @@ describe("workspace aggregation", () => {
   test("listWorkspaceDescriptorsSnapshot keeps git workspaces on the baseline descriptor path", async () => {
     const session = createSessionForWorkspaceTests() as any;
     const project = createPersistedProjectRecord({
-      projectId: "/tmp/repo",
+      projectId: "proj-baseline",
       rootPath: "/tmp/repo",
       kind: "git",
       displayName: "repo",
@@ -1863,7 +1883,7 @@ describe("workspace aggregation", () => {
       updatedAt: "2026-03-01T12:00:00.000Z",
     });
     const workspace = createPersistedWorkspaceRecord({
-      workspaceId: "/tmp/repo",
+      workspaceId: "ws-baseline",
       projectId: project.projectId,
       cwd: "/tmp/repo",
       kind: "local_checkout",
@@ -1942,7 +1962,7 @@ describe("workspace aggregation", () => {
       workspaceGitService,
     }) as any;
     const project = createPersistedProjectRecord({
-      projectId: "/tmp/repo",
+      projectId: "proj-runtime-fetch",
       rootPath: "/tmp/repo",
       kind: "git",
       displayName: "repo",
@@ -1950,7 +1970,7 @@ describe("workspace aggregation", () => {
       updatedAt: "2026-03-01T12:00:00.000Z",
     });
     const workspace = createPersistedWorkspaceRecord({
-      workspaceId: "/tmp/repo",
+      workspaceId: "ws-runtime-fetch",
       projectId: project.projectId,
       cwd: "/tmp/repo",
       kind: "local_checkout",
@@ -1989,7 +2009,7 @@ describe("workspace aggregation", () => {
     expect(workspaceGitService.peekSnapshot).toHaveBeenCalledWith("/tmp/repo");
     expect(response?.payload.entries).toEqual([
       expect.objectContaining({
-        id: "/tmp/repo",
+        id: "ws-runtime-fetch",
         gitRuntime: {
           currentBranch: "runtime-branch",
           remoteUrl: "https://github.com/acme/repo.git",
@@ -2042,7 +2062,7 @@ describe("workspace aggregation", () => {
       workspaceGitService,
     }) as any;
     const project = createPersistedProjectRecord({
-      projectId: "/tmp/repo",
+      projectId: "proj-runtime-update",
       rootPath: "/tmp/repo",
       kind: "git",
       displayName: "repo",
@@ -2050,7 +2070,7 @@ describe("workspace aggregation", () => {
       updatedAt: "2026-03-01T12:00:00.000Z",
     });
     const workspace = createPersistedWorkspaceRecord({
-      workspaceId: "/tmp/repo",
+      workspaceId: "ws-runtime-update",
       projectId: project.projectId,
       cwd: "/tmp/repo",
       kind: "local_checkout",
@@ -2095,7 +2115,7 @@ describe("workspace aggregation", () => {
       payload: {
         kind: "upsert",
         workspace: expect.objectContaining({
-          id: "/tmp/repo",
+          id: "ws-runtime-update",
           gitRuntime: expect.objectContaining({
             currentBranch: "feature/runtime-payloads",
             isDirty: true,
@@ -2117,7 +2137,7 @@ describe("workspace aggregation", () => {
     const emitted: Array<{ type: string; payload: any }> = [];
     const session = createSessionForWorkspaceTests() as any;
     const gitProject = createPersistedProjectRecord({
-      projectId: "/tmp/repo",
+      projectId: "proj-git-subscribe",
       rootPath: "/tmp/repo",
       kind: "git",
       displayName: "repo",
@@ -2125,7 +2145,7 @@ describe("workspace aggregation", () => {
       updatedAt: "2026-03-01T12:00:00.000Z",
     });
     const directoryProject = createPersistedProjectRecord({
-      projectId: "/tmp/docs",
+      projectId: "proj-docs-subscribe",
       rootPath: "/tmp/docs",
       kind: "non_git",
       displayName: "docs",
@@ -2133,7 +2153,7 @@ describe("workspace aggregation", () => {
       updatedAt: "2026-03-01T12:00:00.000Z",
     });
     const gitWorkspace = createPersistedWorkspaceRecord({
-      workspaceId: "/tmp/repo",
+      workspaceId: "ws-git-subscribe",
       projectId: gitProject.projectId,
       cwd: "/tmp/repo",
       kind: "local_checkout",
@@ -2142,7 +2162,7 @@ describe("workspace aggregation", () => {
       updatedAt: "2026-03-01T12:00:00.000Z",
     });
     const directoryWorkspace = createPersistedWorkspaceRecord({
-      workspaceId: "/tmp/docs",
+      workspaceId: "ws-docs-subscribe",
       projectId: directoryProject.projectId,
       cwd: "/tmp/docs",
       kind: "directory",

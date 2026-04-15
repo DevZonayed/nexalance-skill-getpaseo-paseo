@@ -1474,6 +1474,7 @@ export class Session {
 
   private buildPersistedProjectRecord(input: {
     workspaceId: string;
+    cwd: string;
     placement: ProjectPlacementPayload;
     createdAt: string;
     updatedAt: string;
@@ -1481,7 +1482,7 @@ export class Session {
     return createPersistedProjectRecord({
       projectId: input.placement.projectKey,
       rootPath: deriveProjectRootPath({
-        cwd: input.workspaceId,
+        cwd: input.cwd,
         checkout: input.placement.checkout,
       }),
       kind: deriveProjectKind(input.placement.checkout),
@@ -1494,6 +1495,7 @@ export class Session {
 
   private buildPersistedWorkspaceRecord(input: {
     workspaceId: string;
+    cwd: string;
     placement: ProjectPlacementPayload;
     createdAt: string;
     updatedAt: string;
@@ -1501,10 +1503,10 @@ export class Session {
     return createPersistedWorkspaceRecord({
       workspaceId: input.workspaceId,
       projectId: input.placement.projectKey,
-      cwd: input.workspaceId,
+      cwd: input.cwd,
       kind: deriveWorkspaceKind(input.placement.checkout),
       displayName: deriveWorkspaceDisplayName({
-        cwd: input.workspaceId,
+        cwd: input.cwd,
         checkout: input.placement.checkout,
       }),
       createdAt: input.createdAt,
@@ -1520,15 +1522,6 @@ export class Session {
     if (siblingWorkspaces.length === 0) {
       await this.projectRegistry.archive(projectId, archivedAt);
     }
-  }
-
-  private async resolveWorkspaceByIdOrDirectory(
-    workspaceId: string,
-  ): Promise<PersistedWorkspaceRecord | null> {
-    const record = await this.workspaceRegistry.get(workspaceId);
-    if (record) return record;
-    // Fallback: treat as directory path
-    return this.findWorkspaceByDirectory(workspaceId);
   }
 
   private async resolveWorkspaceDirectory(cwd: string): Promise<string> {
@@ -2980,7 +2973,7 @@ export class Session {
         attachments,
       );
       const resolvedWorkspace = msg.workspaceId
-        ? await this.resolveWorkspaceByIdOrDirectory(msg.workspaceId)
+        ? await this.workspaceRegistry.get(msg.workspaceId)
         : ((await this.findWorkspaceByDirectory(sessionConfig.cwd)) ??
           (await this.findOrCreateWorkspaceForDirectory(sessionConfig.cwd)));
       if (!resolvedWorkspace) {
@@ -4378,26 +4371,26 @@ export class Session {
   }
 
   private async removeWorkspaceGitWatchTarget(cwd: string): Promise<void> {
-    const workspaceId = normalizePersistedWorkspaceId(cwd);
-    const target = this.workspaceGitWatchTargets.get(workspaceId);
+    const normalizedCwd = normalizePersistedWorkspaceId(cwd);
+    const target = this.workspaceGitWatchTargets.get(normalizedCwd);
     if (target) {
       this.closeWorkspaceGitWatchTarget(target);
-      this.workspaceGitWatchTargets.delete(workspaceId);
+      this.workspaceGitWatchTargets.delete(normalizedCwd);
     }
   }
 
   private removeWorkspaceGitSubscription(cwd: string): void {
-    const workspaceId = normalizePersistedWorkspaceId(cwd);
-    const target = this.workspaceGitWatchTargets.get(workspaceId);
+    const normalizedCwd = normalizePersistedWorkspaceId(cwd);
+    const target = this.workspaceGitWatchTargets.get(normalizedCwd);
     if (target) {
-      const unsubscribeFetch = this.workspaceGitFetchSubscriptions.get(workspaceId);
+      const unsubscribeFetch = this.workspaceGitFetchSubscriptions.get(normalizedCwd);
       unsubscribeFetch?.();
-      this.workspaceGitFetchSubscriptions.delete(workspaceId);
+      this.workspaceGitFetchSubscriptions.delete(normalizedCwd);
       this.closeWorkspaceGitWatchTarget(target);
-      this.workspaceGitWatchTargets.delete(workspaceId);
+      this.workspaceGitWatchTargets.delete(normalizedCwd);
     }
-    this.workspaceGitSubscriptions.get(workspaceId)?.();
-    this.workspaceGitSubscriptions.delete(workspaceId);
+    this.workspaceGitSubscriptions.get(normalizedCwd)?.();
+    this.workspaceGitSubscriptions.delete(normalizedCwd);
   }
 
   private workspaceGitDescriptorFingerprint(workspace: WorkspaceDescriptorPayload | null): string {
@@ -4442,7 +4435,7 @@ export class Session {
     workspaces: Iterable<WorkspaceDescriptorPayload>,
   ): Promise<void> {
     for (const workspace of workspaces) {
-      const persistedWorkspace = await this.findWorkspaceByDirectory(workspace.id);
+      const persistedWorkspace = await this.workspaceRegistry.get(workspace.id);
       if (!persistedWorkspace) {
         continue;
       }
@@ -4457,20 +4450,20 @@ export class Session {
     cwd: string,
     options: { isGit: boolean },
   ): Promise<void> {
-    const workspaceId = normalizePersistedWorkspaceId(cwd);
+    const normalizedCwd = normalizePersistedWorkspaceId(cwd);
     if (!options.isGit) {
-      this.removeWorkspaceGitSubscription(workspaceId);
+      this.removeWorkspaceGitSubscription(normalizedCwd);
       return;
     }
 
-    if (this.workspaceGitSubscriptions.has(workspaceId)) {
+    if (this.workspaceGitSubscriptions.has(normalizedCwd)) {
       return;
     }
 
-    const subscription = await this.workspaceGitService.subscribe({ cwd: workspaceId }, () => {
-      void this.emitWorkspaceUpdateForCwd(workspaceId);
+    const subscription = await this.workspaceGitService.subscribe({ cwd: normalizedCwd }, () => {
+      void this.emitWorkspaceUpdateForCwd(normalizedCwd);
     });
-    this.workspaceGitSubscriptions.set(workspaceId, subscription.unsubscribe);
+    this.workspaceGitSubscriptions.set(normalizedCwd, subscription.unsubscribe);
   }
 
   private async handleSubscribeCheckoutDiffRequest(
@@ -5611,8 +5604,8 @@ export class Session {
     }
 
     return {
-      id: workspace.cwd,
-      projectId: resolvedProjectRecord?.rootPath ?? workspace.cwd,
+      id: workspace.workspaceId,
+      projectId: workspace.projectId,
       projectDisplayName: resolvedProjectRecord?.displayName ?? String(workspace.projectId),
       projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
       workspaceDirectory: workspace.cwd,
@@ -5625,6 +5618,7 @@ export class Session {
       scripts:
         this.scriptRouteStore && this.scriptRuntimeStore
           ? buildWorkspaceScriptPayloads({
+              workspaceId: workspace.workspaceId,
               workspaceDirectory: workspace.cwd,
               routeStore: this.scriptRouteStore,
               runtimeStore: this.scriptRuntimeStore,
@@ -5726,24 +5720,18 @@ export class Session {
         .map((project) => [project.projectId, project] as const),
     );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
-    const workspaceIds = options.workspaceIds
-      ? new Set(
-          Array.from(options.workspaceIds, (workspaceId) =>
-            normalizePersistedWorkspaceId(workspaceId),
-          ),
-        )
-      : null;
+    const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
     const workspaceIdsByDirectory = new Map(
-      activeRecords.map((workspace) => [workspace.cwd, workspace.cwd] as const),
+      activeRecords.map((workspace) => [workspace.cwd, workspace.workspaceId] as const),
     );
 
     for (const workspace of activeRecords) {
-      if (workspaceIds && !workspaceIds.has(workspace.cwd)) {
+      if (workspaceIds && !workspaceIds.has(workspace.workspaceId)) {
         continue;
       }
       const projectRecord = activeProjects.get(workspace.projectId) ?? null;
       descriptorsByWorkspaceId.set(
-        workspace.cwd,
+        workspace.workspaceId,
         await this.buildWorkspaceDescriptor({
           workspace,
           projectRecord,
@@ -5785,7 +5773,7 @@ export class Session {
     const normalizedCwd = normalizePersistedWorkspaceId(cwd);
     const exact = workspaces.find((workspace) => workspace.cwd === normalizedCwd);
     if (exact) {
-      return exact.cwd;
+      return exact.workspaceId;
     }
 
     let bestMatch: PersistedWorkspaceRecord | null = null;
@@ -5799,7 +5787,7 @@ export class Session {
       }
     }
 
-    return bestMatch?.cwd ?? normalizedCwd;
+    return bestMatch?.workspaceId ?? normalizedCwd;
   }
 
   private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
@@ -6140,9 +6128,12 @@ export class Session {
     const workspaceRecord = createPersistedWorkspaceRecord({
       workspaceId,
       projectId: placement.projectKey,
-      cwd: workspaceId,
+      cwd: normalizedCwd,
       kind: deriveWorkspaceKind(placement.checkout),
-      displayName: deriveWorkspaceDisplayName({ cwd: workspaceId, checkout: placement.checkout }),
+      displayName: deriveWorkspaceDisplayName({
+        cwd: normalizedCwd,
+        checkout: placement.checkout,
+      }),
       createdAt: timestamp,
       updatedAt: timestamp,
     });
@@ -6224,9 +6215,7 @@ export class Session {
       return;
     }
 
-    const uniqueWorkspaceIds = new Set(
-      Array.from(workspaceIds, (workspaceId) => normalizePersistedWorkspaceId(workspaceId)),
-    );
+    const uniqueWorkspaceIds = new Set(Array.from(workspaceIds));
     if (uniqueWorkspaceIds.size === 0) {
       return;
     }
@@ -6292,20 +6281,16 @@ export class Session {
     cwd: string,
     options?: { skipReconcile?: boolean; dedupeGitState?: boolean },
   ): Promise<void> {
-    const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
-      (workspace) => !workspace.archivedAt,
-    );
-    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces);
+    const workspaces = await this.workspaceRegistry.list();
+    const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, workspaces);
     await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId], options);
   }
 
   private async emitWorkspaceUpdatesForCwds(cwds: Iterable<string>): Promise<void> {
-    const activeWorkspaces = (await this.workspaceRegistry.list()).filter(
-      (workspace) => !workspace.archivedAt,
-    );
+    const workspaces = await this.workspaceRegistry.list();
     const uniqueWorkspaceIds = new Set<string>();
     for (const cwd of cwds) {
-      uniqueWorkspaceIds.add(this.resolveRegisteredWorkspaceIdForCwd(cwd, activeWorkspaces));
+      uniqueWorkspaceIds.add(this.resolveRegisteredWorkspaceIdForCwd(cwd, workspaces));
     }
     await this.emitWorkspaceUpdatesForWorkspaceIds(uniqueWorkspaceIds);
   }
@@ -6484,12 +6469,14 @@ export class Session {
   }
 
   private buildWorkspaceScriptPayloadSnapshot(
+    workspaceId: string,
     workspaceDirectory: string,
   ): WorkspaceDescriptorPayload["scripts"] {
     if (!this.scriptRouteStore || !this.scriptRuntimeStore) {
       return [];
     }
     return buildWorkspaceScriptPayloads({
+      workspaceId,
       workspaceDirectory,
       routeStore: this.scriptRouteStore,
       runtimeStore: this.scriptRuntimeStore,
@@ -6498,12 +6485,12 @@ export class Session {
     });
   }
 
-  private emitWorkspaceScriptStatusUpdate(workspaceDirectory: string): void {
+  private emitWorkspaceScriptStatusUpdate(workspaceId: string, workspaceDirectory: string): void {
     this.emit({
       type: "script_status_update",
       payload: {
-        workspaceId: workspaceDirectory,
-        scripts: this.buildWorkspaceScriptPayloadSnapshot(workspaceDirectory),
+        workspaceId,
+        scripts: this.buildWorkspaceScriptPayloadSnapshot(workspaceId, workspaceDirectory),
       },
     });
   }
@@ -6524,14 +6511,14 @@ export class Session {
         throw new Error("Workspace scripts are not available on this daemon");
       }
 
-      const workspace = await this.resolveWorkspaceByIdOrDirectory(request.workspaceId);
+      const workspace = await this.workspaceRegistry.get(request.workspaceId);
       if (!workspace) {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
 
       const serviceResult = await spawnWorkspaceScript({
         repoRoot: workspace.cwd,
-        workspaceId: workspace.cwd,
+        workspaceId: workspace.workspaceId,
         branchName: readGitCommand(workspace.cwd, "git symbolic-ref --short HEAD"),
         scriptName: request.scriptName,
         daemonPort: this.getDaemonTcpPort?.() ?? null,
@@ -6541,11 +6528,11 @@ export class Session {
         terminalManager: this.terminalManager,
         logger: this.sessionLogger,
         onLifecycleChanged: () => {
-          this.emitWorkspaceScriptStatusUpdate(workspace.cwd);
+          this.emitWorkspaceScriptStatusUpdate(workspace.workspaceId, workspace.cwd);
         },
       });
 
-      this.emitWorkspaceScriptStatusUpdate(workspace.cwd);
+      this.emitWorkspaceScriptStatusUpdate(workspace.workspaceId, workspace.cwd);
       this.emit({
         type: "start_workspace_script_response",
         payload: {
@@ -6687,8 +6674,8 @@ export class Session {
         scriptRuntimeStore: this.scriptRuntimeStore,
         getDaemonTcpPort: this.getDaemonTcpPort,
         getDaemonTcpHost: this.getDaemonTcpHost,
-        onScriptsChanged: (workspaceDirectory) => {
-          this.emitWorkspaceScriptStatusUpdate(workspaceDirectory);
+        onScriptsChanged: (workspaceId, workspaceDirectory) => {
+          this.emitWorkspaceScriptStatusUpdate(workspaceId, workspaceDirectory);
         },
       },
       options,
@@ -6702,7 +6689,6 @@ export class Session {
       {
         emit: (message) => this.emit(message),
         workspaceSetupSnapshots: this.workspaceSetupSnapshots,
-        workspaceRegistry: this.workspaceRegistry,
       },
       request,
     );
@@ -6712,7 +6698,7 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "archive_workspace_request" }>,
   ): Promise<void> {
     try {
-      const existing = await this.resolveWorkspaceByIdOrDirectory(request.workspaceId);
+      const existing = await this.workspaceRegistry.get(request.workspaceId);
       if (!existing) {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }

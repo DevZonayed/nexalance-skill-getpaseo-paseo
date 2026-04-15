@@ -24,13 +24,13 @@ describe("parseHostAgentRouteFromPathname", () => {
 });
 
 describe("workspace route parsing", () => {
-  it("encodes numeric workspace IDs without base64", () => {
+  it("keeps URL-safe workspace IDs unencoded", () => {
     expect(encodeWorkspaceIdForPathSegment("164")).toBe("164");
     expect(decodeWorkspaceIdFromPathSegment("164")).toBe("164");
   });
 
-  it("encodes path-based workspace IDs as base64url (legacy)", () => {
-    expect(encodeWorkspaceIdForPathSegment("/tmp/repo")).toBe("L3RtcC9yZXBv");
+  it("encodes non-URL-safe workspace IDs as base64url", () => {
+    expect(encodeWorkspaceIdForPathSegment("/tmp/repo")).toBe("b64_L3RtcC9yZXBv");
     expect(decodeWorkspaceIdFromPathSegment("L3RtcC9yZXBv")).toBe("/tmp/repo");
   });
 
@@ -46,7 +46,7 @@ describe("workspace route parsing", () => {
     expect(decodeFilePathFromPathSegment(encoded)).toBe("src/index.ts");
   });
 
-  it("parses workspace route with numeric ID", () => {
+  it("parses workspace route with a plain workspace id", () => {
     expect(parseHostWorkspaceRouteFromPathname("/h/local/workspace/164")).toEqual({
       serverId: "local",
       workspaceId: "164",
@@ -66,12 +66,14 @@ describe("workspace route parsing", () => {
     ).toBeNull();
   });
 
-  it("builds numeric workspace routes without base64", () => {
+  it("builds plain workspace routes for URL-safe ids", () => {
     expect(buildHostWorkspaceRoute("local", "164")).toBe("/h/local/workspace/164");
   });
 
   it("builds base64url workspace routes for legacy paths", () => {
-    expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe("/h/local/workspace/L3RtcC9yZXBv");
+    expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe(
+      "/h/local/workspace/b64_L3RtcC9yZXBv",
+    );
   });
 
   it("builds host root routes", () => {
@@ -115,12 +117,19 @@ describe("workspace route parsing", () => {
     );
   });
 
-  it("round-trips numeric IDs through encode/decode", () => {
-    const ids = ["1", "40", "164", "9999"];
+  it("round-trips URL-safe IDs through encode/decode", () => {
+    const ids = ["1", "40", "164", "9999", "workspace-1", "opaque_id.v2~test"];
     for (const id of ids) {
       const encoded = encodeWorkspaceIdForPathSegment(id);
       const decoded = decodeWorkspaceIdFromPathSegment(encoded);
       expect(decoded).toBe(id);
     }
+  });
+
+  it("round-trips opaque IDs with reserved characters through base64 encoding", () => {
+    const id = "  team/setup:id#1  ";
+    const encoded = encodeWorkspaceIdForPathSegment(id);
+    expect(encoded).toBe("b64_dGVhbS9zZXR1cDppZCMx");
+    expect(decodeWorkspaceIdFromPathSegment(encoded)).toBe("team/setup:id#1");
   });
 });

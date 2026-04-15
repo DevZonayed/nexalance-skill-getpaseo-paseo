@@ -1,5 +1,5 @@
 export interface ScriptRuntimeEntry {
-  workspaceId: number | string;
+  workspaceId: string;
   scriptName: string;
   type: "script" | "service";
   lifecycle: "running" | "stopped";
@@ -8,7 +8,7 @@ export interface ScriptRuntimeEntry {
 }
 
 type RuntimeEntryKey = {
-  workspaceId: number | string;
+  workspaceId: string;
   scriptName: string;
 };
 
@@ -44,7 +44,7 @@ export class WorkspaceScriptRuntimeStore {
     this.removeScriptFromWorkspaceIndex(existing.workspaceId, existing.scriptName);
   }
 
-  listForWorkspace(workspaceId: number | string): ScriptRuntimeEntry[] {
+  listForWorkspace(workspaceId: string): ScriptRuntimeEntry[] {
     const scriptNames = this.scriptsByWorkspace.get(this.toWorkspaceKey(workspaceId));
     if (!scriptNames) {
       return [];
@@ -65,7 +65,7 @@ export class WorkspaceScriptRuntimeStore {
     return entries;
   }
 
-  removeForWorkspace(workspaceId: number | string): void {
+  removeForWorkspace(workspaceId: string): void {
     for (const entry of this.listForWorkspace(workspaceId)) {
       this.entries.delete(this.toEntryKey(entry));
     }
@@ -82,7 +82,7 @@ export class WorkspaceScriptRuntimeStore {
     this.scriptsByWorkspace.set(workspaceKey, scripts);
   }
 
-  private removeScriptFromWorkspaceIndex(workspaceId: number | string, scriptName: string): void {
+  private removeScriptFromWorkspaceIndex(workspaceId: string, scriptName: string): void {
     const workspaceKey = this.toWorkspaceKey(workspaceId);
     const scripts = this.scriptsByWorkspace.get(workspaceKey);
     if (!scripts) {
@@ -99,7 +99,7 @@ export class WorkspaceScriptRuntimeStore {
     return `${this.toWorkspaceKey(key.workspaceId)}::${key.scriptName}`;
   }
 
-  private toWorkspaceKey(workspaceId: number | string): string {
-    return String(workspaceId);
+  private toWorkspaceKey(workspaceId: string): string {
+    return workspaceId;
   }
 }

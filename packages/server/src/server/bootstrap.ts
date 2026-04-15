@@ -237,6 +237,7 @@ export async function createPaseoDaemon(
 
     const app = express();
     let boundListenTarget: ListenTarget | null = null;
+    let workspaceRegistry: FileBackedWorkspaceRegistry | null = null;
 
     const scriptRouteStore = new ScriptRouteStore();
     const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
@@ -252,6 +253,8 @@ export async function createPaseoDaemon(
         routeStore: scriptRouteStore,
         runtimeStore: scriptRuntimeStore,
         daemonPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
+        resolveWorkspaceDirectory: async (workspaceId) =>
+          (await workspaceRegistry?.get(workspaceId))?.cwd ?? null,
       }),
     });
     const handleBranchChange = createBranchChangeRouteHandler({
@@ -396,7 +399,7 @@ export async function createPaseoDaemon(
       path.join(config.paseoHome, "projects", "projects.json"),
       logger,
     );
-    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+    workspaceRegistry = new FileBackedWorkspaceRegistry(
       path.join(config.paseoHome, "projects", "workspaces.json"),
       logger,
     );

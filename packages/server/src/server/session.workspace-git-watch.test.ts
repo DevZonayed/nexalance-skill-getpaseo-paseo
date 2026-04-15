@@ -259,8 +259,8 @@ describe("workspace git watch targets", () => {
     };
 
     let descriptor = {
-      id: "/tmp/repo",
-      projectId: "/tmp/repo",
+      id: "ws-10",
+      projectId: "proj-1",
       projectDisplayName: "repo",
       projectRootPath: "/tmp/repo",
       projectKind: "git",
@@ -304,7 +304,7 @@ describe("workspace git watch targets", () => {
     expect(workspaceUpdates[0]?.payload).toMatchObject({
       kind: "upsert",
       workspace: {
-        id: "/tmp/repo",
+        id: "ws-10",
         name: "renamed-branch",
         diffStat: { additions: 1, deletions: 0 },
       },

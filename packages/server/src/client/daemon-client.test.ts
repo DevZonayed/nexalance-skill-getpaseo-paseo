@@ -239,7 +239,7 @@ describe("DaemonClient", () => {
       wrapSessionMessage({
         type: "workspace_setup_progress",
         payload: {
-          workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+          workspaceId: "ws-feature-a",
           status: "running",
           detail: {
             type: "worktree_setup",
@@ -264,9 +264,9 @@ describe("DaemonClient", () => {
 
     expect(events).toContainEqual({
       type: "workspace_setup_progress",
-      workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+      workspaceId: "ws-feature-a",
       payload: {
-        workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+        workspaceId: "ws-feature-a",
         status: "running",
         detail: {
           type: "worktree_setup",
@@ -309,7 +309,7 @@ describe("DaemonClient", () => {
     const createPromise = client.createAgent({
       provider: "codex",
       cwd: "/tmp/project/.paseo/worktrees/feature-a",
-      workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+      workspaceId: "ws-feature-a",
       title: "Compat agent",
       modeId: "default",
     });
@@ -326,7 +326,7 @@ describe("DaemonClient", () => {
     expect(request.message).toEqual(
       expect.objectContaining({
         type: "create_agent_request",
-        workspaceId: "/tmp/project/.paseo/worktrees/feature-a",
+        workspaceId: "ws-feature-a",
       }),
     );
 

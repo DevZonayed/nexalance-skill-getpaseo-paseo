@@ -24,7 +24,7 @@ export function normalizeWorkspaceTabTarget(
   }
   if (value.kind === "setup") {
     const workspaceId = trimNonEmpty(value.workspaceId);
-    return workspaceId ? { kind: "setup", workspaceId: workspaceId.replace(/\\/g, "/") } : null;
+    return workspaceId ? { kind: "setup", workspaceId } : null;
   }
   return null;
 }

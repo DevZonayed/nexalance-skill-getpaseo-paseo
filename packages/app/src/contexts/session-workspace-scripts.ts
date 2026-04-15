@@ -8,7 +8,7 @@ export function patchWorkspaceScripts(
 ): Map<string, WorkspaceDescriptor> {
   const workspaceKey = resolveWorkspaceMapKeyByIdentity({
     workspaces,
-    workspaceIdentity: update.workspaceId,
+    workspaceId: update.workspaceId,
   });
   if (!workspaceKey) {
     return workspaces;

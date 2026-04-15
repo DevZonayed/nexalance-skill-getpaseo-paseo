@@ -28,10 +28,6 @@ function trimNonEmpty(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function normalizeWorkspaceId(value: string): string {
-  return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
 export function buildWorkspaceTabPersistenceKey(input: {
   serverId: string;
   workspaceId: string;
@@ -41,7 +37,7 @@ export function buildWorkspaceTabPersistenceKey(input: {
   if (!serverId || !workspaceId) {
     return null;
   }
-  return `${serverId}:${normalizeWorkspaceId(workspaceId)}`;
+  return `${serverId}:${workspaceId}`;
 }
 
 function normalizeTabOrder(list: unknown): string[] {

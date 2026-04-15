@@ -54,15 +54,15 @@ function makeAgent(input: {
 
 describe("workspace agent visibility", () => {
   it("keeps archived agents out of activeAgentIds but present in knownAgentIds", () => {
-    const workspaceId = "/repo/worktree";
+    const workspaceDirectory = "/repo/worktree";
     const visible = makeAgent({
       id: "visible-agent",
-      cwd: workspaceId,
+      cwd: workspaceDirectory,
       createdAt: new Date("2026-03-04T00:00:00.000Z"),
     });
     const archived = makeAgent({
       id: "archived-agent",
-      cwd: workspaceId,
+      cwd: workspaceDirectory,
       archivedAt: new Date("2026-03-04T00:01:00.000Z"),
       createdAt: new Date("2026-03-04T00:01:00.000Z"),
     });
@@ -79,7 +79,7 @@ describe("workspace agent visibility", () => {
 
     const result = deriveWorkspaceAgentVisibility({
       sessionAgents,
-      workspaceDirectory: workspaceId,
+      workspaceDirectory,
     });
 
     expect(result.activeAgentIds).toEqual(new Set(["visible-agent"]));

@@ -27,7 +27,7 @@ import type {
   AgentSnapshotPayload,
   WorkspaceDescriptorPayload,
 } from "@server/shared/messages";
-import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
+import { normalizeWorkspaceOpaqueId } from "@/utils/workspace-identity";
 import {
   createAgentLastActivityCoalescer,
   type AgentLastActivityCommitter,
@@ -130,7 +130,7 @@ export function normalizeWorkspaceDescriptor(
   payload: WorkspaceDescriptorPayload,
 ): WorkspaceDescriptor {
   return {
-    id: normalizeWorkspaceIdentity(String(payload.id)) ?? String(payload.id),
+    id: normalizeWorkspaceOpaqueId(String(payload.id)) ?? String(payload.id),
     projectId: String(payload.projectId),
     projectDisplayName: payload.projectDisplayName,
     projectRootPath: payload.projectRootPath,

@@ -23,6 +23,17 @@ import {
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "/repo/worktree";
 
+describe("buildWorkspaceTabPersistenceKey", () => {
+  it("preserves opaque workspace ids instead of normalizing them like paths", () => {
+    expect(
+      buildWorkspaceTabPersistenceKey({
+        serverId: SERVER_ID,
+        workspaceId: "  setup\\workspace\\  ",
+      }),
+    ).toBe("server-1:setup\\workspace\\");
+  });
+});
+
 describe("workspace-tabs-store retargetTab", () => {
   beforeEach(() => {
     useWorkspaceTabsStore.setState({

@@ -23,7 +23,10 @@ import type {
   WorkspaceRegistry,
 } from "./workspace-registry.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
-import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
+import {
+  deriveWorkspaceId,
+  normalizeWorkspaceId as normalizePersistedWorkspaceId,
+} from "./workspace-registry-model.js";
 import {
   applyWorktreeSetupProgressEvent,
   buildWorktreeSetupDetail,
@@ -98,12 +101,14 @@ type ArchivePaseoWorktreeDependencies = {
 type RegisterPendingWorktreeWorkspaceDependencies = {
   buildPersistedProjectRecord: (input: {
     workspaceId: string;
+    cwd: string;
     placement: ProjectPlacementPayload;
     createdAt: string;
     updatedAt: string;
   }) => PersistedProjectRecord;
   buildPersistedWorkspaceRecord: (input: {
     workspaceId: string;
+    cwd: string;
     placement: ProjectPlacementPayload;
     createdAt: string;
     updatedAt: string;
@@ -128,13 +133,12 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
   scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   getDaemonTcpPort: (() => number | null) | null;
   getDaemonTcpHost: (() => string | null) | null;
-  onScriptsChanged: ((workspaceDirectory: string) => void) | null;
+  onScriptsChanged: ((workspaceId: string, workspaceDirectory: string) => void) | null;
 };
 
 type HandleWorkspaceSetupStatusRequestDependencies = {
   emit: EmitSessionMessage;
   workspaceSetupSnapshots: ReadonlyMap<string, WorkspaceSetupSnapshot>;
-  workspaceRegistry: WorkspaceRegistry;
 };
 
 type HandleCreatePaseoWorktreeRequestDependencies = {
@@ -649,12 +653,12 @@ export async function registerPendingWorktreeWorkspace(
     branchName: string;
   },
 ): Promise<PersistedWorkspaceRecord> {
-  const workspaceDirectory = normalizePersistedWorkspaceId(options.worktreePath);
+  const normalizedWorktreePath = normalizePersistedWorkspaceId(options.worktreePath);
   const basePlacement = await dependencies.buildProjectPlacement(options.repoRoot);
   const placement: ProjectPlacementPayload = {
     ...basePlacement,
     checkout: {
-      cwd: workspaceDirectory,
+      cwd: normalizedWorktreePath,
       isGit: true,
       currentBranch: options.branchName,
       remoteUrl: basePlacement.checkout.remoteUrl,
@@ -663,17 +667,20 @@ export async function registerPendingWorktreeWorkspace(
       mainRepoRoot: options.repoRoot,
     },
   };
+  const workspaceId = deriveWorkspaceId(normalizedWorktreePath, placement.checkout);
   const now = new Date().toISOString();
-  const existingWorkspace = await dependencies.findWorkspaceByDirectory(workspaceDirectory);
+  const existingWorkspace = await dependencies.findWorkspaceByDirectory(normalizedWorktreePath);
   const existingProject = await dependencies.projectRegistry.get(placement.projectKey);
   const nextProjectRecord = dependencies.buildPersistedProjectRecord({
-    workspaceId: workspaceDirectory,
+    workspaceId,
+    cwd: normalizedWorktreePath,
     placement,
     createdAt: existingProject?.createdAt ?? now,
     updatedAt: now,
   });
   const nextWorkspaceRecord = dependencies.buildPersistedWorkspaceRecord({
-    workspaceId: workspaceDirectory,
+    workspaceId,
+    cwd: normalizedWorktreePath,
     placement,
     createdAt: existingWorkspace?.createdAt ?? now,
     updatedAt: now,
@@ -681,7 +688,7 @@ export async function registerPendingWorktreeWorkspace(
 
   await dependencies.projectRegistry.upsert(nextProjectRecord);
   await dependencies.workspaceRegistry.upsert(nextWorkspaceRecord);
-  await dependencies.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
+  await dependencies.syncWorkspaceGitWatchTarget(normalizedWorktreePath, { isGit: true });
 
   if (
     existingWorkspace &&
@@ -802,16 +809,7 @@ export async function handleWorkspaceSetupStatusRequest(
   request: Extract<SessionInboundMessage, { type: "workspace_setup_status_request" }>,
 ): Promise<void> {
   const workspaceId = request.workspaceId;
-  let snapshot = dependencies.workspaceSetupSnapshots.get(workspaceId) ?? null;
-
-  // Fallback: if workspaceId is a directory path, resolve to numeric ID and retry lookup
-  if (!snapshot && Number.isNaN(Number(workspaceId))) {
-    const workspaces = await dependencies.workspaceRegistry.list();
-    const match = workspaces.find((w) => w.cwd === workspaceId && !w.archivedAt);
-    if (match) {
-      snapshot = dependencies.workspaceSetupSnapshots.get(match.workspaceId) ?? null;
-    }
-  }
+  const snapshot = dependencies.workspaceSetupSnapshots.get(workspaceId) ?? null;
 
   dependencies.emit({
     type: "workspace_setup_status_response",
@@ -909,7 +907,7 @@ export async function runWorktreeSetupInBackground(
       ) {
         await spawnWorktreeScripts({
           repoRoot: worktree.worktreePath,
-          workspaceId: worktree.worktreePath,
+          workspaceId: options.workspaceId,
           branchName: worktree.branchName,
           daemonPort: dependencies.getDaemonTcpPort?.() ?? null,
           daemonListenHost: dependencies.getDaemonTcpHost?.() ?? null,
@@ -918,7 +916,7 @@ export async function runWorktreeSetupInBackground(
           terminalManager: dependencies.terminalManager,
           logger: dependencies.sessionLogger,
           onLifecycleChanged: () => {
-            dependencies.onScriptsChanged?.(worktree.worktreePath);
+            dependencies.onScriptsChanged?.(options.workspaceId, worktree.worktreePath);
           },
         });
       }

@@ -739,7 +739,7 @@ export const FetchWorkspacesRequestMessageSchema = z.object({
   filter: z
     .object({
       query: z.string().optional(),
-      projectId: z.union([z.string(), z.number()]).transform(String).optional(),
+      projectId: z.string().optional(),
       idPrefix: z.string().optional(),
     })
     .optional(),
@@ -843,7 +843,7 @@ export type GitSetupOptions = z.infer<typeof GitSetupOptionsSchema>;
 export const CreateAgentRequestMessageSchema = z.object({
   type: z.literal("create_agent_request"),
   config: AgentSessionConfigSchema,
-  workspaceId: z.union([z.string(), z.number()]).transform(String).optional(),
+  workspaceId: z.string().optional(),
   worktreeName: z.string().optional(),
   initialPrompt: z.string().optional(),
   clientMessageId: z.string().optional(),
@@ -1285,7 +1285,7 @@ export const OpenProjectRequestSchema = z.object({
 
 export const ArchiveWorkspaceRequestSchema = z.object({
   type: z.literal("archive_workspace_request"),
-  workspaceId: z.union([z.string(), z.number()]).transform(String),
+  workspaceId: z.string(),
   requestId: z.string(),
 });
 
@@ -1993,8 +1993,8 @@ const WorkspaceGitHubRuntimePayloadSchema = z
   .nullable();
 
 export const WorkspaceDescriptorPayloadSchema = z.object({
-  id: z.union([z.string(), z.number()]).transform(String),
-  projectId: z.union([z.string(), z.number()]).transform(String),
+  id: z.string(),
+  projectId: z.string(),
   projectDisplayName: z.string(),
   projectRootPath: z.string(),
   workspaceDirectory: z.string(),
@@ -2101,7 +2101,7 @@ export const WorkspaceUpdateMessageSchema = z.object({
     }),
     z.object({
       kind: z.literal("remove"),
-      id: z.union([z.string(), z.number()]).transform(String),
+      id: z.string(),
     }),
   ]),
 });
@@ -2180,7 +2180,7 @@ export const ArchiveWorkspaceResponseMessageSchema = z.object({
   type: z.literal("archive_workspace_response"),
   payload: z.object({
     requestId: z.string(),
-    workspaceId: z.union([z.string(), z.number()]).transform(String),
+    workspaceId: z.string(),
     archivedAt: z.string().nullable(),
     error: z.string().nullable(),
   }),

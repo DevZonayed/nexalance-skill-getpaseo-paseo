@@ -6,7 +6,7 @@ import {
 
 function createEntry(overrides: Partial<ScriptRuntimeEntry> = {}): ScriptRuntimeEntry {
   return {
-    workspaceId: 101,
+    workspaceId: "workspace-101",
     scriptName: "web",
     type: "service",
     lifecycle: "running",
@@ -23,8 +23,8 @@ describe("WorkspaceScriptRuntimeStore", () => {
 
     store.set(entry);
 
-    expect(store.get({ workspaceId: 101, scriptName: "web" })).toEqual(entry);
-    expect(store.listForWorkspace(101)).toEqual([entry]);
+    expect(store.get({ workspaceId: "workspace-101", scriptName: "web" })).toEqual(entry);
+    expect(store.listForWorkspace("workspace-101")).toEqual([entry]);
   });
 
   it("preserves whether the runtime entry is a plain script or service", () => {
@@ -36,7 +36,7 @@ describe("WorkspaceScriptRuntimeStore", () => {
 
     store.set(entry);
 
-    expect(store.get({ workspaceId: 101, scriptName: "typecheck" })).toEqual(entry);
+    expect(store.get({ workspaceId: "workspace-101", scriptName: "typecheck" })).toEqual(entry);
   });
 
   it("reports whether a script is currently running", () => {
@@ -44,7 +44,7 @@ describe("WorkspaceScriptRuntimeStore", () => {
     store.set(createEntry());
     store.set(
       createEntry({
-        workspaceId: 101,
+        workspaceId: "workspace-101",
         scriptName: "typecheck",
         lifecycle: "stopped",
         terminalId: "terminal-2",
@@ -52,19 +52,19 @@ describe("WorkspaceScriptRuntimeStore", () => {
       }),
     );
 
-    expect(store.isRunning({ workspaceId: 101, scriptName: "web" })).toBe(true);
-    expect(store.isRunning({ workspaceId: 101, scriptName: "typecheck" })).toBe(false);
-    expect(store.isRunning({ workspaceId: 101, scriptName: "missing" })).toBe(false);
+    expect(store.isRunning({ workspaceId: "workspace-101", scriptName: "web" })).toBe(true);
+    expect(store.isRunning({ workspaceId: "workspace-101", scriptName: "typecheck" })).toBe(false);
+    expect(store.isRunning({ workspaceId: "workspace-101", scriptName: "missing" })).toBe(false);
   });
 
   it("removes individual entries", () => {
     const store = new WorkspaceScriptRuntimeStore();
     store.set(createEntry());
 
-    store.remove({ workspaceId: 101, scriptName: "web" });
+    store.remove({ workspaceId: "workspace-101", scriptName: "web" });
 
-    expect(store.get({ workspaceId: 101, scriptName: "web" })).toBeNull();
-    expect(store.listForWorkspace(101)).toEqual([]);
+    expect(store.get({ workspaceId: "workspace-101", scriptName: "web" })).toBeNull();
+    expect(store.listForWorkspace("workspace-101")).toEqual([]);
   });
 
   it("removes all entries for a workspace without touching others", () => {
@@ -72,25 +72,25 @@ describe("WorkspaceScriptRuntimeStore", () => {
     store.set(createEntry());
     store.set(
       createEntry({
-        workspaceId: 101,
+        workspaceId: "workspace-101",
         scriptName: "api",
         terminalId: "terminal-2",
       }),
     );
     store.set(
       createEntry({
-        workspaceId: 202,
+        workspaceId: "workspace-202",
         scriptName: "docs",
         terminalId: "terminal-3",
       }),
     );
 
-    store.removeForWorkspace(101);
+    store.removeForWorkspace("workspace-101");
 
-    expect(store.listForWorkspace(101)).toEqual([]);
-    expect(store.listForWorkspace(202)).toEqual([
+    expect(store.listForWorkspace("workspace-101")).toEqual([]);
+    expect(store.listForWorkspace("workspace-202")).toEqual([
       createEntry({
-        workspaceId: 202,
+        workspaceId: "workspace-202",
         scriptName: "docs",
         terminalId: "terminal-3",
       }),
