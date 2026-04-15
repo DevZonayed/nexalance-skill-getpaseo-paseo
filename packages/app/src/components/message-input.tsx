@@ -1031,7 +1031,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             autoFocus={isWeb && autoFocus}
           />
           {inputScrollbar}
-          {isWeb && !isInputFocused && !value && focusInputKeys ? (
+          {isWeb && isInputActive && !isInputFocused && !value && focusInputKeys ? (
             <Text style={styles.focusHintText} pointerEvents="none">
               {formatShortcut(focusInputKeys[0], getShortcutOs())} to focus
             </Text>
