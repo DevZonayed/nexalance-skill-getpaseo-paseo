@@ -1168,10 +1168,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   disabled={isSendButtonDisabled}
                   accessibilityLabel={submitAccessibilityLabel}
                   accessibilityRole="button"
-                  style={[
-                    styles.sendButton,
-                    isSendButtonDisabled && styles.buttonDisabled,
-                  ]}
+                  style={[styles.sendButton, isSendButtonDisabled && styles.buttonDisabled]}
                 >
                   {isSubmitLoading ? (
                     <ActivityIndicator size="small" color="white" />
@@ -1181,9 +1178,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
-                    <Text style={styles.tooltipText}>
-                      {defaultActionQueues ? "Queue" : "Send"}
-                    </Text>
+                    <Text style={styles.tooltipText}>{defaultActionQueues ? "Queue" : "Send"}</Text>
                     {sendKeys ? <Shortcut chord={sendKeys} style={styles.tooltipShortcut} /> : null}
                   </View>
                 </TooltipContent>
