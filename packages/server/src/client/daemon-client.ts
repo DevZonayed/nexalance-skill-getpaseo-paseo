@@ -152,6 +152,7 @@ export type DaemonEvent =
       event: AgentStreamEventPayload;
       timestamp: string;
       seq?: number;
+      epoch?: string;
     }
   | { type: "status"; payload: { status: string } & Record<string, unknown> }
   | { type: "agent_deleted"; agentId: string }
@@ -336,13 +337,13 @@ type ScheduleDeletePayload = Extract<
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
-export type FetchAgentTimelineCursor = NonNullable<
-  Extract<SessionInboundMessage, { type: "fetch_agent_timeline_request" }>["cursor"]
->;
+export type FetchAgentTimelineProjection = FetchAgentTimelinePayload["projection"];
+export type FetchAgentTimelineCursor = NonNullable<FetchAgentTimelinePayload["startCursor"]>;
 export type FetchAgentTimelineOptions = {
   direction?: FetchAgentTimelineDirection;
   cursor?: FetchAgentTimelineCursor;
   limit?: number;
+  projection?: FetchAgentTimelineProjection;
   requestId?: string;
 };
 
@@ -1673,6 +1674,7 @@ export class DaemonClient {
       ...(options.direction ? { direction: options.direction } : {}),
       ...(options.cursor ? { cursor: options.cursor } : {}),
       ...(typeof options.limit === "number" ? { limit: options.limit } : {}),
+      ...(options.projection ? { projection: options.projection } : {}),
     });
 
     const payload = await this.sendRequest({
@@ -3899,6 +3901,7 @@ export class DaemonClient {
           event: msg.payload.event,
           timestamp: msg.payload.timestamp,
           ...(typeof msg.payload.seq === "number" ? { seq: msg.payload.seq } : {}),
+          ...(typeof msg.payload.epoch === "string" ? { epoch: msg.payload.epoch } : {}),
         };
       case "status":
         return { type: "status", payload: msg.payload };

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import type {
   AgentTimelineFetchOptions,
@@ -8,11 +9,13 @@ import type {
 export type SeedAgentTimelineOptions = {
   items?: readonly AgentTimelineItem[];
   rows?: readonly AgentTimelineRow[];
+  epoch?: string;
   nextSeq?: number;
   timestamp?: string;
 };
 
 type AgentTimelineState = {
+  epoch: string;
   rows: AgentTimelineRow[];
   nextSeq: number;
 };
@@ -45,6 +48,7 @@ export class InMemoryAgentTimelineStore {
       : this.buildRowsFromItems(options?.items ?? [], options?.nextSeq ?? 1, timestamp);
     const nextSeq = options?.nextSeq ?? (rows.length ? rows[rows.length - 1]!.seq + 1 : 1);
     this.states.set(agentId, {
+      epoch: options?.epoch ?? randomUUID(),
       rows,
       nextSeq,
     });
@@ -60,6 +64,10 @@ export class InMemoryAgentTimelineStore {
 
   getRows(agentId: string): AgentTimelineRow[] {
     return this.requireState(agentId).rows.map(cloneRow);
+  }
+
+  getEpoch(agentId: string): string {
+    return this.requireState(agentId).epoch;
   }
 
   fetch(agentId: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
@@ -81,9 +89,43 @@ export class InMemoryAgentTimelineStore {
       nextSeq: state.nextSeq,
     };
 
+    if (cursor && typeof cursor.epoch === "string" && cursor.epoch !== state.epoch) {
+      return {
+        epoch: state.epoch,
+        direction,
+        reset: true,
+        staleCursor: true,
+        gap: false,
+        window,
+        hasOlder: false,
+        hasNewer: false,
+        rows: state.rows.map(cloneRow),
+      };
+    }
+
+    const cloneRows = (items: AgentTimelineRow[]) => items.map(cloneRow);
+
+    if (direction === "after" && cursor && state.rows.length > 0 && cursor.seq < minSeq - 1) {
+      return {
+        epoch: state.epoch,
+        direction,
+        reset: true,
+        staleCursor: false,
+        gap: true,
+        window,
+        hasOlder: false,
+        hasNewer: false,
+        rows: cloneRows(state.rows),
+      };
+    }
+
     if (state.rows.length === 0) {
       return {
+        epoch: state.epoch,
         direction,
+        reset: false,
+        staleCursor: false,
+        gap: false,
         window,
         hasOlder: false,
         hasNewer: false,
@@ -97,11 +139,15 @@ export class InMemoryAgentTimelineStore {
           ? state.rows
           : state.rows.slice(state.rows.length - limit);
       return {
+        epoch: state.epoch,
         direction,
+        reset: false,
+        staleCursor: false,
+        gap: false,
         window,
         hasOlder: selected.length > 0 && selected[0]!.seq > minSeq,
         hasNewer: false,
-        rows: selected.map(cloneRow),
+        rows: cloneRows(selected),
       };
     }
 
@@ -110,7 +156,11 @@ export class InMemoryAgentTimelineStore {
       const startIdx = state.rows.findIndex((row) => row.seq > baseSeq);
       if (startIdx < 0) {
         return {
+          epoch: state.epoch,
           direction,
+          reset: false,
+          staleCursor: false,
+          gap: false,
           window,
           hasOlder: baseSeq >= minSeq,
           hasNewer: false,
@@ -123,11 +173,15 @@ export class InMemoryAgentTimelineStore {
         : state.rows.slice(startIdx, startIdx + limit);
       const lastSelected = selected[selected.length - 1];
       return {
+        epoch: state.epoch,
         direction,
+        reset: false,
+        staleCursor: false,
+        gap: false,
         window,
         hasOlder: selected[0]!.seq > minSeq,
         hasNewer: Boolean(lastSelected && lastSelected.seq < maxSeq),
-        rows: selected.map(cloneRow),
+        rows: cloneRows(selected),
       };
     }
 
@@ -139,11 +193,15 @@ export class InMemoryAgentTimelineStore {
         ? boundedRows
         : boundedRows.slice(boundedRows.length - limit);
     return {
+      epoch: state.epoch,
       direction,
+      reset: false,
+      staleCursor: false,
+      gap: false,
       window,
       hasOlder: selected.length > 0 && selected[0]!.seq > minSeq,
       hasNewer: endExclusive >= 0,
-      rows: selected.map(cloneRow),
+      rows: cloneRows(selected),
     };
   }
 

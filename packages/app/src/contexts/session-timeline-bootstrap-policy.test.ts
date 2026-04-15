@@ -2,42 +2,26 @@ import { describe, expect, it } from "vitest";
 import { classifySessionTimelineSeq } from "./session-timeline-seq-gate";
 import {
   deriveBootstrapTailTimelinePolicy,
-  deriveInitialTimelineRequest,
   shouldResolveTimelineInit,
 } from "./session-timeline-bootstrap-policy";
 
-describe("deriveInitialTimelineRequest", () => {
-  it("uses tail bootstrap when history has not synced yet", () => {
-    expect(
-      deriveInitialTimelineRequest({
-        cursor: { seq: 42 },
-        hasAuthoritativeHistory: false,
-        initialTimelineLimit: 200,
-      }),
-    ).toEqual({
-      direction: "tail",
-      limit: 200,
-    });
-  });
-
-  it("uses catch-up after the committed cursor once history is synced", () => {
-    expect(
-      deriveInitialTimelineRequest({
-        cursor: { seq: 42 },
-        hasAuthoritativeHistory: true,
-        initialTimelineLimit: 200,
-      }),
-    ).toEqual({
-      direction: "after",
-      cursor: { seq: 42 },
-      limit: 0,
-    });
-  });
-});
-
 describe("deriveBootstrapTailTimelinePolicy", () => {
+  it("always replaces on explicit reset without catch-up cursor", () => {
+    const policy = deriveBootstrapTailTimelinePolicy({
+      direction: "after",
+      reset: true,
+      epoch: "epoch-1",
+      endCursor: { seq: 200 },
+      isInitializing: false,
+      hasActiveInitDeferred: false,
+    });
+
+    expect(policy.replace).toBe(true);
+    expect(policy.catchUpCursor).toBeNull();
+  });
+
   it("forces baseline replace and canonical catch-up for init tail race", () => {
-    const advancedCursor = { endSeq: 205 };
+    const advancedCursor = { epoch: "epoch-1", endSeq: 205 };
     const tailSeqStart = 101;
     const tailSeqEnd = 200;
 
@@ -45,6 +29,7 @@ describe("deriveBootstrapTailTimelinePolicy", () => {
     for (let seq = tailSeqStart; seq <= tailSeqEnd; seq += 1) {
       const decision = classifySessionTimelineSeq({
         cursor: advancedCursor,
+        epoch: "epoch-1",
         seq,
       });
       if (decision === "accept" || decision === "init") {
@@ -55,13 +40,16 @@ describe("deriveBootstrapTailTimelinePolicy", () => {
 
     const policy = deriveBootstrapTailTimelinePolicy({
       direction: "tail",
-      endSeq: 200,
+      reset: false,
+      epoch: "epoch-1",
+      endCursor: { seq: 200 },
       isInitializing: true,
       hasActiveInitDeferred: true,
     });
 
     expect(policy.replace).toBe(true);
     expect(policy.catchUpCursor).toEqual({
+      epoch: "epoch-1",
       endSeq: 200,
     });
   });
@@ -69,7 +57,9 @@ describe("deriveBootstrapTailTimelinePolicy", () => {
   it("does not replace non-bootstrap, non-reset responses", () => {
     const policy = deriveBootstrapTailTimelinePolicy({
       direction: "tail",
-      endSeq: 200,
+      reset: false,
+      epoch: "epoch-1",
+      endCursor: { seq: 200 },
       isInitializing: false,
       hasActiveInitDeferred: false,
     });
@@ -87,6 +77,7 @@ describe("shouldResolveTimelineInit", () => {
         isInitializing: true,
         initRequestDirection: "tail",
         responseDirection: "tail",
+        reset: false,
       }),
     ).toBe(true);
   });
@@ -98,6 +89,7 @@ describe("shouldResolveTimelineInit", () => {
         isInitializing: true,
         initRequestDirection: "tail",
         responseDirection: "after",
+        reset: false,
       }),
     ).toBe(false);
   });
@@ -109,6 +101,7 @@ describe("shouldResolveTimelineInit", () => {
         isInitializing: true,
         initRequestDirection: "after",
         responseDirection: "after",
+        reset: false,
       }),
     ).toBe(true);
   });

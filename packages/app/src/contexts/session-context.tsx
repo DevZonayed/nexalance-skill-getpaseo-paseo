@@ -591,8 +591,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           void client
             .fetchAgentTimeline(agentId, {
               direction: "after",
-              cursor: { seq: cursor.endSeq },
+              cursor: { epoch: cursor.epoch, seq: cursor.endSeq },
               limit: 0,
+              projection: "canonical",
             })
             .catch((error) => {
               console.warn("[Session] failed to fetch catch-up timeline on resume", agentId, error);
@@ -853,12 +854,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   );
 
   const requestCanonicalCatchUp = useCallback(
-    (agentId: string, cursor: { endSeq: number }) => {
+    (agentId: string, cursor: { epoch: string; endSeq: number }) => {
       void client
         .fetchAgentTimeline(agentId, {
           direction: "after",
-          cursor: { seq: cursor.endSeq },
+          cursor: { epoch: cursor.epoch, seq: cursor.endSeq },
           limit: 0,
+          projection: "canonical",
         })
         .catch((error) => {
           console.warn("[Session] failed to fetch canonical catch-up timeline", agentId, error);
@@ -961,6 +963,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           }
           if (
             current &&
+            current.epoch === result.cursor.epoch &&
             current.startSeq === result.cursor.startSeq &&
             current.endSeq === result.cursor.endSeq
           ) {
@@ -1065,7 +1068,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubAgentStream = client.on("agent_stream", (message) => {
       if (message.type !== "agent_stream") return;
-      const { agentId, event, timestamp, seq } = message.payload;
+      const { agentId, event, timestamp, seq, epoch } = message.payload;
       const parsedTimestamp = new Date(timestamp);
       const streamEvent = event as AgentStreamEventPayload;
       if (
@@ -1107,6 +1110,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       const result = processAgentStreamEvent({
         event: streamEvent,
         seq,
+        epoch,
         currentTail,
         currentHead,
         currentCursor,
@@ -1130,6 +1134,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           if (
             current &&
             typeof seq === "number" &&
+            typeof epoch === "string" &&
+            current.epoch === epoch &&
             seq >= current.startSeq &&
             seq <= current.endSeq
           ) {
@@ -1138,6 +1144,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           }
           if (
             current &&
+            current.epoch === nextCursor.epoch &&
             current.startSeq === nextCursor.startSeq &&
             current.endSeq === nextCursor.endSeq
           ) {

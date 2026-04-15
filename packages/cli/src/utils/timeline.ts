@@ -11,6 +11,7 @@ export async function fetchProjectedTimelineItems(
   const timeline = await input.client.fetchAgentTimeline(input.agentId, {
     direction: "tail",
     limit: 0,
+    projection: "projected",
   });
   return timeline.entries.map((entry) => entry.item);
 }

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import type { ManagedAgent } from "./agent/agent-manager.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import {
   attachAgentStoragePersistence,
@@ -173,16 +174,16 @@ describe("persistence hooks", () => {
 
   test("buildSessionConfig accepts providers from the canonical manifest", () => {
     const record = createRecord({
-      provider: "gemini",
+      provider: "claude",
       persistence: {
-        provider: "gemini",
+        provider: "claude",
         sessionId: "session-123",
       },
       config: {},
     });
 
     expect(buildSessionConfig(record)).toMatchObject({
-      provider: "gemini",
+      provider: "claude",
       cwd: "/tmp/project",
     });
   });

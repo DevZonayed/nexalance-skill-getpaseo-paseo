@@ -29,9 +29,10 @@ async function waitFor(
   }
 }
 
-function isSeqLessAssistantTimeline(
+function isLiveAssistantTimeline(
   message: SessionOutboundMessage,
   agentId: string,
+  epoch?: string,
   text?: string,
 ): boolean {
   return (
@@ -40,6 +41,8 @@ function isSeqLessAssistantTimeline(
     message.payload.event.type === "timeline" &&
     message.payload.event.item.type === "assistant_message" &&
     message.payload.seq === undefined &&
+    typeof message.payload.epoch === "string" &&
+    (epoch === undefined || message.payload.epoch === epoch) &&
     (text === undefined || message.payload.event.item.text === text)
   );
 }
@@ -73,6 +76,14 @@ describe("daemon E2E - timeline reconnect contract", () => {
           text: `committed row ${seq}`,
         });
       }
+      const baseline = await ctx.client.fetchAgentTimeline(agent.id, {
+        direction: "tail",
+        limit: 0,
+        projection: "canonical",
+      });
+      const epoch = baseline.epoch;
+      expect(epoch).not.toBe("");
+      expect(baseline.endCursor?.epoch).toBe(epoch);
 
       primaryCollector.clear();
       await ctx.daemon.daemon.agentManager.emitLiveTimelineItem(agent.id, {
@@ -81,7 +92,7 @@ describe("daemon E2E - timeline reconnect contract", () => {
       });
       await waitFor(() =>
         primaryCollector.messages.some((message) =>
-          isSeqLessAssistantTimeline(message, agent.id, "partial before disconnect"),
+          isLiveAssistantTimeline(message, agent.id, epoch, "partial before disconnect"),
         ),
       );
 
@@ -105,18 +116,26 @@ describe("daemon E2E - timeline reconnect contract", () => {
 
         expect(
           reconnectCollector.messages.some((message) =>
-            isSeqLessAssistantTimeline(message, agent.id),
+            isLiveAssistantTimeline(message, agent.id, epoch),
           ),
         ).toBe(false);
 
         const catchUp = await reconnectClient.fetchAgentTimeline(agent.id, {
           direction: "after",
-          cursor: { seq: 120 },
+          cursor: { epoch, seq: 120 },
           limit: 0,
+          projection: "canonical",
         });
 
+        expect(catchUp.epoch).toBe(epoch);
+        expect(catchUp.reset).toBe(false);
+        expect(catchUp.staleCursor).toBe(false);
+        expect(catchUp.gap).toBe(false);
         expect(catchUp.entries).toHaveLength(1);
-        expect(catchUp.entries[0]?.seq).toBe(121);
+        expect(catchUp.startCursor).toEqual({ epoch, seq: 121 });
+        expect(catchUp.endCursor).toEqual({ epoch, seq: 121 });
+        expect(catchUp.entries[0]?.seqStart).toBe(121);
+        expect(catchUp.entries[0]?.seqEnd).toBe(121);
         expect(catchUp.entries[0]?.item).toEqual({
           type: "assistant_message",
           text: "finalized while disconnected",
@@ -149,6 +168,14 @@ describe("daemon E2E - timeline reconnect contract", () => {
           text: `committed row ${seq}`,
         });
       }
+      const baseline = await ctx.client.fetchAgentTimeline(agent.id, {
+        direction: "tail",
+        limit: 0,
+        projection: "canonical",
+      });
+      const epoch = baseline.epoch;
+      expect(epoch).not.toBe("");
+      expect(baseline.endCursor?.epoch).toBe(epoch);
 
       primaryCollector.clear();
       await ctx.daemon.daemon.agentManager.emitLiveTimelineItem(agent.id, {
@@ -157,7 +184,7 @@ describe("daemon E2E - timeline reconnect contract", () => {
       });
       await waitFor(() =>
         primaryCollector.messages.some((message) =>
-          isSeqLessAssistantTimeline(message, agent.id, "partial before disconnect"),
+          isLiveAssistantTimeline(message, agent.id, epoch, "partial before disconnect"),
         ),
       );
 
@@ -176,17 +203,24 @@ describe("daemon E2E - timeline reconnect contract", () => {
 
         expect(
           reconnectCollector.messages.some((message) =>
-            isSeqLessAssistantTimeline(message, agent.id),
+            isLiveAssistantTimeline(message, agent.id, epoch),
           ),
         ).toBe(false);
 
         const catchUp = await reconnectClient.fetchAgentTimeline(agent.id, {
           direction: "after",
-          cursor: { seq: 120 },
+          cursor: { epoch, seq: 120 },
           limit: 0,
+          projection: "canonical",
         });
 
+        expect(catchUp.epoch).toBe(epoch);
+        expect(catchUp.reset).toBe(false);
+        expect(catchUp.staleCursor).toBe(false);
+        expect(catchUp.gap).toBe(false);
         expect(catchUp.entries).toHaveLength(0);
+        expect(catchUp.startCursor).toBeNull();
+        expect(catchUp.endCursor).toBeNull();
 
         reconnectCollector.clear();
         await ctx.daemon.daemon.agentManager.emitLiveTimelineItem(agent.id, {
@@ -195,7 +229,7 @@ describe("daemon E2E - timeline reconnect contract", () => {
         });
         await waitFor(() =>
           reconnectCollector.messages.some((message) =>
-            isSeqLessAssistantTimeline(message, agent.id, "fresh live after reconnect"),
+            isLiveAssistantTimeline(message, agent.id, epoch, "fresh live after reconnect"),
           ),
         );
       } finally {

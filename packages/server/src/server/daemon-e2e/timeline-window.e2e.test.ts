@@ -38,6 +38,7 @@ describe("daemon E2E - timeline window", () => {
       const timeline = await ctx.client.fetchAgentTimeline(agent.id, {
         direction: "tail",
         limit: 1,
+        projection: "canonical",
       });
 
       const assistantTexts = timeline.entries
@@ -45,7 +46,7 @@ describe("daemon E2E - timeline window", () => {
         .map((entry) => entry.item.text);
 
       expect(assistantTexts).toEqual([expected]);
-      expect(timeline.startSeq).toBe(timeline.endSeq);
+      expect(timeline.startCursor?.seq).toBe(timeline.endCursor?.seq);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -71,6 +72,7 @@ describe("daemon E2E - timeline window", () => {
       const timeline = await ctx.client.fetchAgentTimeline(agent.id, {
         direction: "tail",
         limit: 1,
+        projection: "canonical",
       });
 
       const assistantTexts = timeline.entries
@@ -79,7 +81,7 @@ describe("daemon E2E - timeline window", () => {
 
       expect(assistantTexts.join("")).toBe(expected);
       expect(timeline.hasOlder).toBe(true);
-      expect(timeline.startSeq).toBeGreaterThan(1);
+      expect(timeline.startCursor?.seq).toBeGreaterThan(1);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

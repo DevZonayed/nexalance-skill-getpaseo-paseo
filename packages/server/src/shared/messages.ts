@@ -908,6 +908,7 @@ export const RefreshAgentRequestMessageSchema = z.object({
 export const CancelAgentRequestMessageSchema = z.object({
   type: z.literal("cancel_agent_request"),
   agentId: z.string(),
+  requestId: z.string().optional(),
 });
 
 export const RestartServerRequestMessageSchema = z.object({
@@ -922,9 +923,8 @@ export const ShutdownServerRequestMessageSchema = z.object({
 });
 
 export const AgentTimelineCursorSchema = z.object({
+  epoch: z.string(),
   seq: z.number().int().nonnegative(),
-  // COMPAT(timeline): retain legacy cursor epoch for older clients.
-  epoch: z.string().optional(),
 });
 
 export const FetchAgentTimelineRequestMessageSchema = z.object({
@@ -935,8 +935,8 @@ export const FetchAgentTimelineRequestMessageSchema = z.object({
   cursor: AgentTimelineCursorSchema.optional(),
   // 0 means "all matching rows for this query window".
   limit: z.number().int().nonnegative().optional(),
-  // COMPAT(timeline): retain removed projection so older clients can still send it.
-  projection: z.enum(["canonical", "projected"]).optional(),
+  // Default should be projected for app timeline loading.
+  projection: z.enum(["projected", "canonical"]).optional(),
 });
 
 export const SetAgentModeRequestMessageSchema = z.object({
@@ -1367,6 +1367,7 @@ export const FileDownloadTokenRequestSchema = z.object({
 export const ClearAgentAttentionMessageSchema = z.object({
   type: z.literal("clear_agent_attention"),
   agentId: z.union([z.string(), z.array(z.string())]),
+  requestId: z.string().optional(),
 });
 
 export const ClientHeartbeatMessageSchema = z.object({
@@ -2036,9 +2037,8 @@ export const AgentStreamMessageSchema = z.object({
     agentId: z.string(),
     event: AgentStreamEventPayloadSchema,
     timestamp: z.string(),
-    // Present only for committed timeline events.
+    // Present for timeline events. Maps 1:1 to canonical in-memory timeline rows.
     seq: z.number().int().nonnegative().optional(),
-    // COMPAT(timeline): retain removed epoch for older clients.
     epoch: z.string().optional(),
   }),
 });
@@ -2196,72 +2196,63 @@ export const FetchAgentResponseMessageSchema = z.object({
   }),
 });
 
-const TimelineProjectionKindSchema = z.enum(["assistant_merge", "tool_lifecycle"]);
-
-const TimelineSeqRangeSchema = z.object({
+const AgentTimelineSeqRangeSchema = z.object({
   startSeq: z.number().int().nonnegative(),
   endSeq: z.number().int().nonnegative(),
 });
 
-export const AgentTimelineEntryPayloadSchema = z
-  .object({
-    provider: AgentProviderSchema,
-    item: AgentTimelineItemPayloadSchema,
-    timestamp: z.string(),
-    seq: z.number().int().nonnegative().optional(),
-    // COMPAT(timeline): retain legacy projected timeline fields.
-    seqStart: z.number().int().nonnegative().optional(),
-    seqEnd: z.number().int().nonnegative().optional(),
-    sourceSeqRanges: z.array(TimelineSeqRangeSchema).optional(),
-    collapsed: z.array(TimelineProjectionKindSchema).optional(),
-  })
-  .transform((entry, ctx) => {
-    const seq = entry.seq ?? entry.seqEnd ?? entry.seqStart;
-    if (typeof seq !== "number") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Agent timeline entry must include seq or legacy seqStart/seqEnd",
-      });
-      return z.NEVER;
-    }
-
-    return {
-      ...entry,
-      seq,
-    };
-  });
+export const AgentTimelineEntryPayloadSchema = z.object({
+  provider: AgentProviderSchema,
+  item: AgentTimelineItemPayloadSchema,
+  timestamp: z.string(),
+  seqStart: z.number().int().nonnegative(),
+  seqEnd: z.number().int().nonnegative(),
+  sourceSeqRanges: z.array(AgentTimelineSeqRangeSchema),
+  collapsed: z.array(z.enum(["assistant_merge", "tool_lifecycle"])),
+});
 
 export const FetchAgentTimelineResponseMessageSchema = z.object({
   type: z.literal("fetch_agent_timeline_response"),
-  payload: z
-    .object({
-      requestId: z.string(),
-      agentId: z.string(),
-      agent: AgentSnapshotPayloadSchema.nullable(),
-      direction: z.enum(["tail", "before", "after"]),
-      startSeq: z.number().int().nonnegative().nullable().optional(),
-      endSeq: z.number().int().nonnegative().nullable().optional(),
-      hasOlder: z.boolean().optional(),
-      hasNewer: z.boolean().optional(),
-      entries: z.array(AgentTimelineEntryPayloadSchema),
-      error: z.string().nullable(),
-      // COMPAT(timeline): retain legacy response baggage for older clients.
-      epoch: z.string().optional(),
-      reset: z.boolean().optional(),
-      staleCursor: z.boolean().optional(),
-      gap: z.unknown().optional(),
-      window: z.unknown().optional(),
-      startCursor: AgentTimelineCursorSchema.nullable().optional(),
-      endCursor: AgentTimelineCursorSchema.nullable().optional(),
-      projection: z.enum(["canonical", "projected"]).optional(),
-    })
-    .transform((payload) => ({
-      ...payload,
-      startSeq: payload.startSeq ?? payload.startCursor?.seq ?? null,
-      endSeq: payload.endSeq ?? payload.endCursor?.seq ?? null,
-      hasOlder: payload.hasOlder ?? false,
-      hasNewer: payload.hasNewer ?? false,
-    })),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    agent: AgentSnapshotPayloadSchema.nullable(),
+    direction: z.enum(["tail", "before", "after"]),
+    projection: z.enum(["projected", "canonical"]),
+    epoch: z.string(),
+    reset: z.boolean(),
+    staleCursor: z.boolean(),
+    gap: z.boolean(),
+    window: z.object({
+      minSeq: z.number().int().nonnegative(),
+      maxSeq: z.number().int().nonnegative(),
+      nextSeq: z.number().int().nonnegative(),
+    }),
+    startCursor: AgentTimelineCursorSchema.nullable(),
+    endCursor: AgentTimelineCursorSchema.nullable(),
+    hasOlder: z.boolean(),
+    hasNewer: z.boolean(),
+    entries: z.array(AgentTimelineEntryPayloadSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const CancelAgentResponseMessageSchema = z.object({
+  type: z.literal("cancel_agent_response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    agent: AgentSnapshotPayloadSchema.nullable(),
+  }),
+});
+
+export const ClearAgentAttentionResponseMessageSchema = z.object({
+  type: z.literal("clear_agent_attention_response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string().or(z.array(z.string())),
+    agents: z.array(AgentSnapshotPayloadSchema),
+  }),
 });
 
 export const SendAgentMessageResponseMessageSchema = z.object({
@@ -2960,6 +2951,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveWorkspaceResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
+  CancelAgentResponseMessageSchema,
+  ClearAgentAttentionResponseMessageSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   GetDaemonConfigResponseMessageSchema,
@@ -3085,6 +3078,7 @@ export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessage
 export type FetchAgentTimelineResponseMessage = z.infer<
   typeof FetchAgentTimelineResponseMessageSchema
 >;
+export type CancelAgentResponseMessage = z.infer<typeof CancelAgentResponseMessageSchema>;
 export type SendAgentMessageResponseMessage = z.infer<typeof SendAgentMessageResponseMessageSchema>;
 export type SetVoiceModeResponseMessage = z.infer<typeof SetVoiceModeResponseMessageSchema>;
 export type SetAgentModeResponseMessage = z.infer<typeof SetAgentModeResponseMessageSchema>;
@@ -3256,6 +3250,9 @@ export type FileDownloadTokenResponse = z.infer<typeof FileDownloadTokenResponse
 export type RestartServerRequestMessage = z.infer<typeof RestartServerRequestMessageSchema>;
 export type ShutdownServerRequestMessage = z.infer<typeof ShutdownServerRequestMessageSchema>;
 export type ClearAgentAttentionMessage = z.infer<typeof ClearAgentAttentionMessageSchema>;
+export type ClearAgentAttentionResponseMessage = z.infer<
+  typeof ClearAgentAttentionResponseMessageSchema
+>;
 export type ClientHeartbeatMessage = z.infer<typeof ClientHeartbeatMessageSchema>;
 export type ListCommandsRequest = z.infer<typeof ListCommandsRequestSchema>;
 export type ListCommandsResponse = z.infer<typeof ListCommandsResponseSchema>;

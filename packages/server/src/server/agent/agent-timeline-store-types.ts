@@ -7,6 +7,7 @@ export type AgentTimelineRow = {
 };
 
 export type AgentTimelineCursor = {
+  epoch: string;
   seq: number;
 };
 
@@ -30,7 +31,11 @@ export type AgentTimelineWindow = {
 };
 
 export type AgentTimelineFetchResult = {
+  epoch: string;
   direction: AgentTimelineFetchDirection;
+  reset: boolean;
+  staleCursor: boolean;
+  gap: boolean;
   window: AgentTimelineWindow;
   hasOlder: boolean;
   hasNewer: boolean;

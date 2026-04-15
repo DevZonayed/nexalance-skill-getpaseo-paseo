@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   AgentStreamMessageSchema,
-  FetchAgentTimelineRequestMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
@@ -18,55 +17,16 @@ describe("shared messages stream parsing", () => {
         agentId: "agent_live",
         agent: null,
         direction: "tail",
-        startSeq: 1,
-        endSeq: 2,
+        projection: "projected",
+        epoch: "epoch-1",
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window: { minSeq: 1, maxSeq: 2, nextSeq: 3 },
+        startCursor: { epoch: "epoch-1", seq: 1 },
+        endCursor: { epoch: "epoch-1", seq: 2 },
         hasOlder: false,
         hasNewer: false,
-        entries: [
-          {
-            provider: "codex",
-            item: { type: "assistant_message", text: "hello" },
-            timestamp: "2026-02-08T20:10:00.000Z",
-            seq: 2,
-          },
-        ],
-        error: null,
-      },
-    });
-
-    expect(parsed.payload.entries).toHaveLength(1);
-    expect(parsed.payload.entries[0]?.item.type).toBe("assistant_message");
-  });
-
-  it("parses legacy fetch timeline request baggage at the parser boundary", () => {
-    const parsed = FetchAgentTimelineRequestMessageSchema.parse({
-      type: "fetch_agent_timeline_request",
-      agentId: "agent_live",
-      requestId: "req-legacy",
-      direction: "after",
-      cursor: {
-        seq: 12,
-        epoch: "legacy-epoch",
-      },
-      projection: "canonical",
-    });
-
-    expect(parsed.cursor?.epoch).toBe("legacy-epoch");
-    expect(parsed.projection).toBe("canonical");
-  });
-
-  it("parses legacy fetch timeline response baggage at the parser boundary", () => {
-    const parsed = FetchAgentTimelineResponseMessageSchema.parse({
-      type: "fetch_agent_timeline_response",
-      payload: {
-        requestId: "req-1",
-        agentId: "agent_live",
-        agent: null,
-        direction: "tail",
-        reset: false,
-        startCursor: { seq: 1, epoch: "legacy-epoch" },
-        endCursor: { seq: 2, epoch: "legacy-epoch" },
-        projection: "canonical",
         entries: [
           {
             provider: "codex",
@@ -82,10 +42,8 @@ describe("shared messages stream parsing", () => {
       },
     });
 
-    expect(parsed.payload.startSeq).toBe(1);
-    expect(parsed.payload.endSeq).toBe(2);
-    expect(parsed.payload.projection).toBe("canonical");
-    expect(parsed.payload.entries[0]?.seq).toBe(2);
+    expect(parsed.payload.entries).toHaveLength(1);
+    expect(parsed.payload.entries[0]?.item.type).toBe("assistant_message");
   });
 
   it("parses explicit shutdown and restart lifecycle request payloads as distinct message types", () => {
@@ -112,7 +70,6 @@ describe("shared messages stream parsing", () => {
       payload: {
         agentId: "agent_live",
         timestamp: "2026-02-08T20:10:00.000Z",
-        seq: 12,
         event: {
           type: "timeline",
           provider: "claude",
@@ -138,27 +95,6 @@ describe("shared messages stream parsing", () => {
         expect(parsed.payload.event.item.status).toBe("running");
       }
     }
-  });
-
-  it("parses legacy agent_stream baggage at the parser boundary", () => {
-    const parsed = AgentStreamMessageSchema.parse({
-      type: "agent_stream",
-      payload: {
-        agentId: "agent_live",
-        timestamp: "2026-02-08T20:10:00.000Z",
-        epoch: "legacy-epoch",
-        event: {
-          type: "timeline",
-          provider: "claude",
-          item: {
-            type: "assistant_message",
-            text: "hello",
-          },
-        },
-      },
-    });
-
-    expect(parsed.payload.epoch).toBe("legacy-epoch");
   });
 
   it("parses representative sub_agent tool_call event", () => {

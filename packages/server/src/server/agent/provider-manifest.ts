@@ -142,27 +142,6 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     },
   },
   {
-    id: "gemini",
-    label: "Gemini CLI",
-    description: "Google's coding agent CLI",
-    defaultModeId: null,
-    modes: [],
-  },
-  {
-    id: "amp",
-    label: "AMP",
-    description: "Sourcegraph's coding agent CLI",
-    defaultModeId: null,
-    modes: [],
-  },
-  {
-    id: "aider",
-    label: "Aider",
-    description: "Paul Gauthier's coding assistant CLI",
-    defaultModeId: null,
-    modes: [],
-  },
-  {
     id: "copilot",
     label: "Copilot",
     description: "GitHub Copilot via Agent Client Protocol with dynamic modes and session support",

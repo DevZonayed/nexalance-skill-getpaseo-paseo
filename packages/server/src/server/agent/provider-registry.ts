@@ -20,13 +20,9 @@ import type {
   ProviderProfileModel,
   ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
-
-import { AiderAgentClient } from "./providers/aider-agent.js";
-import { AmpAgentClient } from "./providers/amp-agent.js";
 import { ClaudeAgentClient } from "./providers/claude-agent.js";
 import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js";
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
-import { GeminiAgentClient } from "./providers/gemini-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { OpenCodeAgentClient, OpenCodeServerManager } from "./providers/opencode-agent.js";
 import { PiACPAgentClient } from "./providers/pi-acp-agent.js";
@@ -72,9 +68,6 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       runtimeSettings,
     }),
   codex: (logger, runtimeSettings) => new CodexAppServerAgentClient(logger, runtimeSettings),
-  gemini: (_logger, runtimeSettings) => new GeminiAgentClient(runtimeSettings),
-  amp: (_logger, runtimeSettings) => new AmpAgentClient(runtimeSettings),
-  aider: (_logger, runtimeSettings) => new AiderAgentClient(runtimeSettings),
   copilot: (logger, runtimeSettings) =>
     new CopilotACPAgentClient({
       logger,

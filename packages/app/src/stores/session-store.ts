@@ -212,6 +212,7 @@ export type DaemonServerInfo = {
 };
 
 export interface AgentTimelineCursorState {
+  epoch: string;
   startSeq: number;
   endSeq: number;
 }

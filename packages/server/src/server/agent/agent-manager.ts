@@ -63,6 +63,7 @@ export type AgentManagerEvent =
       agentId: string;
       event: AgentStreamEvent;
       seq?: number;
+      epoch?: string;
     };
 
 export type AgentSubscriber = (event: AgentManagerEvent) => void;
@@ -584,18 +585,8 @@ export class AgentManager {
     return this.timelineStore.getRows(id);
   }
 
-  async fetchTimeline(
-    id: string,
-    options?: AgentTimelineFetchOptions,
-  ): Promise<AgentTimelineFetchResult> {
+  fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
     this.requireAgent(id);
-    const agent = this.agents.get(id);
-    if (agent && !agent.historyPrimed) {
-      await this.hydrateTimelineFromLegacyProviderHistory(agent);
-    }
-    if (this.durableTimelineStore) {
-      return await this.durableTimelineStore.fetchCommitted(id, options);
-    }
     return this.timelineStore.fetch(id, options);
   }
 
@@ -1053,6 +1044,7 @@ export class AgentManager {
       },
       {
         seq: row.seq,
+        epoch: this.timelineStore.getEpoch(agentId),
       },
     );
     if (options?.emitState !== false) {
@@ -1073,6 +1065,7 @@ export class AgentManager {
       },
       {
         seq: row.seq,
+        epoch: this.timelineStore.getEpoch(agentId),
       },
     );
     await this.persistSnapshot(agent);
@@ -2404,6 +2397,7 @@ export class AgentManager {
         timelineRow
           ? {
               seq: timelineRow.seq,
+              epoch: this.timelineStore.getEpoch(agent.id),
             }
           : undefined,
       );
@@ -2445,6 +2439,7 @@ export class AgentManager {
       },
       {
         seq: row.seq,
+        epoch: this.timelineStore.getEpoch(agent.id),
       },
     );
   }
@@ -2604,7 +2599,7 @@ export class AgentManager {
   private dispatchStream(
     agentId: string,
     event: AgentStreamEvent,
-    metadata?: { seq?: number },
+    metadata?: { seq?: number; epoch?: string },
   ): void {
     this.dispatch({ type: "agent_stream", agentId, event, ...metadata });
   }

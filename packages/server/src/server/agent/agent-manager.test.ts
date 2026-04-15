@@ -1273,7 +1273,7 @@ describe("AgentManager", () => {
     }
   });
 
-  test("fetchTimeline returns committed rows after a known seq without reset metadata", async () => {
+  test("fetchTimeline returns full timeline with reset when cursor epoch is stale", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-stale-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
@@ -1291,42 +1291,40 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    for (let seq = 1; seq <= 120; seq += 1) {
-      await manager.appendTimelineItem(snapshot.id, {
-        type: "assistant_message",
-        text: `committed row ${seq}`,
-      });
-    }
-
-    const baseline = await manager.fetchTimeline(snapshot.id, {
-      direction: "tail",
-      limit: 0,
-    });
-    expect(baseline.rows).toHaveLength(120);
-
-    await manager.emitLiveTimelineItem(snapshot.id, {
+    await manager.appendTimelineItem(snapshot.id, {
       type: "assistant_message",
-      text: "partial reply",
+      text: "one",
     });
     await manager.appendTimelineItem(snapshot.id, {
       type: "assistant_message",
-      text: "finalized reply",
+      text: "two",
+    });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "three",
     });
 
-    const result = await manager.fetchTimeline(snapshot.id, {
+    const baseline = manager.fetchTimeline(snapshot.id, {
+      direction: "tail",
+      limit: 2,
+    });
+    expect(baseline.rows).toHaveLength(2);
+
+    const result = manager.fetchTimeline(snapshot.id, {
       direction: "after",
       cursor: {
-        seq: 120,
+        epoch: "stale-epoch",
+        seq: baseline.rows[baseline.rows.length - 1]!.seq,
       },
-      limit: 0,
+      limit: 1,
     });
 
-    expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]?.seq).toBe(121);
-    expect(result.rows[0]?.item).toEqual({
-      type: "assistant_message",
-      text: "finalized reply",
-    });
+    expect(result.reset).toBe(true);
+    expect(result.staleCursor).toBe(true);
+    expect(result.gap).toBe(false);
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows[0]?.seq).toBe(1);
+    expect(result.rows[result.rows.length - 1]?.seq).toBe(3);
   });
 
   test("getTimelineRows falls back to the in-memory timeline when no durable store is configured", async () => {
@@ -1448,6 +1446,7 @@ describe("AgentManager", () => {
 
     const streamEvents: Array<{
       seq?: number;
+      epoch?: string;
       eventType?: string;
       itemType?: string;
       text?: string;
@@ -1459,6 +1458,7 @@ describe("AgentManager", () => {
         }
         streamEvents.push({
           seq: event.seq,
+          epoch: event.epoch,
           eventType: event.event.type,
           itemType: event.event.type === "timeline" ? event.event.item.type : undefined,
           text:
@@ -1487,12 +1487,14 @@ describe("AgentManager", () => {
       itemType: "assistant_message",
       text: "final ",
       seq: 1,
+      epoch: expect.any(String),
     });
     expect(assistantTimelineEvents[1]).toMatchObject({
       eventType: "timeline",
       itemType: "assistant_message",
       text: "reply",
       seq: 2,
+      epoch: expect.any(String),
     });
 
     expect(manager.getTimeline(snapshot.id)).toEqual([
@@ -1510,6 +1512,8 @@ describe("AgentManager", () => {
       limit: 0,
     });
     expect(fetched.rows).toHaveLength(2);
+    expect(assistantTimelineEvents[0]?.epoch).toBe(fetched.epoch);
+    expect(assistantTimelineEvents[1]?.epoch).toBe(fetched.epoch);
     expect(fetched.rows[0]?.item).toEqual({
       type: "assistant_message",
       text: "final ",

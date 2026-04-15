@@ -935,9 +935,6 @@ export function createTestAgentClients(): Record<string, AgentClient> {
   return {
     claude: new FakeAgentClient("claude"),
     codex: new FakeAgentClient("codex"),
-    gemini: new FakeAgentClient("gemini"),
-    amp: new FakeAgentClient("amp"),
-    aider: new FakeAgentClient("aider"),
     opencode: new FakeAgentClient("opencode"),
   };
 }
