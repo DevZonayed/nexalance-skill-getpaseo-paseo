@@ -77,8 +77,8 @@ export interface MessageInputProps {
   autoFocus?: boolean;
   autoFocusKey?: string;
   disabled?: boolean;
-  /** True when this input is the active composer. Used to gate global hotkeys and stop dictation when hidden. */
-  isInputActive?: boolean;
+  /** True when this composer's pane is focused. Used to gate global hotkeys and stop dictation when hidden. */
+  isPaneFocused?: boolean;
   /** Content to render on the left side of the button row (e.g., AgentStatusBar) */
   leftContent?: React.ReactNode;
   /** Content to render on the right side before the voice button (e.g., context window meter) */
@@ -208,7 +208,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     autoFocus = false,
     autoFocusKey,
     disabled = false,
-    isInputActive = true,
+    isPaneFocused = true,
     leftContent,
     beforeVoiceContent,
     rightContent,
@@ -431,7 +431,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onError: handleDictationError,
     canStart: canStartDictation,
     canConfirm: canConfirmDictation,
-    autoStopWhenHidden: { isVisible: isInputActive },
+    autoStopWhenHidden: { isVisible: isPaneFocused },
     enableDuration: true,
   });
 
@@ -1031,7 +1031,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             autoFocus={isWeb && autoFocus}
           />
           {inputScrollbar}
-          {isWeb && isInputActive && !isInputFocused && !value && focusInputKeys ? (
+          {isWeb && isPaneFocused && !isInputFocused && !value && focusInputKeys ? (
             <Text style={styles.focusHintText} pointerEvents="none">
               {formatShortcut(focusInputKeys[0], getShortcutOs())} to focus
             </Text>

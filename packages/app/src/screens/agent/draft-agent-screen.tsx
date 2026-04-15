@@ -1232,7 +1232,7 @@ function DraftAgentScreenContent({
             <AgentInputArea
               agentId={draftAgentIdRef.current}
               serverId={selectedServerId ?? ""}
-              isInputActive={isFocused}
+              isPaneFocused={isFocused}
               onSubmitMessage={handleCreateFromInput}
               isSubmitLoading={isSubmitting}
               blurOnSubmit={true}
