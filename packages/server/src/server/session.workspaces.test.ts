@@ -113,6 +113,11 @@ function createNoopWorkspaceGitService() {
       },
     }),
     refresh: async () => {},
+    requestWorkingTreeWatch: async (cwd: string) => ({
+      repoRoot: cwd,
+      unsubscribe: () => {},
+    }),
+    scheduleRefreshForCwd: () => {},
     dispose: () => {},
   };
 }
@@ -1177,7 +1182,6 @@ describe("workspace aggregation", () => {
 
   test("create paseo worktree request returns a registered workspace descriptor", async () => {
     const emitted: Array<{ type: string; payload: unknown }> = [];
-    const session = createSessionForWorkspaceTests() as any;
     const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-worktree-test-")));
     const repoDir = path.join(tempDir, "repo");
     const paseoHome = path.join(tempDir, "paseo-home");
@@ -1188,6 +1192,45 @@ describe("workspace aggregation", () => {
     writeFileSync(path.join(repoDir, "file.txt"), "hello\n");
     execSync("git add .", { cwd: repoDir, stdio: "pipe" });
     execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoDir, stdio: "pipe" });
+    const workspaceGitService = createNoopWorkspaceGitService();
+    workspaceGitService.getSnapshot = vi.fn(async (cwd: string) => {
+      if (cwd === repoDir) {
+        return createWorkspaceRuntimeSnapshot(cwd, {
+          git: {
+            repoRoot: repoDir,
+            currentBranch: "main",
+            remoteUrl: null,
+            isPaseoOwnedWorktree: false,
+            mainRepoRoot: null,
+          },
+        });
+      }
+
+      if (cwd.includes("worktree-123")) {
+        return createWorkspaceRuntimeSnapshot(cwd, {
+          git: {
+            repoRoot: cwd,
+            currentBranch: "worktree-123",
+            remoteUrl: null,
+            isPaseoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        });
+      }
+
+      return createWorkspaceRuntimeSnapshot(cwd, {
+        git: {
+          repoRoot: cwd,
+          currentBranch: "main",
+          remoteUrl: null,
+          isPaseoOwnedWorktree: false,
+          mainRepoRoot: null,
+        },
+      });
+    });
+    const session = createSessionForWorkspaceTests({
+      workspaceGitService,
+    }) as any;
 
     const workspaces = new Map();
     const projects = new Map();

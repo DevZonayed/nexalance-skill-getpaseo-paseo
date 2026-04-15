@@ -108,6 +108,12 @@ const OPENCODE_FATAL_RETRY_MESSAGE_TOKENS = [
   "does not exist",
   "unsupported model",
 ] as const;
+const OPENCODE_HEADERS_TIMEOUT_TOKENS = [
+  "headers timeout",
+  "headers timeout error",
+  "headers_timeout",
+  "und_err_headers_timeout",
+] as const;
 
 const OpencodeToolStateSchema = z
   .object({
@@ -232,12 +238,122 @@ function normalizeTurnFailureError(error: unknown): string {
   return normalized.length > 0 ? normalized : "Unknown error";
 }
 
+function isOpenCodeNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "NotFoundError"
+  );
+}
+
+async function reconcileOpenCodeSessionClose(params: {
+  client: Pick<OpencodeClient, "session">;
+  sessionId: string;
+  directory: string;
+  logger: Logger;
+}): Promise<void> {
+  const { client, sessionId, directory, logger } = params;
+
+  try {
+    const response = await client.session.abort({
+      sessionID: sessionId,
+      directory,
+    });
+    if (response.error && !isOpenCodeNotFoundError(response.error)) {
+      logger.warn(
+        {
+          sessionId,
+          error: normalizeTurnFailureError(response.error),
+        },
+        "Failed to abort OpenCode session during close",
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      {
+        sessionId,
+        error: normalizeTurnFailureError(error),
+      },
+      "Failed to abort OpenCode session during close",
+    );
+  }
+
+  try {
+    const response = await client.session.update({
+      sessionID: sessionId,
+      directory,
+      time: { archived: Date.now() },
+    });
+    if (response.error && !isOpenCodeNotFoundError(response.error)) {
+      logger.warn(
+        {
+          sessionId,
+          error: normalizeTurnFailureError(response.error),
+        },
+        "Failed to archive OpenCode session during close",
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      {
+        sessionId,
+        error: normalizeTurnFailureError(error),
+      },
+      "Failed to archive OpenCode session during close",
+    );
+  }
+}
+
 function isFatalOpenCodeRetryMessage(message: string | null | undefined): boolean {
   const normalized = typeof message === "string" ? message.trim().toLowerCase() : "";
   if (!normalized) {
     return false;
   }
   return OPENCODE_FATAL_RETRY_MESSAGE_TOKENS.some((token) => normalized.includes(token));
+}
+
+function isOpenCodeHeadersTimeoutFailure(error: unknown): boolean {
+  const diagnostics = new Set<string>();
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    const normalized = stringifyUnknownError(current).trim().toLowerCase();
+    if (normalized) {
+      diagnostics.add(normalized);
+    }
+
+    if (typeof current === "object") {
+      const record = current as {
+        message?: unknown;
+        code?: unknown;
+        name?: unknown;
+        cause?: unknown;
+      };
+
+      for (const value of [record.message, record.code, record.name]) {
+        if (typeof value === "string") {
+          const diagnostic = value.trim().toLowerCase();
+          if (diagnostic) {
+            diagnostics.add(diagnostic);
+          }
+        }
+      }
+
+      if (record.cause) {
+        queue.push(record.cause);
+      }
+    }
+  }
+
+  return [...diagnostics].some((diagnostic) =>
+    OPENCODE_HEADERS_TIMEOUT_TOKENS.some((token) => diagnostic.includes(token)),
+  );
 }
 
 function isAlreadyPresentMcpError(error: unknown): boolean {
@@ -575,6 +691,7 @@ export const __openCodeInternals = {
   hasNormalizedOpenCodeUsage,
   mergeOpenCodeStepFinishUsage,
   parseOpenCodeModelLookupKey,
+  reconcileOpenCodeSessionClose,
   resolveOpenCodeModelLookupKeyFromAssistantMessage,
   resolveOpenCodeSelectedModelContextWindow,
 };
@@ -1535,6 +1652,17 @@ class OpenCodeAgentSession implements AgentSession {
         })
         .then((response) => {
           if (response.error) {
+            if (isOpenCodeHeadersTimeoutFailure(response.error)) {
+              this.logger.warn(
+                {
+                  err: response.error,
+                  commandName: slashCommand.commandName,
+                  turnId,
+                },
+                "OpenCode slash command hit a header timeout; waiting for SSE terminal event",
+              );
+              return;
+            }
             const errorMsg = normalizeTurnFailureError(response.error);
             this.finishForegroundTurn(
               { type: "turn_failed", provider: "opencode", error: errorMsg },
@@ -1548,6 +1676,17 @@ class OpenCodeAgentSession implements AgentSession {
           }
         })
         .catch((err) => {
+          if (isOpenCodeHeadersTimeoutFailure(err)) {
+            this.logger.warn(
+              {
+                err,
+                commandName: slashCommand.commandName,
+                turnId,
+              },
+              "OpenCode slash command hit a header timeout; waiting for SSE terminal event",
+            );
+            return;
+          }
           this.finishForegroundTurn(
             { type: "turn_failed", provider: "opencode", error: normalizeTurnFailureError(err) },
             turnId,
@@ -1937,6 +2076,12 @@ class OpenCodeAgentSession implements AgentSession {
 
   async close(): Promise<void> {
     this.abortController?.abort();
+    await reconcileOpenCodeSessionClose({
+      client: this.client,
+      sessionId: this.sessionId,
+      directory: this.config.cwd,
+      logger: this.logger,
+    });
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
   }

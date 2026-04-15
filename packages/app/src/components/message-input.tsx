@@ -42,6 +42,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Shortcut } from "@/components/ui/shortcut";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+import { formatShortcut } from "@/utils/format-shortcut";
+import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import {
   markScrollInvestigationEvent,
@@ -81,8 +83,8 @@ export interface MessageInputProps {
   autoFocus?: boolean;
   autoFocusKey?: string;
   disabled?: boolean;
-  /** True when this input is the active composer. Used to gate global hotkeys and stop dictation when hidden. */
-  isInputActive?: boolean;
+  /** True when this composer's pane is focused. Used to gate global hotkeys and stop dictation when hidden. */
+  isPaneFocused?: boolean;
   /** Content to render on the left side of the button row (e.g., AgentStatusBar) */
   leftContent?: React.ReactNode;
   /** Content to render on the right side before the voice button (e.g., context window meter) */
@@ -219,7 +221,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     autoFocus = false,
     autoFocusKey,
     disabled = false,
-    isInputActive = true,
+    isPaneFocused = true,
     leftContent,
     beforeVoiceContent,
     rightContent,
@@ -247,7 +249,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
   const dictationToggleKeys = useShortcutKeys("dictation-toggle");
   const queueKeys = useShortcutKeys("message-input-queue");
+  const focusInputKeys = useShortcutKeys("focus-message-input");
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const rootRef = useRef<View | null>(null);
   const inputWrapperRef = useRef<View | null>(null);
   const textInputRef = useRef<TextInput | (TextInput & { getNativeRef?: () => unknown }) | null>(
@@ -441,7 +445,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onError: handleDictationError,
     canStart: canStartDictation,
     canConfirm: canConfirmDictation,
-    autoStopWhenHidden: { isVisible: isInputActive },
+    autoStopWhenHidden: { isVisible: isPaneFocused },
     enableDuration: true,
   });
 
@@ -1025,10 +1029,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             accessibilityLabel="Message agent..."
             onFocus={() => {
               isInputFocusedRef.current = true;
+              setIsInputFocused(true);
               onFocusChange?.(true);
             }}
             onBlur={() => {
               isInputFocusedRef.current = false;
+              setIsInputFocused(false);
               onFocusChange?.(false);
             }}
             style={[
@@ -1053,6 +1059,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             autoFocus={isWeb && autoFocus}
           />
           {inputScrollbar}
+          {isWeb && isPaneFocused && !isInputFocused && !value && focusInputKeys ? (
+            <Text style={styles.focusHintText} pointerEvents="none">
+              {formatShortcut(focusInputKeys[0], getShortcutOs())} to focus
+            </Text>
+          ) : null}
         </View>
 
         {/* Button row */}
@@ -1312,6 +1323,14 @@ const styles = StyleSheet.create(((theme: any) => ({
   },
   textInputScrollWrapper: {
     position: "relative",
+  },
+  focusHintText: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    opacity: 0.5,
   },
   textInput: {
     width: "100%",

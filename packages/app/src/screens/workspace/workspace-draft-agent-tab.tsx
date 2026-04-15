@@ -285,7 +285,7 @@ export function WorkspaceDraftAgentTab({
           <Composer
             agentId={tabId}
             serverId={serverId}
-            isInputActive={isPaneFocused}
+            isPaneFocused={isPaneFocused}
             onSubmitMessage={handleCreateFromInput}
             isSubmitLoading={isSubmitting}
             blurOnSubmit={true}

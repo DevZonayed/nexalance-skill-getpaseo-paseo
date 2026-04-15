@@ -108,6 +108,7 @@ import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore } from "./daemon-config-store.js";
+import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
@@ -119,7 +120,6 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
-import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
   ScriptRouteStore,
   createScriptProxyMiddleware,
@@ -128,6 +128,7 @@ import {
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
+import { isHostnameAllowed, type HostnamesConfig } from "./hostnames.js";
 
 type AgentMcpTransportMap = Map<string, StreamableHTTPServerTransport>;
 
@@ -170,7 +171,8 @@ export type PaseoDaemonConfig = {
   listen: string;
   paseoHome: string;
   corsAllowedOrigins: string[];
-  allowedHosts?: AllowedHostsConfig;
+  allowedHosts?: HostnamesConfig;
+  hostnames?: HostnamesConfig;
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   staticDir: string;
@@ -238,6 +240,7 @@ export async function createPaseoDaemon(
 
     const scriptRouteStore = new ScriptRouteStore();
     const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
+    const configuredHostnames = config.hostnames ?? config.allowedHosts;
     let wsServer: VoiceAssistantWebSocketServer | null = null;
     const scriptHealthMonitor = new ScriptHealthMonitor({
       routeStore: scriptRouteStore,
@@ -264,7 +267,7 @@ export async function createPaseoDaemon(
     if (listenTarget.type === "tcp") {
       app.use((req, res, next) => {
         const hostHeader = typeof req.headers.host === "string" ? req.headers.host : undefined;
-        if (!isHostAllowed(hostHeader, config.allowedHosts)) {
+        if (!isHostnameAllowed(hostHeader, configuredHostnames)) {
           res.status(403).json({ error: "Invalid Host header" });
           return;
         }
@@ -418,6 +421,10 @@ export async function createPaseoDaemon(
     });
 
     const terminalManager = createTerminalManager();
+    const workspaceGitService = new WorkspaceGitServiceImpl({
+      logger,
+      paseoHome: config.paseoHome,
+    });
 
     const detachAgentStoragePersistence = attachAgentStoragePersistence(
       logger,
@@ -431,6 +438,7 @@ export async function createPaseoDaemon(
       agentStorage,
       projectRegistry,
       workspaceRegistry,
+      workspaceGitService,
       logger,
     });
     logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
@@ -439,6 +447,7 @@ export async function createPaseoDaemon(
     const checkoutDiffManager = new CheckoutDiffManager({
       logger,
       paseoHome: config.paseoHome,
+      workspaceGitService,
     });
     const loopService = new LoopService({
       paseoHome: config.paseoHome,
@@ -647,7 +656,7 @@ export async function createPaseoDaemon(
               config.paseoHome,
               daemonConfigStore,
               mcpBaseUrl,
-              { allowedOrigins, allowedHosts: config.allowedHosts },
+              { allowedOrigins, hostnames: configuredHostnames },
               speechService,
               terminalManager,
               {
@@ -675,6 +684,7 @@ export async function createPaseoDaemon(
               () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
               () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
               (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
+              workspaceGitService,
             );
 
             if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {
@@ -694,8 +704,7 @@ export async function createPaseoDaemon(
                 relay: { endpoint: relayPublicEndpoint },
               });
 
-              const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
-              logger.info({ url }, "pairing_offer");
+              encodeOfferToFragmentUrl({ offer, appBaseUrl });
 
               relayTransport?.stop().catch(() => undefined);
               relayTransport = startRelayTransport({

@@ -156,7 +156,6 @@ import {
   getCheckoutDiff,
   getCachedCheckoutShortstat,
   getCheckoutStatus,
-  getCheckoutStatusLite,
   listBranchSuggestions,
   commitChanges,
   mergeToBase,
@@ -191,6 +190,7 @@ import {
   handlePaseoWorktreeListRequest as handleWorktreeListRequest,
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
   killTerminalsUnderPath as killWorktreeTerminalsUnderPath,
+  registerPendingWorktreeWorkspace as registerPendingWorktreeWorkspaceSession,
 } from "./worktree-session.js";
 
 const execAsync = promisify(exec);
@@ -1465,6 +1465,63 @@ export class Session {
     return workspaces.find((workspace) => workspace.cwd === normalizedCwd) ?? null;
   }
 
+  private async buildProjectPlacement(cwd: string): Promise<ProjectPlacementPayload> {
+    return buildProjectPlacementForCwdStandalone({
+      cwd,
+      workspaceGitService: this.workspaceGitService,
+    });
+  }
+
+  private buildPersistedProjectRecord(input: {
+    workspaceId: string;
+    placement: ProjectPlacementPayload;
+    createdAt: string;
+    updatedAt: string;
+  }): PersistedProjectRecord {
+    return createPersistedProjectRecord({
+      projectId: input.placement.projectKey,
+      rootPath: deriveProjectRootPath({
+        cwd: input.workspaceId,
+        checkout: input.placement.checkout,
+      }),
+      kind: deriveProjectKind(input.placement.checkout),
+      displayName: input.placement.projectName,
+      createdAt: input.createdAt,
+      updatedAt: input.updatedAt,
+      archivedAt: null,
+    });
+  }
+
+  private buildPersistedWorkspaceRecord(input: {
+    workspaceId: string;
+    placement: ProjectPlacementPayload;
+    createdAt: string;
+    updatedAt: string;
+  }): PersistedWorkspaceRecord {
+    return createPersistedWorkspaceRecord({
+      workspaceId: input.workspaceId,
+      projectId: input.placement.projectKey,
+      cwd: input.workspaceId,
+      kind: deriveWorkspaceKind(input.placement.checkout),
+      displayName: deriveWorkspaceDisplayName({
+        cwd: input.workspaceId,
+        checkout: input.placement.checkout,
+      }),
+      createdAt: input.createdAt,
+      updatedAt: input.updatedAt,
+      archivedAt: null,
+    });
+  }
+
+  private async archiveProjectRecordIfEmpty(projectId: string, archivedAt: string): Promise<void> {
+    const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
+      (workspace) => workspace.projectId === projectId && !workspace.archivedAt,
+    );
+    if (siblingWorkspaces.length === 0) {
+      await this.projectRegistry.archive(projectId, archivedAt);
+    }
+  }
+
   private async resolveWorkspaceByIdOrDirectory(
     workspaceId: string,
   ): Promise<PersistedWorkspaceRecord | null> {
@@ -1477,10 +1534,8 @@ export class Session {
   private async resolveWorkspaceDirectory(cwd: string): Promise<string> {
     const normalizedCwd = normalizePersistedWorkspaceId(cwd);
     try {
-      const checkout = await getCheckoutStatusLite(normalizedCwd, {
-        paseoHome: this.paseoHome,
-      });
-      return normalizePersistedWorkspaceId(checkout.worktreeRoot ?? normalizedCwd);
+      const snapshot = await this.workspaceGitService.getSnapshot(normalizedCwd);
+      return normalizePersistedWorkspaceId(snapshot.git.repoRoot ?? normalizedCwd);
     } catch {
       return normalizedCwd;
     }
@@ -1823,182 +1878,8 @@ export class Session {
             await this.handleCheckoutPrStatusRequest(msg);
             break;
 
-          case "paseo_worktree_list_request":
-            await this.handlePaseoWorktreeListRequest(msg);
-            break;
-
-          case "paseo_worktree_archive_request":
-            await this.handlePaseoWorktreeArchiveRequest(msg);
-            break;
-
-          case "create_paseo_worktree_request":
-            await this.handleCreatePaseoWorktreeRequest(msg);
-            break;
-
-          case "list_available_editors_request":
-            await this.handleListAvailableEditorsRequest(msg);
-            break;
-
-          case "open_in_editor_request":
-            await this.handleOpenInEditorRequest(msg);
-            break;
-
-          case "open_project_request":
-            await this.handleOpenProjectRequest(msg);
-            break;
-
-          case "archive_workspace_request":
-            await this.handleArchiveWorkspaceRequest(msg);
-            break;
-
-          case "file_explorer_request":
-            await this.handleFileExplorerRequest(msg);
-            break;
-
-          case "project_icon_request":
-            await this.handleProjectIconRequest(msg);
-            break;
-
-          case "file_download_token_request":
-            await this.handleFileDownloadTokenRequest(msg);
-            break;
-
-          case "list_provider_models_request":
-            await this.handleListProviderModelsRequest(msg);
-            break;
-
-          case "list_provider_modes_request":
-            await this.handleListProviderModesRequest(msg);
-            break;
-
-          case "list_provider_features_request":
-            await this.handleListProviderFeaturesRequest(msg);
-            break;
-
-          case "list_available_providers_request":
-            await this.handleListAvailableProvidersRequest(msg);
-            break;
-
-          case "get_providers_snapshot_request":
-            await this.handleGetProvidersSnapshotRequest(msg);
-            break;
-
-          case "refresh_providers_snapshot_request":
-            await this.handleRefreshProvidersSnapshotRequest(msg);
-            break;
-
-          case "provider_diagnostic_request":
-            await this.handleProviderDiagnosticRequest(msg);
-            break;
-
-          case "clear_agent_attention":
-            await this.handleClearAgentAttention(msg.agentId, msg.requestId);
-            break;
-
-          case "client_heartbeat":
-            this.handleClientHeartbeat(msg);
-            break;
-
-          case "ping": {
-            const now = Date.now();
-            this.emit({
-              type: "pong",
-              payload: {
-                requestId: msg.requestId,
-                clientSentAt: msg.clientSentAt,
-                serverReceivedAt: now,
-                serverSentAt: now,
-              },
-            });
-            break;
-          }
-
-          case "list_commands_request":
-            await this.handleListCommandsRequest(msg);
-            break;
-
-          case "register_push_token":
-            this.handleRegisterPushToken(msg.token);
-            break;
-
-          case "subscribe_terminals_request":
-            this.handleSubscribeTerminalsRequest(msg);
-            break;
-
-          case "unsubscribe_terminals_request":
-            this.handleUnsubscribeTerminalsRequest(msg);
-            break;
-
-          case "list_terminals_request":
-            await this.handleListTerminalsRequest(msg);
-            break;
-
-          case "create_terminal_request":
-            await this.handleCreateTerminalRequest(msg);
-            break;
-
-          case "subscribe_terminal_request":
-            await this.handleSubscribeTerminalRequest(msg);
-            break;
-
-          case "unsubscribe_terminal_request":
-            this.handleUnsubscribeTerminalRequest(msg);
-            break;
-
-          case "terminal_input":
-            this.handleTerminalInput(msg);
-            break;
-
-          case "kill_terminal_request":
-            await this.handleKillTerminalRequest(msg);
-            break;
-
-          case "capture_terminal_request":
-            await this.handleCaptureTerminalRequest(msg);
-            break;
-
-          case "chat/create":
-            await this.handleChatCreateRequest(msg);
-            break;
-
-          case "chat/list":
-            await this.handleChatListRequest(msg);
-            break;
-
-          case "chat/inspect":
-            await this.handleChatInspectRequest(msg);
-            break;
-
-          case "chat/delete":
-            await this.handleChatDeleteRequest(msg);
-            break;
-
-          case "chat/post":
-            await this.handleChatPostRequest(msg);
-            break;
-
-          case "chat/read":
-            await this.handleChatReadRequest(msg);
-            break;
-
-          case "chat/wait":
-            await this.handleChatWaitRequest(msg);
-            break;
-
           case "github_search_request":
             await this.handleGitHubSearchRequest(msg);
-            break;
-
-          case "directory_suggestions_request":
-            await this.handleDirectorySuggestionsRequest(msg);
-            break;
-
-          case "checkout_pr_create_request":
-            await this.handleCheckoutPrCreateRequest(msg);
-            break;
-
-          case "checkout_pr_status_request":
-            await this.handleCheckoutPrStatusRequest(msg);
             break;
 
           case "paseo_worktree_list_request":
@@ -2074,7 +1955,7 @@ export class Session {
             break;
 
           case "clear_agent_attention":
-            await this.handleClearAgentAttention(msg.agentId);
+            await this.handleClearAgentAttention(msg.agentId, msg.requestId);
             break;
 
           case "client_heartbeat":
@@ -3378,6 +3259,7 @@ export class Session {
       {
         paseoHome: this.paseoHome,
         sessionLogger: this.sessionLogger,
+        workspaceGitService: this.workspaceGitService,
         checkoutExistingBranch: (cwd, branch) => this.checkoutExistingBranch(cwd, branch),
         createBranchFromBase: (params) => this.createBranchFromBase(params),
       },
@@ -5030,7 +4912,6 @@ export class Session {
     const { cwd, requestId } = msg;
 
     try {
-      await this.workspaceGitService.refresh(cwd, { priority: "high" });
       const snapshot = await this.workspaceGitService.getSnapshot(cwd);
       this.emit({
         type: "checkout_pr_status_response",
@@ -5788,7 +5669,19 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null,
   ): Promise<WorkspaceDescriptorPayload> {
     const base = await this.describeWorkspaceRecord(workspace, projectRecord);
-    const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
+    let snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
+    if (!snapshot) {
+      try {
+        snapshot = await this.workspaceGitService.getSnapshot(workspace.cwd);
+      } catch (error) {
+        this.sessionLogger.warn(
+          { err: error, cwd: workspace.cwd },
+          "Failed to load git snapshot for workspace",
+        );
+        return base;
+      }
+    }
+
     if (!snapshot) {
       return base;
     }
@@ -6229,7 +6122,7 @@ export class Session {
 
     const placement = await buildProjectPlacementForCwdStandalone({
       cwd: normalizedCwd,
-      paseoHome: this.paseoHome,
+      workspaceGitService: this.workspaceGitService,
     });
     const workspaceId = deriveWorkspaceId(normalizedCwd, placement.checkout);
     const timestamp = new Date().toISOString();
@@ -6263,56 +6156,21 @@ export class Session {
     branchName: string;
   }): Promise<PersistedWorkspaceRecord> {
     await this.findOrCreateWorkspaceForDirectory(options.repoRoot);
-    const workspaceDirectory = normalizePersistedWorkspaceId(options.worktreePath);
-    const basePlacement = await this.buildProjectPlacementForCwd(options.repoRoot);
-    if (!basePlacement) {
-      throw new Error(`Workspace not found for repo root ${options.repoRoot}`);
-    }
-
-    const projectId = basePlacement.projectKey;
-    const now = new Date().toISOString();
-    const existingWorkspace = await this.findWorkspaceByDirectory(workspaceDirectory);
-    if (!existingWorkspace) {
-      const newRecord = createPersistedWorkspaceRecord({
-        workspaceId: workspaceDirectory,
-        projectId,
-        cwd: workspaceDirectory,
-        displayName: options.branchName,
-        kind: "worktree",
-        createdAt: now,
-        updatedAt: now,
-      });
-      await this.workspaceRegistry.upsert(newRecord);
-      await this.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
-      return newRecord;
-    }
-
-    await this.workspaceRegistry.upsert(
-      createPersistedWorkspaceRecord({
-        workspaceId: existingWorkspace.workspaceId,
-        projectId,
-        cwd: workspaceDirectory,
-        displayName: options.branchName,
-        kind: "worktree",
-        createdAt: existingWorkspace.createdAt,
-        updatedAt: now,
-      }),
+    return registerPendingWorktreeWorkspaceSession(
+      {
+        buildPersistedProjectRecord: (input) => this.buildPersistedProjectRecord(input),
+        buildPersistedWorkspaceRecord: (input) => this.buildPersistedWorkspaceRecord(input),
+        buildProjectPlacement: (cwd) => this.buildProjectPlacement(cwd),
+        findWorkspaceByDirectory: (directory) => this.findWorkspaceByDirectory(directory),
+        projectRegistry: this.projectRegistry,
+        syncWorkspaceGitWatchTarget: (cwd, syncOptions) =>
+          this.syncWorkspaceGitWatchTarget(cwd, syncOptions),
+        workspaceRegistry: this.workspaceRegistry,
+        archiveProjectRecordIfEmpty: (projectId, archivedAt) =>
+          this.archiveProjectRecordIfEmpty(projectId, archivedAt),
+      },
+      options,
     );
-    await this.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
-
-    if (!existingWorkspace.archivedAt && existingWorkspace.projectId !== projectId) {
-      const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
-        (workspace) =>
-          workspace.projectId === existingWorkspace.projectId &&
-          workspace.workspaceId !== existingWorkspace.workspaceId &&
-          !workspace.archivedAt,
-      );
-      if (siblingWorkspaces.length === 0) {
-        await this.projectRegistry.archive(existingWorkspace.projectId, now);
-      }
-    }
-
-    return (await this.workspaceRegistry.get(existingWorkspace.workspaceId))!;
   }
 
   private async archiveWorkspaceRecord(workspaceId: string, archivedAt?: string): Promise<void> {
@@ -6790,10 +6648,13 @@ export class Session {
     return handleCreateWorktreeRequest(
       {
         paseoHome: this.paseoHome,
+        workspaceGitService: this.workspaceGitService,
         describeWorkspaceRecord: (workspace) => this.describeWorkspaceRecordWithGitData(workspace),
         emit: (message) => this.emit(message),
         registerPendingWorktreeWorkspace: (options) =>
           this.registerPendingWorktreeWorkspace(options),
+        syncWorkspaceGitWatchTarget: (cwd, syncOptions) =>
+          this.syncWorkspaceGitWatchTarget(cwd, syncOptions),
         sessionLogger: this.sessionLogger,
         runWorktreeSetupInBackground: (options) => this.runWorktreeSetupInBackground(options),
       },

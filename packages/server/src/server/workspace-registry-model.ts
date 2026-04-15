@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 
-import { getCheckoutStatusLite } from "../utils/checkout-git.js";
 import type { ProjectCheckoutLitePayload, ProjectPlacementPayload } from "../shared/messages.js";
+import type { WorkspaceGitService } from "./workspace-git-service.js";
 import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
 export type PersistedProjectKind = "git" | "non_git";
@@ -198,45 +198,15 @@ export async function detectStaleWorkspaces(
 
 export async function buildProjectPlacementForCwd(input: {
   cwd: string;
-  paseoHome: string;
+  workspaceGitService: WorkspaceGitService;
 }): Promise<ProjectPlacementPayload> {
   const normalizedCwd = normalizeWorkspaceId(input.cwd);
-  const checkout = await getCheckoutStatusLite(normalizedCwd, { paseoHome: input.paseoHome })
-    .then((status): ProjectCheckoutLitePayload => {
-      if (!status.isGit) {
-        return {
-          cwd: normalizedCwd,
-          isGit: false,
-          currentBranch: null,
-          remoteUrl: null,
-          worktreeRoot: null,
-          isPaseoOwnedWorktree: false,
-          mainRepoRoot: null,
-        };
-      }
-
-      if (status.isPaseoOwnedWorktree && status.mainRepoRoot) {
-        return {
-          cwd: normalizedCwd,
-          isGit: true,
-          currentBranch: status.currentBranch,
-          remoteUrl: status.remoteUrl,
-          worktreeRoot: status.worktreeRoot,
-          isPaseoOwnedWorktree: true,
-          mainRepoRoot: status.mainRepoRoot,
-        };
-      }
-
-      return {
-        cwd: normalizedCwd,
-        isGit: true,
-        currentBranch: status.currentBranch,
-        remoteUrl: status.remoteUrl,
-        worktreeRoot: status.worktreeRoot,
-        isPaseoOwnedWorktree: false,
-        mainRepoRoot: null,
-      };
-    })
+  const checkout = await input.workspaceGitService
+    .getSnapshot(normalizedCwd)
+    .then(
+      (snapshot): ProjectCheckoutLitePayload =>
+        checkoutLiteFromGitSnapshot(normalizedCwd, snapshot.git),
+    )
     .catch(
       (): ProjectCheckoutLitePayload => ({
         cwd: normalizedCwd,

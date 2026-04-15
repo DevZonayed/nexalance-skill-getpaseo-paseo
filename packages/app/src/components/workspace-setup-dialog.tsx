@@ -279,7 +279,7 @@ export function WorkspaceSetupDialog() {
         <Composer
           agentId={`workspace-setup:${serverId}:${sourceDirectory}`}
           serverId={serverId}
-          isInputActive={true}
+          isPaneFocused={true}
           onSubmitMessage={handleCreateChatAgent}
           isSubmitLoading={pendingAction === "chat"}
           blurOnSubmit={true}

@@ -287,7 +287,7 @@ export function NewWorkspaceScreen({
           <Composer
             agentId={`new-workspace:${serverId}:${sourceDirectory}`}
             serverId={serverId}
-            isInputActive={true}
+            isPaneFocused={true}
             onSubmitMessage={handleCreateChatAgent}
             hasExternalContent={selectedGithubItem !== null}
             allowEmptySubmit={true}

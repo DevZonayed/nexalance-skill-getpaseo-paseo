@@ -20,11 +20,11 @@ import {
   __setPullRequestStatusCacheTtlForTests,
   commitAll,
   getCachedCheckoutShortstat,
+  getCurrentBranch,
   getCheckoutDiff,
   getCheckoutShortstat,
   getPullRequestStatus,
   getCheckoutStatus,
-  getCheckoutStatusLite,
   listBranchSuggestions,
   mergeToBase,
   mergeFromBase,
@@ -89,6 +89,15 @@ describe("checkout git utilities", () => {
     await expect(getCheckoutDiff(nonGitDir, { mode: "uncommitted" })).rejects.toBeInstanceOf(
       NotGitRepoError,
     );
+  });
+
+  it("returns null for getCurrentBranch in a repo with no commits", async () => {
+    const emptyRepo = join(tempDir, "empty-repo");
+    execSync(`mkdir -p ${emptyRepo}`);
+    execSync("git init -b main", { cwd: emptyRepo });
+
+    const branch = await getCurrentBranch(emptyRepo);
+    expect(branch).toBeNull();
   });
 
   it("handles status/diff/commit in a normal repo", async () => {
@@ -170,13 +179,16 @@ const x = 1;
     expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
   });
 
-  it("returns lightweight checkout status for normal repos", async () => {
-    const status = await getCheckoutStatusLite(repoDir);
+  it("returns checkout root metadata for normal repos", async () => {
+    const status = await getCheckoutStatus(repoDir);
     expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
     expect(status.currentBranch).toBe("main");
-    expect(status.worktreeRoot).toBe(repoDir);
+    expect(status.repoRoot).toBe(repoDir);
     expect(status.isPaseoOwnedWorktree).toBe(false);
-    expect(status.mainRepoRoot).toBeNull();
+    expect(status.mainRepoRoot ?? null).toBeNull();
   });
 
   it("exposes hasRemote when origin is configured", async () => {
@@ -404,7 +416,7 @@ const x = 1;
     expect(message).toBe("worktree update");
   });
 
-  it("returns lightweight checkout status for .paseo worktrees", async () => {
+  it("returns checkout root metadata for .paseo worktrees", async () => {
     const result = await createWorktree({
       branchName: "main",
       cwd: repoDir,
@@ -413,9 +425,12 @@ const x = 1;
       paseoHome,
     });
 
-    const status = await getCheckoutStatusLite(result.worktreePath, { paseoHome });
+    const status = await getCheckoutStatus(result.worktreePath, { paseoHome });
     expect(status.isGit).toBe(true);
-    expect(status.worktreeRoot).toBe(result.worktreePath);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.repoRoot).toBe(result.worktreePath);
     expect(status.isPaseoOwnedWorktree).toBe(true);
     expect(status.mainRepoRoot).toBe(repoDir);
   });

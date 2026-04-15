@@ -23,8 +23,8 @@ import {
   wrapSessionMessage,
 } from "./messages.js";
 import { asUint8Array, decodeTerminalStreamFrame } from "../shared/terminal-stream-protocol.js";
-import type { AllowedHostsConfig } from "./allowed-hosts.js";
-import { isHostAllowed } from "./allowed-hosts.js";
+import type { HostnamesConfig } from "./hostnames.js";
+import { isHostnameAllowed } from "./hostnames.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type {
@@ -63,10 +63,70 @@ type PendingConnection = {
 
 type WebSocketServerConfig = {
   allowedOrigins: Set<string>;
-  allowedHosts?: AllowedHostsConfig;
+  hostnames?: HostnamesConfig;
 };
 
 type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
+
+function createFallbackWorkspaceGitService(): WorkspaceGitServiceImpl {
+  return {
+    subscribe: async ({ cwd }: { cwd: string }) => ({
+      initial: {
+        cwd,
+        git: {
+          isGit: false,
+          repoRoot: null,
+          mainRepoRoot: null,
+          currentBranch: null,
+          remoteUrl: null,
+          isPaseoOwnedWorktree: false,
+          isDirty: null,
+          aheadBehind: null,
+          aheadOfOrigin: null,
+          behindOfOrigin: null,
+          diffStat: null,
+        },
+        github: {
+          featuresEnabled: false,
+          pullRequest: null,
+          error: null,
+          refreshedAt: null,
+        },
+      },
+      unsubscribe: () => {},
+    }),
+    peekSnapshot: () => null,
+    getSnapshot: async (cwd: string) => ({
+      cwd,
+      git: {
+        isGit: false,
+        repoRoot: null,
+        mainRepoRoot: null,
+        currentBranch: null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: false,
+        isDirty: null,
+        aheadBehind: null,
+        aheadOfOrigin: null,
+        behindOfOrigin: null,
+        diffStat: null,
+      },
+      github: {
+        featuresEnabled: false,
+        pullRequest: null,
+        error: null,
+        refreshedAt: null,
+      },
+    }),
+    refresh: async () => {},
+    requestWorkingTreeWatch: async (cwd: string) => ({
+      repoRoot: cwd,
+      unsubscribe: () => {},
+    }),
+    scheduleRefreshForCwd: () => {},
+    dispose: () => {},
+  } as unknown as WorkspaceGitServiceImpl;
+}
 
 function createNoopProjectRegistry(): ProjectRegistry {
   return {
@@ -327,6 +387,7 @@ export class VoiceAssistantWebSocketServer {
     getDaemonTcpPort?: () => number | null,
     getDaemonTcpHost?: () => string | null,
     resolveScriptHealth?: (hostname: string) => ScriptHealthState | null,
+    workspaceGitService?: WorkspaceGitServiceImpl,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -354,10 +415,7 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("VoiceAssistantWebSocketServer requires a checkout diff manager.");
     }
     this.checkoutDiffManager = checkoutDiffManager;
-    this.workspaceGitService = new WorkspaceGitServiceImpl({
-      logger: this.logger,
-      paseoHome,
-    });
+    this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
     this.daemonConfigStore = daemonConfigStore;
@@ -403,7 +461,7 @@ export class VoiceAssistantWebSocketServer {
       });
     });
 
-    const { allowedOrigins, allowedHosts } = wsConfig;
+    const { allowedOrigins, hostnames } = wsConfig;
     this.wss = new WebSocketServer({
       server,
       path: "/ws",
@@ -411,7 +469,7 @@ export class VoiceAssistantWebSocketServer {
         const requestMetadata = extractSocketRequestMetadata(req);
         const origin = requestMetadata.origin;
         const requestHost = requestMetadata.host ?? null;
-        if (requestHost && !isHostAllowed(requestHost, allowedHosts)) {
+        if (requestHost && !isHostnameAllowed(requestHost, hostnames)) {
           this.incrementRuntimeCounter("hostRejected");
           this.logger.warn(
             { ...requestMetadata, host: requestHost },
@@ -553,8 +611,8 @@ export class VoiceAssistantWebSocketServer {
 
     await Promise.all(cleanupPromises);
     this.providerSnapshotManager.destroy();
-    this.workspaceGitService.dispose();
     this.checkoutDiffManager.dispose();
+    this.workspaceGitService.dispose();
     this.pendingConnections.clear();
     this.sessions.clear();
     this.externalSessionsByKey.clear();

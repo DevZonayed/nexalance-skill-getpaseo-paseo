@@ -63,7 +63,7 @@ type ImageListUpdater = ImageAttachment[] | ((prev: ImageAttachment[]) => ImageA
 interface ComposerProps {
   agentId: string;
   serverId: string;
-  isInputActive: boolean;
+  isPaneFocused: boolean;
   onSubmitMessage?: (payload: MessagePayload) => Promise<void>;
   /** When true, the submit button is enabled even without text or images (e.g. external attachment selected). */
   hasExternalContent?: boolean;
@@ -106,7 +106,7 @@ const MOBILE_MESSAGE_PLACEHOLDER = "Message, @files, /commands";
 export function Composer({
   agentId,
   serverId,
-  isInputActive,
+  isPaneFocused,
   onSubmitMessage,
   hasExternalContent = false,
   allowEmptySubmit = false,
@@ -435,7 +435,7 @@ export function Composer({
 
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
-      if (!isInputActive) {
+      if (!isPaneFocused) {
         return false;
       }
 
@@ -479,7 +479,7 @@ export function Composer({
           return false;
       }
     },
-    [isInputActive],
+    [isPaneFocused],
   );
 
   useKeyboardActionHandler({
@@ -493,9 +493,9 @@ export function Composer({
       "message-input.voice-toggle",
       "message-input.voice-mute-toggle",
     ],
-    enabled: isInputActive,
+    enabled: isPaneFocused,
     priority: isMessageInputFocused ? 200 : 100,
-    isActive: () => isInputActive,
+    isActive: () => isPaneFocused,
     handle: handleKeyboardAction,
   });
 
@@ -766,7 +766,7 @@ export function Composer({
               autoFocus={autoFocus && isDesktopWebBreakpoint}
               autoFocusKey={`${serverId}:${agentId}`}
               disabled={isSubmitLoading}
-              isInputActive={isInputActive}
+              isPaneFocused={isPaneFocused}
               leftContent={leftContent}
               beforeVoiceContent={beforeVoiceContent}
               rightContent={rightContent}
