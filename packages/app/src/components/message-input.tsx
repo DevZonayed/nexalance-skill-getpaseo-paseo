@@ -42,6 +42,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Shortcut } from "@/components/ui/shortcut";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+import { formatShortcut } from "@/utils/format-shortcut";
+import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import {
   markScrollInvestigationEvent,
@@ -233,7 +235,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
   const dictationToggleKeys = useShortcutKeys("dictation-toggle");
   const queueKeys = useShortcutKeys("message-input-queue");
+  const focusInputKeys = useShortcutKeys("focus-message-input");
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const rootRef = useRef<View | null>(null);
   const inputWrapperRef = useRef<View | null>(null);
   const textInputRef = useRef<TextInput | (TextInput & { getNativeRef?: () => unknown }) | null>(
@@ -997,10 +1001,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             accessibilityLabel="Message agent..."
             onFocus={() => {
               isInputFocusedRef.current = true;
+              setIsInputFocused(true);
               onFocusChange?.(true);
             }}
             onBlur={() => {
               isInputFocusedRef.current = false;
+              setIsInputFocused(false);
               onFocusChange?.(false);
             }}
             style={[
@@ -1025,6 +1031,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             autoFocus={isWeb && autoFocus}
           />
           {inputScrollbar}
+          {isWeb && !isInputFocused && !value && focusInputKeys ? (
+            <Text style={styles.focusHintText} pointerEvents="none">
+              {formatShortcut(focusInputKeys[0], getShortcutOs())} to focus
+            </Text>
+          ) : null}
         </View>
 
         {/* Button row */}
@@ -1269,6 +1280,14 @@ const styles = StyleSheet.create(((theme: any) => ({
   },
   textInputScrollWrapper: {
     position: "relative",
+  },
+  focusHintText: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    opacity: 0.5,
   },
   textInput: {
     width: "100%",

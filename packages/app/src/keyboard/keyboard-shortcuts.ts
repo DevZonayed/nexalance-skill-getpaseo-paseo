@@ -792,6 +792,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 
   // --- Message input ---
   {
+    id: "message-input-focus-cmd-l-mac",
+    action: "message-input.action",
+    combo: "Cmd+L",
+    when: { mac: true, commandCenter: false },
+    payload: { type: "message-input", kind: "focus" },
+    help: {
+      id: "focus-message-input",
+      section: "agent-input",
+      label: "Focus message input",
+      keys: ["mod", "L"],
+    },
+  },
+  {
+    id: "message-input-focus-ctrl-l-non-mac",
+    action: "message-input.action",
+    combo: "Ctrl+L",
+    when: { mac: false, commandCenter: false, terminal: false },
+    payload: { type: "message-input", kind: "focus" },
+    help: {
+      id: "focus-message-input",
+      section: "agent-input",
+      label: "Focus message input",
+      keys: ["mod", "L"],
+    },
+  },
+  {
     id: "message-input-voice-toggle-cmd-shift-d-mac",
     action: "message-input.action",
     combo: "Cmd+Shift+D",
