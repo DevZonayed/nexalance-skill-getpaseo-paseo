@@ -138,13 +138,25 @@ describe("executableExists", () => {
     expect(executableExists("/usr/local/bin/codex", exists)).toBe("/usr/local/bin/codex");
   });
 
-  test("on Windows, falls back to .exe, .cmd, then .ps1 for extensionless paths", () => {
+  test("on Windows, falls back to .exe, then .cmd for extensionless paths", () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", { value: "win32", writable: true });
     try {
       const exists = (candidate: string) => candidate === "C:\\tools\\codex.cmd";
 
       expect(executableExists("C:\\tools\\codex", exists)).toBe("C:\\tools\\codex.cmd");
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
+    }
+  });
+
+  test("on Windows, ignores PowerShell scripts for extensionless paths", () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32", writable: true });
+    try {
+      const exists = (candidate: string) => candidate === "C:\\tools\\codex.ps1";
+
+      expect(executableExists("C:\\tools\\codex", exists)).toBeNull();
     } finally {
       Object.defineProperty(process, "platform", { value: originalPlatform, writable: true });
     }

@@ -216,24 +216,12 @@ describe.runIf(process.platform === "win32")("Windows spawn launch regression", 
     expect(result.stdout.trim()).toBe("ARGV_OK");
   });
 
-  test("detects and launches a PowerShell shim from PATH without corrupting JSON args", async () => {
+  test("does not detect a PowerShell shim from PATH", async () => {
     const fixture = makeFixture({ includeCmdShim: false });
 
     await withWindowsPathEntry(fixture.root, async () => {
       const detected = await findExecutable("claude");
-      expect(detected?.toLowerCase()).toBe(fixture.powerShellShim.toLowerCase());
-
-      const result = await runFixture({
-        command: detected!,
-        args: fixture.expectedArgs,
-        shell: false,
-      });
-
-      expect(result.error).toBeNull();
-      expect(result.code).toBe(0);
-      expect(result.signal).toBeNull();
-      expect(result.stderr).toBe("");
-      expect(result.stdout.trim()).toBe("ARGV_OK");
+      expect(detected).toBeNull();
     });
   });
 });

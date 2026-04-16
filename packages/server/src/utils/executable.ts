@@ -40,25 +40,6 @@ export function isWindowsCommandScript(executablePath: string): boolean {
   return process.platform === "win32" && (extension === ".cmd" || extension === ".bat");
 }
 
-export function isWindowsPowerShellScript(executablePath: string): boolean {
-  return process.platform === "win32" && extname(executablePath).toLowerCase() === ".ps1";
-}
-
-export function windowsPowerShellScriptArgs(scriptPath: string, args: string[]): string[] {
-  const argvBase64 = Buffer.from(JSON.stringify(args), "utf16le").toString("base64");
-  const escapedScriptPath = scriptPath.replace(/'/g, "''");
-  const command = [
-    "$ErrorActionPreference = 'Stop'",
-    `$argvJson = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${argvBase64}'))`,
-    "$argv = @((ConvertFrom-Json -InputObject $argvJson))",
-    `& '${escapedScriptPath}' @argv`,
-    "exit $LASTEXITCODE",
-  ].join("; ");
-  const encodedCommand = Buffer.from(command, "utf16le").toString("base64");
-
-  return ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodedCommand];
-}
-
 async function probeExecutable(executablePath: string): Promise<boolean> {
   return await new Promise((resolve) => {
     let settled = false;
@@ -78,19 +59,12 @@ async function probeExecutable(executablePath: string): Promise<boolean> {
 
     let child: ChildProcess;
     try {
-      const isPowerShellScript = isWindowsPowerShellScript(executablePath);
-      child = spawn(
-        isPowerShellScript ? "powershell.exe" : executablePath,
-        isPowerShellScript
-          ? windowsPowerShellScriptArgs(executablePath, ["--version"])
-          : ["--version"],
-        {
-          stdio: "ignore",
-          windowsHide: true,
-          // Windows batch shims (.cmd/.bat) require cmd.exe; native binaries do not.
-          shell: isWindowsCommandScript(executablePath),
-        },
-      );
+      child = spawn(executablePath, ["--version"], {
+        stdio: "ignore",
+        windowsHide: true,
+        // Windows batch shims (.cmd/.bat) require cmd.exe; native binaries do not.
+        shell: isWindowsCommandScript(executablePath),
+      });
     } catch {
       settle(false);
       return;
@@ -128,7 +102,7 @@ export function executableExists(
 ): string | null {
   if (exists(executablePath)) return executablePath;
   if (process.platform === "win32" && !extname(executablePath)) {
-    for (const ext of [".exe", ".cmd", ".ps1"]) {
+    for (const ext of [".exe", ".cmd"]) {
       const candidate = executablePath + ext;
       if (exists(candidate)) return candidate;
     }
