@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { FileText } from "lucide-react-native";
 import invariant from "tiny-invariant";
@@ -20,12 +21,10 @@ function useFilePanelDescriptor(target: { kind: "file"; path: string }) {
 
 function FilePanel() {
   const { serverId, workspaceId, target } = usePaneContext();
-  const authority = useSessionStore((state) =>
-    resolveWorkspaceExecutionAuthority({
-      workspaces: state.sessions[serverId]?.workspaces,
-      workspaceId,
-    }),
+  const workspace = useSessionStore(
+    (state) => state.sessions[serverId]?.workspaces.get(workspaceId) ?? null,
   );
+  const authority = useMemo(() => resolveWorkspaceExecutionAuthority({ workspace }), [workspace]);
   invariant(target.kind === "file", "FilePanel requires file target");
   if (!authority) {
     return (
