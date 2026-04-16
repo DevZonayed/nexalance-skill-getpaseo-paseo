@@ -136,6 +136,22 @@ describe.runIf(process.platform === "win32")("Windows spawn launch regression", 
     expect(result.stdout.trim()).toBe("ARGV_OK");
   });
 
+  test("launches a cmd shim even when the caller explicitly disables shell", async () => {
+    const fixture = makeFixture();
+
+    const result = await runFixture({
+      command: fixture.shim,
+      args: fixture.expectedArgs,
+      shell: false,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.code).toBe(0);
+    expect(result.signal).toBeNull();
+    expect(result.stderr).toBe("");
+    expect(result.stdout.trim()).toBe("ARGV_OK");
+  });
+
   test("direct launch with a space-containing executable preserves JSON args", async () => {
     const fixture = makeFixture();
 

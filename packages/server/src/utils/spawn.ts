@@ -24,7 +24,7 @@ export function spawnProcess(
   options?: SpawnOptions,
 ): ChildProcess {
   const isWindows = process.platform === "win32";
-  const shell = isWindowsCommandScript(command) ? true : (options?.shell ?? isWindows);
+  const shell = options?.shell ?? isWindows;
 
   const shouldQuoteForShell = isWindows && shell !== false;
   const resolvedCommand = shouldQuoteForShell ? quoteWindowsCommand(command) : command;
