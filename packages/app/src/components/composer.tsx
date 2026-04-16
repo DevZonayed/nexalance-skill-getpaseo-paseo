@@ -840,11 +840,12 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     backgroundColor: theme.colors.palette.red[600],
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: theme.spacing[1],
   },
   rightControls: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
   },
   contextWindowMeterSlot: {
     width: 28,

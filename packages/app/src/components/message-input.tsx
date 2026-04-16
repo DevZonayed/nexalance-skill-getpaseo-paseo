@@ -1365,7 +1365,7 @@ const styles = StyleSheet.create(((theme: any) => ({
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: isWeb ? theme.spacing[2] : theme.spacing[1],
+    gap: theme.spacing[1],
   },
   attachButton: {
     width: 28,
@@ -1399,6 +1399,7 @@ const styles = StyleSheet.create(((theme: any) => ({
     backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: theme.spacing[1],
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
