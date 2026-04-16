@@ -1217,23 +1217,38 @@ async function resolveClaudeAuth(
 ): Promise<string | null> {
   const command = runtimeSettings?.command;
 
+  const run = async (
+    executable: string,
+    args: string[],
+  ): Promise<{ stdout: string; stderr: string }> => {
+    try {
+      return await execCommand(executable, args, { timeout: 5_000 });
+    } catch (error) {
+      const err = error as { stdout?: string; stderr?: string; message?: string };
+      return {
+        stdout: err.stdout ?? "",
+        stderr: err.stderr ?? err.message ?? "",
+      };
+    }
+  };
+
   try {
+    let result: { stdout: string; stderr: string };
     if (command?.mode === "replace") {
-      const { stdout } = await execCommand(
-        command.argv[0]!,
-        [...command.argv.slice(1), "auth", "status"],
-        { timeout: 5_000 },
-      );
-      return stdout.trim() || null;
+      result = await run(command.argv[0]!, [...command.argv.slice(1), "auth", "status"]);
+    } else {
+      const executable = await findExecutable("claude");
+      if (!executable) {
+        return null;
+      }
+      result = await run(executable, ["auth", "status"]);
     }
 
-    const executable = await findExecutable("claude");
-    if (!executable) {
-      return null;
-    }
-
-    const { stdout } = await execCommand(executable, ["auth", "status"], { timeout: 5_000 });
-    return stdout.trim() || null;
+    const combined = [result.stdout, result.stderr]
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .join("\n");
+    return combined || null;
   } catch {
     return null;
   }
