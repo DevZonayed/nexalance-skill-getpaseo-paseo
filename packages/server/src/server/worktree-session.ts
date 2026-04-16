@@ -940,7 +940,7 @@ export async function runWorktreeSetupInBackground(
           worktreePath: worktree.worktreePath,
           setupStarted,
         },
-        "Background worktree creation failed",
+        "Background worktree setup failed",
       );
       return;
     }

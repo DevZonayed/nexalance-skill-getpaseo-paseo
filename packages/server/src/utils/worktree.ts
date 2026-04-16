@@ -852,37 +852,48 @@ export async function isPaseoOwnedWorktreeCwd(
   cwd: string,
   options?: { paseoHome?: string },
 ): Promise<PaseoWorktreeOwnership> {
-  let gitCommonDir: string;
-  try {
-    gitCommonDir = await getGitCommonDir(cwd);
-  } catch {
-    return {
-      allowed: false,
-      worktreePath: normalizePathForOwnership(cwd),
-    };
-  }
-  const repoRoot = resolveRepoRootFromGitCommonDir(gitCommonDir);
-  const worktreesRoot = await getPaseoWorktreesRoot(cwd, options?.paseoHome);
-  const resolvedRoot = normalizePathForOwnership(worktreesRoot) + sep;
   const resolvedCwd = normalizePathForOwnership(cwd);
 
-  if (!resolvedCwd.startsWith(resolvedRoot)) {
+  // repoRoot is best-effort: git may be unreachable from the worktree (e.g. a
+  // previous archive attempt removed the admin dir before the working tree
+  // could be fully cleaned up). We still want to allow archiving in that case.
+  let repoRoot: string | undefined;
+  try {
+    const gitCommonDir = await getGitCommonDir(cwd);
+    repoRoot = resolveRepoRootFromGitCommonDir(gitCommonDir);
+  } catch {
+    // ignore
+  }
+
+  const paseoHome = options?.paseoHome ? resolve(options.paseoHome) : resolvePaseoHome();
+  const paseoWorktreesPrefix = normalizePathForOwnership(join(paseoHome, "worktrees")) + sep;
+
+  // Ownership is defined by the path living under $PASEO_HOME/worktrees/<hash>/<slug>[/...].
+  // The <hash>/<slug> prefix is Paseo-private — nothing else writes there — so the
+  // path shape alone is sufficient proof of ownership, even when git has already
+  // forgotten about the worktree.
+  if (!resolvedCwd.startsWith(paseoWorktreesPrefix)) {
     return {
       allowed: false,
-      repoRoot,
-      worktreeRoot: worktreesRoot,
+      ...(repoRoot !== undefined ? { repoRoot } : {}),
       worktreePath: resolvedCwd,
     };
   }
 
-  const worktrees = await listPaseoWorktrees({ cwd, paseoHome: options?.paseoHome });
-  const allowed = worktrees.some((entry) => {
-    const worktreePath = resolve(entry.path);
-    return resolvedCwd === worktreePath || resolvedCwd.startsWith(worktreePath + sep);
-  });
+  const relative = resolvedCwd.slice(paseoWorktreesPrefix.length);
+  const parts = relative.split(sep).filter((part) => part.length > 0);
+  if (parts.length < 2) {
+    return {
+      allowed: false,
+      ...(repoRoot !== undefined ? { repoRoot } : {}),
+      worktreePath: resolvedCwd,
+    };
+  }
+
+  const worktreesRoot = join(paseoHome, "worktrees", parts[0]!);
   return {
-    allowed,
-    repoRoot,
+    allowed: true,
+    ...(repoRoot !== undefined ? { repoRoot } : {}),
     worktreeRoot: worktreesRoot,
     worktreePath: resolvedCwd,
   };
@@ -1039,17 +1050,32 @@ export async function deletePaseoWorktree({
     throw new Error("Refusing to delete non-Paseo worktree");
   }
 
-  await runWorktreeTeardownCommands({
-    worktreePath: resolvedWorktree,
-  });
+  if (existsSync(resolvedWorktree)) {
+    await runWorktreeTeardownCommands({
+      worktreePath: resolvedWorktree,
+    });
+  }
 
-  await runGitCommand(["worktree", "remove", resolvedWorktree, "--force"], {
-    cwd,
-    timeout: 120_000,
-  });
+  try {
+    await runGitCommand(["worktree", "remove", resolvedWorktree, "--force"], {
+      cwd,
+      timeout: 120_000,
+    });
+  } catch {
+    // `git worktree remove` fails if the admin dir is already gone (e.g. a prior
+    // archive attempt removed it before the working tree could be fully cleaned
+    // up). Fall through to the rmSync fallback below so the retry is idempotent.
+  }
 
   if (existsSync(resolvedWorktree)) {
     rmSync(resolvedWorktree, { recursive: true, force: true });
+  }
+
+  // Clean up any stale admin entries git may still have cached for this path.
+  try {
+    await runGitCommand(["worktree", "prune"], { cwd, timeout: 30_000 });
+  } catch {
+    // not critical; git will prune lazily
   }
 }
 

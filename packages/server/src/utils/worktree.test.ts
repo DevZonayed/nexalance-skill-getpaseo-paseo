@@ -789,6 +789,96 @@ describe("paseo worktree manager", () => {
     expect(existsSync(created.worktreePath)).toBe(true);
     expect(existsSync(join(repoDir, "teardown-start.log"))).toBe(true);
   });
+
+  it("treats a worktree as paseo-owned even when its .git admin is missing", async () => {
+    const created = await createWorktree({
+      branchName: "orphan-admin-branch",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "orphan-admin",
+      paseoHome,
+    });
+
+    // Simulate a previous archive attempt that removed git's admin dir but left
+    // the working tree on disk (e.g. because file churn prevented full cleanup).
+    rmSync(join(repoDir, ".git", "worktrees", "orphan-admin"), {
+      recursive: true,
+      force: true,
+    });
+    expect(existsSync(created.worktreePath)).toBe(true);
+
+    const ownership = await isPaseoOwnedWorktreeCwd(created.worktreePath, { paseoHome });
+    expect(ownership.allowed).toBe(true);
+  });
+
+  it("rejects paths that are not under the paseo worktrees root", async () => {
+    const outsidePath = join(tempDir, "outside-paseo-home");
+    mkdirSync(outsidePath, { recursive: true });
+
+    const ownership = await isPaseoOwnedWorktreeCwd(outsidePath, { paseoHome });
+
+    expect(ownership.allowed).toBe(false);
+  });
+
+  it("rejects the worktrees root itself and the per-repo hash dir", async () => {
+    const projectHash = await deriveWorktreeProjectHash(repoDir);
+    const worktreesRoot = join(paseoHome, "worktrees");
+    const projectHashDir = join(worktreesRoot, projectHash);
+    mkdirSync(projectHashDir, { recursive: true });
+
+    await expect(isPaseoOwnedWorktreeCwd(worktreesRoot, { paseoHome })).resolves.toMatchObject({
+      allowed: false,
+    });
+    await expect(isPaseoOwnedWorktreeCwd(projectHashDir, { paseoHome })).resolves.toMatchObject({
+      allowed: false,
+    });
+  });
+
+  it("deletes a worktree whose .git admin dir has already been removed", async () => {
+    const created = await createWorktree({
+      branchName: "orphan-delete-branch",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "orphan-delete",
+      paseoHome,
+    });
+
+    rmSync(join(repoDir, ".git", "worktrees", "orphan-delete"), {
+      recursive: true,
+      force: true,
+    });
+    expect(existsSync(created.worktreePath)).toBe(true);
+
+    await deletePaseoWorktree({
+      cwd: repoDir,
+      worktreePath: created.worktreePath,
+      paseoHome,
+    });
+
+    expect(existsSync(created.worktreePath)).toBe(false);
+  });
+
+  it("is idempotent: deleting an already-absent worktree succeeds", async () => {
+    const created = await createWorktree({
+      branchName: "idempotent-delete-branch",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "idempotent-delete",
+      paseoHome,
+    });
+
+    await deletePaseoWorktree({
+      cwd: repoDir,
+      worktreePath: created.worktreePath,
+      paseoHome,
+    });
+    expect(existsSync(created.worktreePath)).toBe(false);
+
+    // Second call — nothing left on disk and no admin entry — must not throw.
+    await expect(
+      deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("slugify", () => {
