@@ -171,7 +171,7 @@ type ClaudeAgentSessionOptions = {
   queryFactory?: typeof query;
 };
 
-type ClaudeThinkingEffort = "low" | "medium" | "high" | "max";
+type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 function resolveClaudeSpawnCommand(
   spawnOptions: SpawnOptions,
@@ -238,7 +238,13 @@ function applyRuntimeSettingsToClaudeOptions(
 }
 
 function isClaudeThinkingEffort(value: string | null | undefined): value is ClaudeThinkingEffort {
-  return value === "low" || value === "medium" || value === "high" || value === "max";
+  return (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max"
+  );
 }
 
 function sanitizeClaudeProjectPath(cwd: string): string {
@@ -2114,7 +2120,9 @@ class ClaudeAgentSession implements AgentSession {
     let effort: ClaudeOptions["effort"];
     if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
       thinking = { type: "adaptive" };
-      effort = thinkingOptionId;
+      // SDK 0.2.71 types `effort` as 'low' | 'medium' | 'high' | 'max'; Opus 4.7
+      // adds 'xhigh' which the binary accepts but the typings don't yet expose.
+      effort = thinkingOptionId as ClaudeOptions["effort"];
     }
 
     const appendedSystemPrompt = [
