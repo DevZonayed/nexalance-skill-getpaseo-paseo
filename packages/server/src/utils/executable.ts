@@ -45,7 +45,18 @@ export function isWindowsPowerShellScript(executablePath: string): boolean {
 }
 
 export function windowsPowerShellScriptArgs(scriptPath: string, args: string[]): string[] {
-  return ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, ...args];
+  const argvBase64 = Buffer.from(JSON.stringify(args), "utf16le").toString("base64");
+  const escapedScriptPath = scriptPath.replace(/'/g, "''");
+  const command = [
+    "$ErrorActionPreference = 'Stop'",
+    `$argvJson = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('${argvBase64}'))`,
+    "$argv = @((ConvertFrom-Json -InputObject $argvJson))",
+    `& '${escapedScriptPath}' @argv`,
+    "exit $LASTEXITCODE",
+  ].join("; ");
+  const encodedCommand = Buffer.from(command, "utf16le").toString("base64");
+
+  return ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodedCommand];
 }
 
 async function probeExecutable(executablePath: string): Promise<boolean> {
