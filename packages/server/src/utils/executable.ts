@@ -40,6 +40,14 @@ export function isWindowsCommandScript(executablePath: string): boolean {
   return process.platform === "win32" && (extension === ".cmd" || extension === ".bat");
 }
 
+export function isWindowsPowerShellScript(executablePath: string): boolean {
+  return process.platform === "win32" && extname(executablePath).toLowerCase() === ".ps1";
+}
+
+export function windowsPowerShellScriptArgs(scriptPath: string, args: string[]): string[] {
+  return ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, ...args];
+}
+
 async function probeExecutable(executablePath: string): Promise<boolean> {
   return await new Promise((resolve) => {
     let settled = false;
@@ -59,12 +67,19 @@ async function probeExecutable(executablePath: string): Promise<boolean> {
 
     let child: ChildProcess;
     try {
-      child = spawn(executablePath, ["--version"], {
-        stdio: "ignore",
-        windowsHide: true,
-        // Windows batch shims (.cmd/.bat) require cmd.exe; native binaries do not.
-        shell: isWindowsCommandScript(executablePath),
-      });
+      const isPowerShellScript = isWindowsPowerShellScript(executablePath);
+      child = spawn(
+        isPowerShellScript ? "powershell.exe" : executablePath,
+        isPowerShellScript
+          ? windowsPowerShellScriptArgs(executablePath, ["--version"])
+          : ["--version"],
+        {
+          stdio: "ignore",
+          windowsHide: true,
+          // Windows batch shims (.cmd/.bat) require cmd.exe; native binaries do not.
+          shell: isWindowsCommandScript(executablePath),
+        },
+      );
     } catch {
       settle(false);
       return;

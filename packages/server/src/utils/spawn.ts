@@ -1,7 +1,13 @@
 import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { promisify } from "node:util";
 
-import { isWindowsCommandScript, quoteWindowsArgument, quoteWindowsCommand } from "./executable.js";
+import {
+  isWindowsCommandScript,
+  isWindowsPowerShellScript,
+  quoteWindowsArgument,
+  quoteWindowsCommand,
+  windowsPowerShellScriptArgs,
+} from "./executable.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +30,14 @@ export function spawnProcess(
   options?: SpawnOptions,
 ): ChildProcess {
   const isWindows = process.platform === "win32";
+  if (isWindowsPowerShellScript(command)) {
+    return spawn("powershell.exe", windowsPowerShellScriptArgs(command, args), {
+      ...options,
+      shell: false,
+      windowsHide: true,
+    });
+  }
+
   const shell = isWindowsCommandScript(command) ? true : (options?.shell ?? isWindows);
 
   const shouldQuoteForShell = isWindows && shell !== false;
@@ -43,6 +57,18 @@ export async function execCommand(
   options?: ExecCommandOptions,
 ): Promise<ExecCommandResult> {
   const isWindows = process.platform === "win32";
+  if (isWindowsPowerShellScript(command)) {
+    return execFileAsync("powershell.exe", windowsPowerShellScriptArgs(command, args), {
+      cwd: options?.cwd,
+      env: options?.env,
+      encoding: options?.encoding ?? "utf8",
+      timeout: options?.timeout,
+      maxBuffer: options?.maxBuffer,
+      shell: false,
+      windowsHide: true,
+    }) as Promise<ExecCommandResult>;
+  }
+
   const shell = isWindowsCommandScript(command) ? true : isWindows;
   const shouldQuoteForShell = isWindows && shell !== false;
   const resolvedCommand = shouldQuoteForShell ? quoteWindowsCommand(command) : command;
