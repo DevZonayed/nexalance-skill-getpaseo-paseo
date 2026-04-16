@@ -2849,7 +2849,7 @@ export class DaemonClient {
         providers: options?.providers,
       },
       responseType: "refresh_providers_snapshot_response",
-      timeout: 5000,
+      timeout: 60000,
     });
   }
 

@@ -35,7 +35,7 @@ async function enumerateCandidates(name: string): Promise<string[]> {
   });
 }
 
-function isWindowsCommandScript(executablePath: string): boolean {
+export function isWindowsCommandScript(executablePath: string): boolean {
   const extension = extname(executablePath).toLowerCase();
   return process.platform === "win32" && (extension === ".cmd" || extension === ".bat");
 }
@@ -102,7 +102,7 @@ export function executableExists(
 ): string | null {
   if (exists(executablePath)) return executablePath;
   if (process.platform === "win32" && !extname(executablePath)) {
-    for (const ext of [".exe", ".cmd", ".ps1"]) {
+    for (const ext of [".exe", ".cmd"]) {
       const candidate = executablePath + ext;
       if (exists(candidate)) return candidate;
     }
@@ -141,8 +141,11 @@ function escapeWindowsCmdValue(value: string): string {
   const unquoted = isQuoted ? value.slice(1, -1) : value;
   const escaped = unquoted.replace(/%/g, "%%").replace(/([&|^<>()!])/g, "^$1");
 
-  if (isQuoted || escaped.includes(" ")) {
-    return `"${escaped}"`;
+  if (isQuoted || /[\s"]/u.test(unquoted)) {
+    const quoted = escaped
+      .replace(/(\\*)"/g, (_match, slashes: string) => `${slashes}${slashes}\\"`)
+      .replace(/\\+$/u, (slashes) => `${slashes}${slashes}`);
+    return `"${quoted}"`;
   }
 
   return escaped;

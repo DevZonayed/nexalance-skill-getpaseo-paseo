@@ -68,6 +68,7 @@ import {
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
 import { ensureAgentLoaded } from "./agent/agent-loading.js";
+import { sendPromptToAgent, unarchiveAgentState } from "./agent/mcp-shared.js";
 import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
@@ -298,7 +299,7 @@ type ProcessingPhase = "idle" | "transcribing";
 type WorkspaceGitWatchTarget = {
   cwd: string;
   watchers: FSWatcher[];
-  debounceTimer: NodeJS.Timeout | null;
+  debounceTimer: ReturnType<typeof setTimeout> | null;
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
   latestFingerprint: string | null;
@@ -600,7 +601,7 @@ export class Session {
   private isVoiceMode = false;
   private speechInProgress = false;
   private pendingVoiceSpeechStartAt: number | null = null;
-  private pendingVoiceSpeechTimer: NodeJS.Timeout | null = null;
+  private pendingVoiceSpeechTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly dictationStreamManager: DictationStreamManager;
   private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
@@ -611,7 +612,7 @@ export class Session {
 
   // Audio buffering for interruption handling
   private pendingAudioSegments: Array<{ audio: Buffer; format: string }> = [];
-  private bufferTimeout: NodeJS.Timeout | null = null;
+  private bufferTimeout: ReturnType<typeof setTimeout> | null = null;
   private audioBuffer: AudioBufferState | null = null;
 
   // Optional TTS debug capture (persisted per utterance)
@@ -2224,12 +2225,17 @@ export class Session {
     });
   }
 
-  private async unarchiveAgentState(agentId: string): Promise<boolean> {
-    return this.agentManager.unarchiveSnapshot(agentId);
-  }
-
   private async unarchiveAgentByHandle(handle: AgentPersistenceHandle): Promise<void> {
-    await this.agentManager.unarchiveSnapshotByHandle(handle);
+    const records = await this.agentStorage.list();
+    const matched = records.find(
+      (record) =>
+        record.persistence?.provider === handle.provider &&
+        record.persistence?.sessionId === handle.sessionId,
+    );
+    if (!matched) {
+      return;
+    }
+    await unarchiveAgentState(this.agentStorage, this.agentManager, matched.id);
   }
 
   private async handleUpdateAgentRequest(
@@ -2723,38 +2729,28 @@ export class Session {
       }`,
     );
 
-    await this.unarchiveAgentState(agentId);
+    const promptText = options?.spokenInput ? wrapSpokenInput(text) : text;
+    const prompt = this.buildAgentPrompt(promptText, images, attachments);
 
     try {
-      await ensureAgentLoaded(agentId, {
+      await sendPromptToAgent({
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
+        agentId,
+        userMessageText: text,
+        prompt,
+        messageId,
+        runOptions,
         logger: this.sessionLogger,
       });
+      return { ok: true };
     } catch (error) {
-      this.handleAgentRunError(agentId, error, "Failed to initialize agent before sending prompt");
+      this.handleAgentRunError(agentId, error, "Failed to send agent message");
       return {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       };
     }
-
-    try {
-      this.agentManager.recordUserMessage(agentId, text, {
-        messageId,
-        emitState: false,
-      });
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, agentId },
-        `Failed to record user message for agent ${agentId}`,
-      );
-    }
-
-    const promptText = options?.spokenInput ? wrapSpokenInput(text) : text;
-    const prompt = this.buildAgentPrompt(promptText, images, attachments);
-
-    return this.startAgentStream(agentId, prompt, runOptions);
   }
 
   /**
@@ -2931,7 +2927,7 @@ export class Session {
     try {
       await this.unarchiveAgentByHandle(handle);
       const snapshot = await this.agentManager.resumeAgentFromPersistence(handle, overrides);
-      await this.unarchiveAgentState(snapshot.id);
+      await unarchiveAgentState(this.agentStorage, this.agentManager, snapshot.id);
       await this.agentManager.hydrateTimelineFromProvider(snapshot.id);
       await this.forwardAgentUpdate(snapshot);
       const timelineSize = this.agentManager.getTimeline(snapshot.id).length;
@@ -2969,7 +2965,7 @@ export class Session {
     this.sessionLogger.info({ agentId }, `Refreshing agent ${agentId} from persistence`);
 
     try {
-      await this.unarchiveAgentState(agentId);
+      await unarchiveAgentState(this.agentStorage, this.agentManager, agentId);
       let snapshot: ManagedAgent;
       const existing = this.agentManager.getAgent(agentId);
       if (existing) {
@@ -6751,44 +6747,32 @@ export class Session {
 
     try {
       const agentId = resolved.agentId;
-      await this.unarchiveAgentState(agentId);
-
-      await ensureAgentLoaded(agentId, {
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        logger: this.sessionLogger,
-      });
-
-      this.sessionLogger.trace(
-        { agentId, messageId: msg.messageId, textPrefix: msg.text.slice(0, 80) },
-        "send_agent_message_request: recording user message",
-      );
-      try {
-        this.agentManager.recordUserMessage(agentId, msg.text, {
-          messageId: msg.messageId,
-          emitState: false,
-        });
-      } catch (error) {
-        this.sessionLogger.error(
-          { err: error, agentId },
-          "Failed to record user message for send_agent_message_request",
-        );
-      }
 
       const prompt = this.buildAgentPrompt(msg.text, msg.images, msg.attachments);
       this.sessionLogger.trace(
-        { agentId, messageId: msg.messageId },
-        "send_agent_message_request: starting agent stream",
+        { agentId, messageId: msg.messageId, textPrefix: msg.text.slice(0, 80) },
+        "send_agent_message_request: dispatching shared sendPromptToAgent",
       );
-      const started = this.startAgentStream(agentId, prompt);
-      if (!started.ok) {
+      try {
+        await sendPromptToAgent({
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          agentId,
+          userMessageText: msg.text,
+          prompt,
+          messageId: msg.messageId,
+          logger: this.sessionLogger,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.handleAgentRunError(agentId, error, "Failed to send agent message");
         this.emit({
           type: "send_agent_message_response",
           payload: {
             requestId: msg.requestId,
             agentId,
             accepted: false,
-            error: started.error,
+            error: message,
           },
         });
         return;
@@ -7681,9 +7665,9 @@ export class Session {
     this.workspaceGitSubscriptions.clear();
   }
 
-  // ============================================================================
+  // ----------------------------------------------------------------------------
   // Terminal Handlers
-  // ============================================================================
+  // ----------------------------------------------------------------------------
 
   private ensureTerminalExitSubscription(terminal: TerminalSession): void {
     if (this.terminalExitSubscriptions.has(terminal.id)) {
