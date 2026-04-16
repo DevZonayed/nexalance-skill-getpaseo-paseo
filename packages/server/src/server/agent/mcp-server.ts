@@ -12,9 +12,10 @@ import {
   AgentPermissionResponseSchema,
   AgentSnapshotPayloadSchema,
 } from "../messages.js";
-import { toAgentPayload } from "./agent-projections.js";
+import { buildStoredAgentPayload, toAgentPayload } from "./agent-projections.js";
 import { curateAgentActivity } from "./activity-curator.js";
 import type { AgentStorage } from "./agent-storage.js";
+import { ensureAgentLoaded } from "./agent-loading.js";
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
@@ -198,6 +199,13 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     name: "agent-mcp",
     version: "2.0.0",
   });
+
+  const requireProviderRegistry = (): Record<AgentProvider, ProviderDefinition> => {
+    if (!providerRegistry) {
+      throw new Error("Provider registry is required to load stored agent records");
+    }
+    return providerRegistry;
+  };
 
   const resolveCallerAgent = () => {
     if (!callerAgentId) {
@@ -598,6 +606,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         if (notifyOnFinish && callerAgentId) {
           setupFinishNotification({
             agentManager,
+            agentStorage,
             childAgentId: snapshot.id,
             callerAgentId,
             logger: childLogger,
@@ -790,6 +799,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       if (notifyOnFinish && callerAgentId) {
         setupFinishNotification({
           agentManager,
+          agentStorage,
           childAgentId: agentId,
           callerAgentId,
           logger: childLogger,
@@ -853,19 +863,35 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     },
     async ({ agentId }) => {
       const snapshot = agentManager.getAgent(agentId);
-      if (!snapshot) {
+      if (snapshot) {
+        const structuredSnapshot = await serializeSnapshotWithMetadata(
+          agentStorage,
+          snapshot,
+          childLogger,
+        );
+        return {
+          content: [],
+          structuredContent: ensureValidJson({
+            status: snapshot.lifecycle,
+            snapshot: structuredSnapshot,
+          }),
+        };
+      }
+
+      const record = await agentStorage.get(agentId);
+      if (!record || record.internal) {
         throw new Error(`Agent ${agentId} not found`);
       }
 
-      const structuredSnapshot = await serializeSnapshotWithMetadata(
-        agentStorage,
-        snapshot,
+      const structuredSnapshot = buildStoredAgentPayload(
+        record,
+        requireProviderRegistry(),
         childLogger,
       );
       return {
         content: [],
         structuredContent: ensureValidJson({
-          status: snapshot.lifecycle,
+          status: structuredSnapshot.status,
           snapshot: structuredSnapshot,
         }),
       };
@@ -877,21 +903,30 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
     {
       title: "List agents",
       description: "List all live agents managed by the server.",
-      inputSchema: {},
+      inputSchema: {
+        includeArchived: z.boolean().optional().default(false),
+      },
       outputSchema: {
         agents: z.array(AgentSnapshotPayloadSchema),
       },
     },
-    async () => {
-      const snapshots = agentManager.listAgents();
-      const agents = await Promise.all(
-        snapshots.map((snapshot) =>
+    async ({ includeArchived }) => {
+      const liveSnapshots = agentManager.listAgents();
+      const liveAgents = await Promise.all(
+        liveSnapshots.map((snapshot) =>
           serializeSnapshotWithMetadata(agentStorage, snapshot, childLogger),
         ),
       );
+      const liveIds = new Set(liveSnapshots.map((snapshot) => snapshot.id));
+      const storedRecords = await agentStorage.list();
+      const storedAgents = storedRecords
+        .filter((record) => !record.internal && !liveIds.has(record.id))
+        .filter((record) => includeArchived || !record.archivedAt)
+        .map((record) => buildStoredAgentPayload(record, requireProviderRegistry(), childLogger));
+
       return {
         content: [],
-        structuredContent: ensureValidJson({ agents }),
+        structuredContent: ensureValidJson({ agents: [...liveAgents, ...storedAgents] }),
       };
     },
   );
@@ -1566,6 +1601,11 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       },
     },
     async ({ agentId, limit }) => {
+      await ensureAgentLoaded(agentId, {
+        agentManager,
+        agentStorage,
+        logger: childLogger,
+      });
       const timeline = agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 

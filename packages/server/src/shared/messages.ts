@@ -259,6 +259,7 @@ export const AgentPermissionRequestPayloadSchema: z.ZodType<AgentPermissionReque
   title: z.string().optional(),
   description: z.string().optional(),
   input: z.record(z.unknown()).optional(),
+  detail: z.lazy(() => ToolCallDetailPayloadSchema).optional(),
   suggestions: z.array(AgentPermissionUpdateSchema).optional(),
   actions: z.array(AgentPermissionActionSchema).optional(),
   metadata: z.record(z.unknown()).optional(),
@@ -883,6 +884,7 @@ export const GetProvidersSnapshotRequestMessageSchema = z.object({
 export const RefreshProvidersSnapshotRequestMessageSchema = z.object({
   type: z.literal("refresh_providers_snapshot_request"),
   cwd: z.string().optional(),
+  providers: z.array(AgentProviderSchema).optional(),
   requestId: z.string(),
 });
 

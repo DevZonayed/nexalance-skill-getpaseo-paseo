@@ -2838,6 +2838,7 @@ export class DaemonClient {
 
   async refreshProvidersSnapshot(options?: {
     cwd?: string;
+    providers?: AgentProvider[];
     requestId?: string;
   }): Promise<RefreshProvidersSnapshotPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2845,6 +2846,7 @@ export class DaemonClient {
       message: {
         type: "refresh_providers_snapshot_request",
         cwd: options?.cwd,
+        providers: options?.providers,
       },
       responseType: "refresh_providers_snapshot_response",
       timeout: 5000,

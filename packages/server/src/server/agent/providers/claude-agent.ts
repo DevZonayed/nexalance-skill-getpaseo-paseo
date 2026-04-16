@@ -2146,6 +2146,12 @@ class ClaudeAgentSession implements AgentSession {
     if (this.claudeSessionId) {
       base.resume = this.claudeSessionId;
     }
+    if (this.runtimeSettings?.disallowedTools?.length) {
+      base.disallowedTools = [
+        ...(base.disallowedTools ?? []),
+        ...this.runtimeSettings.disallowedTools,
+      ];
+    }
     return this.applyRuntimeSettings(base);
   }
 

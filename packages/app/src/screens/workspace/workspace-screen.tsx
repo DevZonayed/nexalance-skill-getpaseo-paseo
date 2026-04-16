@@ -764,12 +764,13 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     };
   }, [client, isConnected, queryClient, terminalsQueryKey, workspaceDirectory]);
 
+  const isCheckoutQueryEnabled = Boolean(client && isConnected) && Boolean(workspaceDirectory);
   const checkoutQuery = useQuery({
     queryKey: checkoutStatusQueryKey(
       normalizedServerId,
       workspaceDirectory ?? `missing-workspace-directory:${normalizedWorkspaceId}`,
     ),
-    enabled: Boolean(client && isConnected) && Boolean(workspaceDirectory),
+    enabled: isCheckoutQueryEnabled,
     queryFn: async () => {
       if (!client || !workspaceDirectory) {
         throw new Error("Host is not connected");
@@ -778,6 +779,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     },
     staleTime: 15_000,
   });
+  const isCheckoutStatusLoading =
+    isCheckoutQueryEnabled && checkoutQuery.data === undefined && !checkoutQuery.isError;
   const hasHydratedWorkspaces = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
   );
@@ -811,7 +814,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const workspaceHeader = workspaceDescriptor
     ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
     : null;
-  const isWorkspaceHeaderLoading = workspaceHeader === null;
+  const isWorkspaceHeaderLoading = workspaceHeader === null || isCheckoutStatusLoading;
   const workspaceHeaderTitle = workspaceHeader?.title ?? "";
   const workspaceHeaderSubtitle = workspaceHeader?.subtitle ?? "";
   const shouldShowWorkspaceHeaderSubtitle = !areHeaderLabelsEquivalent(
