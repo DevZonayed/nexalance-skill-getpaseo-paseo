@@ -93,6 +93,7 @@ type WorkspaceTabsState = {
   }) => string | null;
   reorderTabs: (input: { serverId: string; workspaceId: string; tabIds: string[] }) => void;
   getWorkspaceTabs: (input: { serverId: string; workspaceId: string }) => WorkspaceTab[];
+  purgeWorkspace: (input: { serverId: string; workspaceId: string }) => void;
 };
 
 export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
@@ -325,6 +326,31 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
           return [];
         }
         return get().uiTabsByWorkspace[key] ?? [];
+      },
+      purgeWorkspace: ({ serverId, workspaceId }) => {
+        const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+        if (!key) {
+          return;
+        }
+        set((state) => {
+          if (
+            !(key in state.uiTabsByWorkspace) &&
+            !(key in state.tabOrderByWorkspace) &&
+            !(key in state.focusedTabIdByWorkspace)
+          ) {
+            return state;
+          }
+          const { [key]: _tabs, ...remainingUiTabsByWorkspace } = state.uiTabsByWorkspace;
+          const { [key]: _order, ...remainingTabOrderByWorkspace } = state.tabOrderByWorkspace;
+          const { [key]: _focused, ...remainingFocusedTabIdByWorkspace } =
+            state.focusedTabIdByWorkspace;
+          return {
+            ...state,
+            uiTabsByWorkspace: remainingUiTabsByWorkspace,
+            tabOrderByWorkspace: remainingTabOrderByWorkspace,
+            focusedTabIdByWorkspace: remainingFocusedTabIdByWorkspace,
+          };
+        });
       },
     }),
     {

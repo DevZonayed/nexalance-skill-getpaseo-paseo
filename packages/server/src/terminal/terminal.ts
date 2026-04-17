@@ -44,6 +44,7 @@ export interface TerminalSession {
   getTitle(): string | undefined;
   getExitInfo(): TerminalExitInfo | null;
   kill(): void;
+  killAndWait(options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number }): Promise<void>;
 }
 
 export interface CreateTerminalOptions {
@@ -527,6 +528,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   let killed = false;
   let disposed = false;
   let exitEmitted = false;
+  let processExited = false;
+  const processExitWaiters = new Set<() => void>();
   let exitInfo: TerminalExitInfo | null = null;
   let recentOutputText = "";
   let title: string | undefined;
@@ -670,6 +673,15 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
 
   ptyProcess.onExit((event) => {
     killed = true;
+    processExited = true;
+    for (const waiter of Array.from(processExitWaiters)) {
+      try {
+        waiter();
+      } catch {
+        // no-op
+      }
+    }
+    processExitWaiters.clear();
     emitExit(
       buildExitInfo({
         exitCode: event.exitCode,
@@ -783,6 +795,55 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     disposeResources();
   }
 
+  function waitForProcessExit(timeoutMs: number): Promise<boolean> {
+    if (processExited) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const waiter = (): void => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        processExitWaiters.delete(waiter);
+        resolve(false);
+      }, timeoutMs);
+      processExitWaiters.add(waiter);
+    });
+  }
+
+  async function killAndWait(options?: {
+    gracefulTimeoutMs?: number;
+    forceTimeoutMs?: number;
+  }): Promise<void> {
+    const gracefulTimeoutMs = options?.gracefulTimeoutMs ?? 2000;
+    const forceTimeoutMs = options?.forceTimeoutMs ?? 1000;
+
+    if (processExited) {
+      kill();
+      return;
+    }
+
+    try {
+      ptyProcess.kill();
+    } catch {
+      // process may already be gone
+    }
+
+    const exitedGracefully = await waitForProcessExit(gracefulTimeoutMs);
+    if (!exitedGracefully) {
+      try {
+        ptyProcess.kill("SIGKILL");
+      } catch {
+        // process may already be gone
+      }
+      await waitForProcessExit(forceTimeoutMs);
+    }
+
+    // Finalize bookkeeping (idempotent if ptyProcess.onExit already fired).
+    kill();
+  }
+
   // Small delay to let shell initialize
   await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -799,5 +860,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     getTitle,
     getExitInfo,
     kill,
+    killAndWait,
   };
 }

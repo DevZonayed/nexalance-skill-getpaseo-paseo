@@ -15,7 +15,9 @@ import type { SessionOutboundMessage } from "./messages.js";
 import { ScriptRouteStore } from "./script-proxy.js";
 import * as worktreeBootstrap from "./worktree-bootstrap.js";
 import {
+  archivePaseoWorktree,
   buildAgentSessionConfig,
+  handlePaseoWorktreeArchiveRequest,
   runWorktreeSetupInBackground,
   handleCreatePaseoWorktreeRequest,
   handleWorkspaceSetupStatusRequest,
@@ -1008,5 +1010,200 @@ describe("handleCreatePaseoWorktreeRequest", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("archivePaseoWorktree", () => {
+  const cleanupPaths: string[] = [];
+
+  afterEach(() => {
+    for (const target of cleanupPaths.splice(0)) {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  function createIsPathWithinRoot() {
+    return (rootPath: string, candidatePath: string) => {
+      const normalizedRoot = path.resolve(rootPath);
+      const normalizedCandidate = path.resolve(candidatePath);
+      return (
+        normalizedCandidate === normalizedRoot ||
+        normalizedCandidate.startsWith(normalizedRoot + path.sep)
+      );
+    };
+  }
+
+  test("runs agent close and terminal teardown concurrently and removes the worktree", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+
+    const paseoHome = path.join(tempDir, ".paseo");
+    const created = await createWorktree({
+      branchName: "archive-parallel",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "archive-parallel",
+      runSetup: false,
+      paseoHome,
+    });
+
+    const teardownStartTimes: Record<string, number> = {};
+    const teardownEndTimes: Record<string, number> = {};
+    const closeAgentSpy = vi.fn(async (agentId: string) => {
+      teardownStartTimes[agentId] = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      teardownEndTimes[agentId] = Date.now();
+    });
+    const killTerminalsUnderPath = vi.fn(async () => {
+      teardownStartTimes.__terminals = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      teardownEndTimes.__terminals = Date.now();
+    });
+
+    const emitted: SessionOutboundMessage[] = [];
+    const removedAgents = await archivePaseoWorktree(
+      {
+        paseoHome,
+        agentManager: {
+          listAgents: () => [
+            { id: "agent-1", cwd: created.worktreePath } as any,
+            { id: "agent-2", cwd: created.worktreePath } as any,
+          ],
+          closeAgent: closeAgentSpy,
+        },
+        agentStorage: {
+          list: async () => [],
+          remove: vi.fn(async () => {}),
+        } as any,
+        archiveWorkspaceRecord: vi.fn(async () => {}),
+        emit: (msg) => emitted.push(msg),
+        emitWorkspaceUpdatesForCwds: vi.fn(async () => {}),
+        isPathWithinRoot: createIsPathWithinRoot(),
+        killTerminalsUnderPath,
+        sessionLogger: createLogger(),
+      },
+      {
+        targetPath: created.worktreePath,
+        repoRoot: repoDir,
+        requestId: "req-archive-parallel",
+      },
+    );
+
+    expect(removedAgents).toEqual(expect.arrayContaining(["agent-1", "agent-2"]));
+    expect(existsSync(created.worktreePath)).toBe(false);
+    expect(closeAgentSpy).toHaveBeenCalledTimes(2);
+    expect(killTerminalsUnderPath).toHaveBeenCalledWith(created.worktreePath);
+
+    // All teardown work must overlap — sequential would take ~300ms, parallel ~100ms.
+    const starts = Object.values(teardownStartTimes);
+    const ends = Object.values(teardownEndTimes);
+    const maxEnd = Math.max(...ends);
+    const minStart = Math.min(...starts);
+    expect(maxEnd - minStart).toBeLessThan(220);
+  });
+
+  test("proceeds to FS delete even when terminal teardown rejects", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+
+    const paseoHome = path.join(tempDir, ".paseo");
+    const created = await createWorktree({
+      branchName: "archive-terminal-throws",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "archive-terminal-throws",
+      runSetup: false,
+      paseoHome,
+    });
+
+    const killTerminalsUnderPath = vi.fn(async () => {
+      throw new Error("simulated terminal teardown failure");
+    });
+
+    await archivePaseoWorktree(
+      {
+        paseoHome,
+        agentManager: {
+          listAgents: () => [],
+          closeAgent: vi.fn(async () => {}),
+        },
+        agentStorage: {
+          list: async () => [],
+          remove: vi.fn(async () => {}),
+        } as any,
+        archiveWorkspaceRecord: vi.fn(async () => {}),
+        emit: vi.fn(),
+        emitWorkspaceUpdatesForCwds: vi.fn(async () => {}),
+        isPathWithinRoot: createIsPathWithinRoot(),
+        killTerminalsUnderPath,
+        sessionLogger: createLogger(),
+      },
+      {
+        targetPath: created.worktreePath,
+        repoRoot: repoDir,
+        requestId: "req-archive-terminal-throws",
+      },
+    );
+
+    expect(killTerminalsUnderPath).toHaveBeenCalledTimes(1);
+    expect(existsSync(created.worktreePath)).toBe(false);
+  });
+
+  test("succeeds when git has forgotten about the worktree (no repoRoot)", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    cleanupPaths.push(tempDir);
+
+    const paseoHome = path.join(tempDir, ".paseo");
+    const created = await createWorktree({
+      branchName: "archive-orphan",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "archive-orphan",
+      runSetup: false,
+      paseoHome,
+    });
+
+    // Simulate a prior failed archive that stripped git's admin dir.
+    rmSync(path.join(repoDir, ".git", "worktrees", "archive-orphan"), {
+      recursive: true,
+      force: true,
+    });
+    expect(existsSync(created.worktreePath)).toBe(true);
+
+    const emitted: SessionOutboundMessage[] = [];
+    await handlePaseoWorktreeArchiveRequest(
+      {
+        paseoHome,
+        agentManager: {
+          listAgents: () => [],
+          closeAgent: vi.fn(async () => {}),
+        },
+        agentStorage: {
+          list: async () => [],
+          remove: vi.fn(async () => {}),
+        } as any,
+        archiveWorkspaceRecord: vi.fn(async () => {}),
+        emit: (msg) => emitted.push(msg),
+        emitWorkspaceUpdatesForCwds: vi.fn(async () => {}),
+        isPathWithinRoot: createIsPathWithinRoot(),
+        killTerminalsUnderPath: vi.fn(async () => {}),
+        sessionLogger: createLogger(),
+      },
+      {
+        type: "paseo_worktree_archive_request",
+        requestId: "req-archive-orphan",
+        worktreePath: created.worktreePath,
+      },
+    );
+
+    const response = emitted.find(
+      (
+        message,
+      ): message is Extract<SessionOutboundMessage, { type: "paseo_worktree_archive_response" }> =>
+        message.type === "paseo_worktree_archive_response",
+    );
+    expect(response?.payload.success).toBe(true);
+    expect(response?.payload.error).toBeNull();
+    expect(existsSync(created.worktreePath)).toBe(false);
   });
 });

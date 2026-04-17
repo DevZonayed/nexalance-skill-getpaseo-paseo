@@ -99,6 +99,7 @@ interface WorkspaceLayoutStore {
   unpinAgent: (workspaceKey: string, agentId: string) => void;
   hideAgent: (workspaceKey: string, agentId: string) => void;
   unhideAgent: (workspaceKey: string, agentId: string) => void;
+  purgeWorkspace: (workspaceKey: string) => void;
 }
 
 const MAX_TREE_DEPTH = 4;
@@ -666,6 +667,37 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
 
           return {
             hiddenAgentIdsByWorkspace: nextHiddenAgentIdsByWorkspace,
+          };
+        });
+      },
+      purgeWorkspace: (workspaceKey) => {
+        const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+        if (!normalizedWorkspaceKey) {
+          return;
+        }
+
+        set((state) => {
+          const hasAny =
+            normalizedWorkspaceKey in state.layoutByWorkspace ||
+            normalizedWorkspaceKey in state.splitSizesByWorkspace ||
+            normalizedWorkspaceKey in state.pinnedAgentIdsByWorkspace ||
+            normalizedWorkspaceKey in state.hiddenAgentIdsByWorkspace;
+          if (!hasAny) {
+            return state;
+          }
+          const { [normalizedWorkspaceKey]: _layout, ...layoutByWorkspace } =
+            state.layoutByWorkspace;
+          const { [normalizedWorkspaceKey]: _splits, ...splitSizesByWorkspace } =
+            state.splitSizesByWorkspace;
+          const { [normalizedWorkspaceKey]: _pinned, ...pinnedAgentIdsByWorkspace } =
+            state.pinnedAgentIdsByWorkspace;
+          const { [normalizedWorkspaceKey]: _hidden, ...hiddenAgentIdsByWorkspace } =
+            state.hiddenAgentIdsByWorkspace;
+          return {
+            layoutByWorkspace,
+            splitSizesByWorkspace,
+            pinnedAgentIdsByWorkspace,
+            hiddenAgentIdsByWorkspace,
           };
         });
       },

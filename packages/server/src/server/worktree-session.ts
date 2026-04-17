@@ -96,6 +96,7 @@ type ArchivePaseoWorktreeDependencies = {
   emitWorkspaceUpdatesForCwds: (cwds: Iterable<string>) => Promise<void>;
   isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   killTerminalsUnderPath: (rootPath: string) => Promise<void>;
+  sessionLogger?: Logger;
 };
 
 type RegisterPendingWorktreeWorkspaceDependencies = {
@@ -169,6 +170,7 @@ type HandleCreatePaseoWorktreeRequestDependencies = {
 type KillTerminalsUnderPathDependencies = {
   isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   killTrackedTerminal: (terminalId: string, options?: { emitExit: boolean }) => void;
+  detachTerminalStream?: (terminalId: string, options: { emitExit: boolean }) => void;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
 };
@@ -487,7 +489,8 @@ export async function archivePaseoWorktree(
   dependencies: ArchivePaseoWorktreeDependencies,
   options: {
     targetPath: string;
-    repoRoot: string;
+    repoRoot: string | null;
+    worktreesRoot?: string;
     requestId: string;
   },
 ): Promise<string[]> {
@@ -502,53 +505,73 @@ export async function archivePaseoWorktree(
   const removedAgents = new Set<string>();
   const affectedWorkspaceCwds = new Set<string>([targetPath]);
   const affectedWorkspaceIds = new Set<string>([normalizePersistedWorkspaceId(targetPath)]);
-  const agents = dependencies.agentManager.listAgents();
-  for (const agent of agents) {
-    if (!dependencies.isPathWithinRoot(targetPath, agent.cwd)) {
-      continue;
-    }
 
+  const liveAgents = dependencies.agentManager
+    .listAgents()
+    .filter((agent) => dependencies.isPathWithinRoot(targetPath, agent.cwd));
+  for (const agent of liveAgents) {
     removedAgents.add(agent.id);
     affectedWorkspaceCwds.add(agent.cwd);
     affectedWorkspaceIds.add(normalizePersistedWorkspaceId(agent.cwd));
-    try {
-      await dependencies.agentManager.closeAgent(agent.id);
-    } catch {
-      // ignore cleanup errors
-    }
-    try {
-      await dependencies.agentStorage.remove(agent.id);
-    } catch {
-      // ignore cleanup errors
-    }
   }
 
-  const registryRecords = await dependencies.agentStorage.list();
-  for (const record of registryRecords) {
-    if (!dependencies.isPathWithinRoot(targetPath, record.cwd)) {
-      continue;
-    }
-
+  const storedRecords = await dependencies.agentStorage.list().catch(() => []);
+  const matchingStoredRecords = storedRecords.filter((record) =>
+    dependencies.isPathWithinRoot(targetPath, record.cwd),
+  );
+  for (const record of matchingStoredRecords) {
     removedAgents.add(record.id);
     affectedWorkspaceCwds.add(record.cwd);
     affectedWorkspaceIds.add(normalizePersistedWorkspaceId(record.cwd));
-    try {
-      await dependencies.agentStorage.remove(record.id);
-    } catch {
-      // ignore cleanup errors
+  }
+
+  const agentIdsToRemoveFromStorage = new Set<string>([
+    ...liveAgents.map((agent) => agent.id),
+    ...matchingStoredRecords.map((record) => record.id),
+  ]);
+
+  // Fan out agent close + terminal teardown concurrently. We never let a
+  // per-item failure abort the archive — the FS delete must still run so the
+  // worktree doesn't get stuck half-dead.
+  const teardownResults = await Promise.allSettled([
+    ...liveAgents.map((agent) => dependencies.agentManager.closeAgent(agent.id)),
+    dependencies.killTerminalsUnderPath(targetPath),
+  ]);
+
+  for (const result of teardownResults) {
+    if (result.status === "rejected") {
+      dependencies.sessionLogger?.warn(
+        { err: result.reason, targetPath },
+        "Worktree teardown step failed during archive; continuing",
+      );
     }
   }
 
-  await dependencies.killTerminalsUnderPath(targetPath);
+  // Agent storage removal runs after closeAgent so file handles on the agent
+  // state file are released; still allSettled so a single bad record can't
+  // derail the rest.
+  await Promise.allSettled(
+    Array.from(agentIdsToRemoveFromStorage).map((agentId) =>
+      dependencies.agentStorage.remove(agentId),
+    ),
+  );
 
   await deletePaseoWorktree({
     cwd: options.repoRoot,
     worktreePath: targetPath,
+    worktreesRoot: options.worktreesRoot,
     paseoHome: dependencies.paseoHome,
   });
 
   for (const workspaceId of affectedWorkspaceIds) {
-    await dependencies.archiveWorkspaceRecord(workspaceId);
+    try {
+      await dependencies.archiveWorkspaceRecord(workspaceId);
+    } catch (error) {
+      dependencies.sessionLogger?.warn(
+        { err: error, workspaceId },
+        "Failed to archive workspace record; worktree FS already removed",
+      );
+    }
   }
 
   for (const agentId of removedAgents) {
@@ -612,14 +635,15 @@ export async function handlePaseoWorktreeArchiveRequest(
       return;
     }
 
+    // repoRoot is best-effort: if git has forgotten about the worktree we
+    // still proceed using the path-derived worktreesRoot, since the ownership
+    // check already proved the path lives under $PASEO_HOME/worktrees.
     repoRoot = ownership.repoRoot ?? repoRoot ?? null;
-    if (!repoRoot) {
-      throw new Error("Unable to resolve repo root for worktree");
-    }
 
     const removedAgents = await archivePaseoWorktree(dependencies, {
       targetPath,
       repoRoot,
+      worktreesRoot: ownership.worktreeRoot,
       requestId,
     });
 
@@ -953,34 +977,48 @@ export async function killTerminalsUnderPath(
   dependencies: KillTerminalsUnderPathDependencies,
   rootPath: string,
 ): Promise<void> {
-  if (!dependencies.terminalManager) {
+  const terminalManager = dependencies.terminalManager;
+  if (!terminalManager) {
     return;
   }
 
-  const cleanupErrors: Array<{ cwd: string; message: string }> = [];
-  const terminalDirectories = [...dependencies.terminalManager.listDirectories()];
+  const terminalIds: string[] = [];
+  const terminalDirectories = [...terminalManager.listDirectories()];
   for (const terminalCwd of terminalDirectories) {
     if (!dependencies.isPathWithinRoot(rootPath, terminalCwd)) {
       continue;
     }
-
     try {
-      const terminals = await dependencies.terminalManager.getTerminals(terminalCwd);
-      for (const terminal of [...terminals]) {
-        dependencies.killTrackedTerminal(terminal.id, { emitExit: true });
+      const terminals = await terminalManager.getTerminals(terminalCwd);
+      for (const terminal of terminals) {
+        terminalIds.push(terminal.id);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      cleanupErrors.push({ cwd: terminalCwd, message });
       dependencies.sessionLogger.warn(
         { err: error, cwd: terminalCwd },
-        "Failed to clean up worktree terminals during archive",
+        "Failed to enumerate worktree terminals during archive",
       );
     }
   }
 
-  if (cleanupErrors.length > 0) {
-    const details = cleanupErrors.map((entry) => `${entry.cwd}: ${entry.message}`).join("; ");
-    throw new Error(`Failed to clean up worktree terminals during archive (${details})`);
+  if (terminalIds.length === 0) {
+    return;
   }
+
+  await Promise.allSettled(
+    terminalIds.map(async (terminalId) => {
+      try {
+        dependencies.detachTerminalStream?.(terminalId, { emitExit: true });
+        await terminalManager.killTerminalAndWait(terminalId, {
+          gracefulTimeoutMs: 2000,
+          forceTimeoutMs: 1500,
+        });
+      } catch (error) {
+        dependencies.sessionLogger.warn(
+          { err: error, terminalId },
+          "Terminal kill escalation failed during archive; proceeding anyway",
+        );
+      }
+    }),
+  );
 }

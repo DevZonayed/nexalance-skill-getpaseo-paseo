@@ -879,6 +879,31 @@ describe("paseo worktree manager", () => {
       deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome }),
     ).resolves.toBeUndefined();
   });
+
+  it("deletes a worktree when the parent repo root is not available", async () => {
+    const created = await createWorktree({
+      branchName: "no-cwd-branch",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "no-cwd",
+      paseoHome,
+    });
+
+    const ownership = await isPaseoOwnedWorktreeCwd(created.worktreePath, { paseoHome });
+    expect(ownership.allowed).toBe(true);
+    expect(ownership.worktreeRoot).toBeTruthy();
+
+    // Simulate the handler path when git has forgotten about the worktree:
+    // caller forwards the path-derived worktreesRoot from the ownership check.
+    await deletePaseoWorktree({
+      cwd: null,
+      worktreePath: created.worktreePath,
+      worktreesRoot: ownership.worktreeRoot,
+      paseoHome,
+    });
+
+    expect(existsSync(created.worktreePath)).toBe(false);
+  });
 });
 
 describe("slugify", () => {

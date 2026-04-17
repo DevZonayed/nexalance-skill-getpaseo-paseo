@@ -28,6 +28,10 @@ export interface TerminalManager {
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   getTerminal(id: string): TerminalSession | undefined;
   killTerminal(id: string): void;
+  killTerminalAndWait(
+    id: string,
+    options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number },
+  ): Promise<void>;
   listDirectories(): string[];
   killAll(): void;
   subscribeTerminalsChanged(listener: TerminalsChangedListener): () => void;
@@ -198,6 +202,21 @@ export function createTerminalManager(): TerminalManager {
 
     killTerminal(id: string): void {
       removeSessionById(id, { kill: true });
+    },
+
+    async killTerminalAndWait(
+      id: string,
+      options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number },
+    ): Promise<void> {
+      const session = terminalsById.get(id);
+      if (!session) {
+        return;
+      }
+      try {
+        await session.killAndWait(options);
+      } finally {
+        removeSessionById(id, { kill: false });
+      }
     },
 
     listDirectories(): string[] {

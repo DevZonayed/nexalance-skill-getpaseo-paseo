@@ -1,6 +1,7 @@
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "fs";
+import { rm, stat } from "fs/promises";
 import { join, basename, dirname, resolve, sep } from "path";
 import net from "node:net";
 import { createHash } from "node:crypto";
@@ -1027,20 +1028,33 @@ export async function deletePaseoWorktree({
   cwd,
   worktreePath,
   worktreeSlug,
+  worktreesRoot,
   paseoHome,
 }: {
-  cwd: string;
+  cwd: string | null;
   worktreePath?: string;
   worktreeSlug?: string;
+  worktreesRoot?: string;
   paseoHome?: string;
 }): Promise<void> {
   if (!worktreePath && !worktreeSlug) {
     throw new Error("worktreePath or worktreeSlug is required");
   }
 
-  const worktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome);
-  const resolvedRoot = normalizePathForOwnership(worktreesRoot) + sep;
-  const requestedPath = worktreePath ?? join(worktreesRoot, worktreeSlug!);
+  // Resolve the worktrees-root. With a repo cwd we hash it the normal way; if
+  // git has forgotten about the worktree we expect the caller to hand us the
+  // path-derived worktreesRoot from the ownership check.
+  let resolvedWorktreesRoot: string;
+  if (worktreesRoot) {
+    resolvedWorktreesRoot = worktreesRoot;
+  } else if (cwd) {
+    resolvedWorktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome);
+  } else {
+    throw new Error("cwd or worktreesRoot is required to delete a Paseo worktree");
+  }
+
+  const resolvedRoot = normalizePathForOwnership(resolvedWorktreesRoot) + sep;
+  const requestedPath = worktreePath ?? join(resolvedWorktreesRoot, worktreeSlug!);
   const resolvedRequested = normalizePathForOwnership(requestedPath);
   const resolvedWorktree =
     (await resolvePaseoWorktreeRootForCwd(requestedPath, { paseoHome }))?.worktreePath ??
@@ -1050,32 +1064,72 @@ export async function deletePaseoWorktree({
     throw new Error("Refusing to delete non-Paseo worktree");
   }
 
-  if (existsSync(resolvedWorktree)) {
+  if (await pathExists(resolvedWorktree)) {
     await runWorktreeTeardownCommands({
       worktreePath: resolvedWorktree,
     });
   }
 
-  try {
-    await runGitCommand(["worktree", "remove", resolvedWorktree, "--force"], {
-      cwd,
-      timeout: 120_000,
-    });
-  } catch {
-    // `git worktree remove` fails if the admin dir is already gone (e.g. a prior
-    // archive attempt removed it before the working tree could be fully cleaned
-    // up). Fall through to the rmSync fallback below so the retry is idempotent.
+  if (cwd) {
+    try {
+      await runGitCommand(["worktree", "remove", resolvedWorktree, "--force"], {
+        cwd,
+        timeout: 120_000,
+      });
+    } catch {
+      // `git worktree remove` fails if the admin dir is already gone (e.g. a
+      // prior archive attempt removed it before the working tree could be
+      // fully cleaned up), or if the repo root has moved. Fall through to the
+      // rm retry loop below so the operation stays idempotent.
+    }
   }
 
-  if (existsSync(resolvedWorktree)) {
-    rmSync(resolvedWorktree, { recursive: true, force: true });
+  await removeDirectoryWithRetries(resolvedWorktree);
+
+  if (cwd) {
+    try {
+      await runGitCommand(["worktree", "prune"], { cwd, timeout: 30_000 });
+    } catch {
+      // not critical; git will prune lazily
+    }
+  }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeDirectoryWithRetries(path: string): Promise<void> {
+  if (!(await pathExists(path))) {
+    return;
   }
 
-  // Clean up any stale admin entries git may still have cached for this path.
-  try {
-    await runGitCommand(["worktree", "prune"], { cwd, timeout: 30_000 });
-  } catch {
-    // not critical; git will prune lazily
+  const delaysMs = [0, 100, 300, 700, 1500];
+  let lastError: unknown = null;
+  for (const delay of delaysMs) {
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      await rm(path, { recursive: true, force: true });
+      if (!(await pathExists(path))) {
+        return;
+      }
+      lastError = new Error(`Directory still present after rm: ${path}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (await pathExists(path)) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Failed to remove worktree directory: ${path}`);
   }
 }
 
