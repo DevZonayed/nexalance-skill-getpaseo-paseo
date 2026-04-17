@@ -313,7 +313,11 @@ function WorkspaceHoverCardContent({
 
                   return (
                     <>
-                      <GitHubIcon size={12} color={theme.colors.foregroundMuted} />
+                      {hovered ? (
+                        <ExternalLink size={12} color={theme.colors.foregroundMuted} />
+                      ) : (
+                        <GitHubIcon size={12} color={theme.colors.foregroundMuted} />
+                      )}
                       <Text style={styles.checksSummaryLabel}>Checks</Text>
                       <View style={styles.checksSummaryCounts}>
                         <View style={[styles.checksDot, { backgroundColor: badgeColor }]} />
@@ -321,18 +325,6 @@ function WorkspaceHoverCardContent({
                           {badgeLabel}
                         </Text>
                       </View>
-                      {hovered ? (
-                        <View
-                          style={[
-                            styles.externalLinkOverlay,
-                            {
-                              backgroundImage: `linear-gradient(to right, transparent, ${theme.colors.surface2} 40%)`,
-                            } as any,
-                          ]}
-                        >
-                          <ExternalLink size={12} color={theme.colors.foreground} />
-                        </View>
-                      ) : null}
                     </>
                   );
                 }}
@@ -394,16 +386,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   listRowHovered: {
     backgroundColor: theme.colors.surface2,
-  },
-  externalLinkOverlay: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    bottom: 0,
-    paddingLeft: theme.spacing[4],
-    paddingRight: theme.spacing[3],
-    alignItems: "center",
-    justifyContent: "center",
   },
   checksSummaryRow: {
     flexDirection: "row",
