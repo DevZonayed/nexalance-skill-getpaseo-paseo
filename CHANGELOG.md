@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.59 - 2026-04-16
+
+### Added
+- Opus 4.7 in the Claude model picker, with a 1M-context variant.
+- Extra High reasoning effort for Opus 4.7, between High and Max.
+
 ## 0.1.58 - 2026-04-16
 
 ### Added
