@@ -3068,36 +3068,93 @@ export class Session {
   private async handleListProviderModelsRequest(
     msg: Extract<SessionInboundMessage, { type: "list_provider_models_request" }>,
   ): Promise<void> {
+    const cwd = msg.cwd ? expandTilde(msg.cwd) : undefined;
     const fetchedAt = new Date().toISOString();
-    try {
-      const models = await this.providerRegistry[msg.provider].fetchModels({
-        cwd: msg.cwd ? expandTilde(msg.cwd) : undefined,
-      });
-      this.emit({
-        type: "list_provider_models_response",
-        payload: {
-          provider: msg.provider,
-          models,
-          error: null,
-          fetchedAt,
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, provider: msg.provider },
-        `Failed to list models for ${msg.provider}`,
-      );
-      this.emit({
-        type: "list_provider_models_response",
-        payload: {
-          provider: msg.provider,
-          error: (error as Error)?.message ?? String(error),
-          fetchedAt,
-          requestId: msg.requestId,
-        },
-      });
+    const manager = this.providerSnapshotManager;
+
+    if (!manager) {
+      try {
+        const models = await this.providerRegistry[msg.provider].fetchModels({ cwd });
+        this.emit({
+          type: "list_provider_models_response",
+          payload: {
+            provider: msg.provider,
+            models,
+            error: null,
+            fetchedAt,
+            requestId: msg.requestId,
+          },
+        });
+      } catch (error) {
+        this.sessionLogger.error(
+          { err: error, provider: msg.provider },
+          `Failed to list models for ${msg.provider}`,
+        );
+        this.emit({
+          type: "list_provider_models_response",
+          payload: {
+            provider: msg.provider,
+            error: (error as Error)?.message ?? String(error),
+            fetchedAt,
+            requestId: msg.requestId,
+          },
+        });
+      }
+      return;
     }
+
+    const findEntry = () =>
+      manager.getSnapshot(cwd).find((candidate) => candidate.provider === msg.provider);
+
+    let entry = findEntry();
+    if (!entry || entry.status === "loading") {
+      // Awaits the in-flight warmup (deduped per-cwd) so old clients still get
+      // a resolved answer rather than a loading placeholder.
+      await manager.refresh({ cwd, providers: [msg.provider] });
+      entry = findEntry();
+    }
+
+    if (!entry) {
+      this.emit({
+        type: "list_provider_models_response",
+        payload: {
+          provider: msg.provider,
+          error: `Unknown provider: ${msg.provider}`,
+          fetchedAt,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    if (entry.status === "ready") {
+      this.emit({
+        type: "list_provider_models_response",
+        payload: {
+          provider: msg.provider,
+          models: entry.models ?? [],
+          error: null,
+          fetchedAt: entry.fetchedAt ?? fetchedAt,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    const errorMessage =
+      entry.status === "error"
+        ? (entry.error ?? `Failed to list models for ${msg.provider}`)
+        : `Provider ${msg.provider} is not available`;
+
+    this.emit({
+      type: "list_provider_models_response",
+      payload: {
+        provider: msg.provider,
+        error: errorMessage,
+        fetchedAt,
+        requestId: msg.requestId,
+      },
+    });
   }
 
   private async handleListProviderModesRequest(
@@ -4771,6 +4828,7 @@ export class Session {
         isPathWithinRoot: (rootPath, candidatePath) =>
           this.isPathWithinRoot(rootPath, candidatePath),
         killTerminalsUnderPath: (rootPath) => this.killTerminalsUnderPath(rootPath),
+        sessionLogger: this.sessionLogger,
       },
       msg,
     );
@@ -8467,6 +8525,8 @@ export class Session {
         isPathWithinRoot: (pathRoot, candidatePath) =>
           this.isPathWithinRoot(pathRoot, candidatePath),
         killTrackedTerminal: (terminalId, options) => this.killTrackedTerminal(terminalId, options),
+        detachTerminalStream: (terminalId, options) =>
+          void this.detachTerminalStream(terminalId, options),
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
       },
