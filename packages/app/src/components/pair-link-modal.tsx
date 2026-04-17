@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { useCallback, useRef, useState } from "react";
+import { Alert, Text, TextInput, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { Link } from "lucide-react-native";
@@ -69,27 +69,33 @@ export function PairLinkModal({
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
   const isMobile = useIsCompactFormFactor();
 
-  const [offerUrl, setOfferUrl] = useState("");
+  const offerUrlRef = useRef("");
+  const inputRef = useRef<TextInput>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const clearInput = useCallback(() => {
+    offerUrlRef.current = "";
+    inputRef.current?.clear();
+  }, []);
+
   const handleClose = useCallback(() => {
     if (isSaving) return;
-    setOfferUrl("");
+    clearInput();
     setErrorMessage("");
     onClose();
-  }, [isSaving, onClose]);
+  }, [isSaving, clearInput, onClose]);
 
   const handleCancel = useCallback(() => {
     if (isSaving) return;
-    setOfferUrl("");
+    clearInput();
     setErrorMessage("");
     (onCancel ?? onClose)();
-  }, [isSaving, onCancel, onClose]);
+  }, [isSaving, clearInput, onCancel, onClose]);
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
-    const raw = offerUrl.trim();
+    const raw = offerUrlRef.current.trim();
     if (!raw) {
       setErrorMessage("Paste a pairing link (…/#offer=...)");
       return;
@@ -159,16 +165,7 @@ export function PairLinkModal({
     } finally {
       setIsSaving(false);
     }
-  }, [
-    daemons,
-    handleClose,
-    isMobile,
-    isSaving,
-    offerUrl,
-    onSaved,
-    targetServerId,
-    upsertDaemonFromOfferUrl,
-  ]);
+  }, [daemons, handleClose, isMobile, isSaving, onSaved, targetServerId, upsertDaemonFromOfferUrl]);
 
   return (
     <AdaptiveModalSheet
@@ -182,11 +179,13 @@ export function PairLinkModal({
       <View style={styles.field}>
         <Text style={styles.label}>Pairing link</Text>
         <AdaptiveTextInput
+          ref={inputRef}
           testID="pair-link-input"
           nativeID="pair-link-input"
           accessibilityLabel="pair-link-input"
-          value={offerUrl}
-          onChangeText={setOfferUrl}
+          onChangeText={(next) => {
+            offerUrlRef.current = next;
+          }}
           placeholder="https://app.paseo.sh/#offer=..."
           placeholderTextColor={theme.colors.foregroundMuted}
           style={styles.input}

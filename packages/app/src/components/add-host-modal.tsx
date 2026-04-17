@@ -155,29 +155,34 @@ export function AddHostModal({
   const isMobile = useIsCompactFormFactor();
 
   const hostInputRef = useRef<TextInput>(null);
+  const endpointRawRef = useRef("");
 
-  const [endpointRaw, setEndpointRaw] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const clearInput = useCallback(() => {
+    endpointRawRef.current = "";
+    hostInputRef.current?.clear();
+  }, []);
+
   const handleClose = useCallback(() => {
     if (isSaving) return;
-    setEndpointRaw("");
+    clearInput();
     setErrorMessage("");
     onClose();
-  }, [isSaving, onClose]);
+  }, [isSaving, clearInput, onClose]);
 
   const handleCancel = useCallback(() => {
     if (isSaving) return;
-    setEndpointRaw("");
+    clearInput();
     setErrorMessage("");
     (onCancel ?? onClose)();
-  }, [isSaving, onCancel, onClose]);
+  }, [isSaving, clearInput, onCancel, onClose]);
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
 
-    const raw = endpointRaw.trim();
+    const raw = endpointRawRef.current.trim();
     if (!raw) {
       setErrorMessage("Host is required");
       return;
@@ -240,16 +245,7 @@ export function AddHostModal({
     } finally {
       setIsSaving(false);
     }
-  }, [
-    daemons,
-    endpointRaw,
-    handleClose,
-    isMobile,
-    isSaving,
-    onSaved,
-    targetServerId,
-    upsertDirectConnection,
-  ]);
+  }, [daemons, handleClose, isMobile, isSaving, onSaved, targetServerId, upsertDirectConnection]);
 
   return (
     <AdaptiveModalSheet
@@ -264,8 +260,12 @@ export function AddHostModal({
         <Text style={styles.label}>Host</Text>
         <AdaptiveTextInput
           ref={hostInputRef}
-          value={endpointRaw}
-          onChangeText={setEndpointRaw}
+          testID="direct-host-input"
+          nativeID="direct-host-input"
+          accessibilityLabel="direct-host-input"
+          onChangeText={(next) => {
+            endpointRawRef.current = next;
+          }}
           placeholder="hostname:port"
           placeholderTextColor={theme.colors.foregroundMuted}
           style={styles.input}
@@ -289,6 +289,7 @@ export function AddHostModal({
           onPress={() => void handleSave()}
           disabled={isSaving}
           leftIcon={<Link2 size={16} color={theme.colors.palette.white} />}
+          testID="direct-host-submit"
         >
           {isSaving ? "Connecting..." : "Connect"}
         </Button>

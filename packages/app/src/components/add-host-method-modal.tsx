@@ -71,6 +71,7 @@ export function AddHostMethodModal({
         style={styles.option}
         onPress={handleDirect}
         accessibilityLabel="Direct connection"
+        testID="add-host-method-direct"
       >
         <Link2 size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
@@ -93,6 +94,7 @@ export function AddHostMethodModal({
         style={styles.option}
         onPress={handlePaste}
         accessibilityLabel="Paste pairing link"
+        testID="add-host-method-pair-link"
       >
         <ClipboardPaste size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>

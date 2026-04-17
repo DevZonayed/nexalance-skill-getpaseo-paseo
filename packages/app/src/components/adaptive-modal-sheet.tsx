@@ -247,8 +247,9 @@ export function AdaptiveModalSheet({
         handleIndicatorStyle={styles.bottomSheetHandle}
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
+        accessible={false}
       >
-        <View style={styles.bottomSheetHeader}>
+        <View style={styles.bottomSheetHeader} testID={testID}>
           <View style={styles.headerTitleGroup}>
             <Text style={styles.title} numberOfLines={1}>
               {title}
