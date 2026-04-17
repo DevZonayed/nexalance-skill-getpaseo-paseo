@@ -1,7 +1,9 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Pressable, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
+import { isNative } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 interface AttachmentPillProps {
   onOpen: () => void;
@@ -21,11 +23,18 @@ export function AttachmentPill({
   children,
 }: AttachmentPillProps) {
   const { theme } = useUnistyles();
+  const isCompact = useIsCompactFormFactor();
+  const [isBodyHovered, setIsBodyHovered] = useState(false);
+  const [isCloseHovered, setIsCloseHovered] = useState(false);
+  const alwaysShow = isNative || isCompact;
+  const showRemove = alwaysShow || isBodyHovered || isCloseHovered;
   return (
     <View style={styles.wrapper}>
       <Pressable
         testID={testID}
         onPress={onOpen}
+        onHoverIn={() => setIsBodyHovered(true)}
+        onHoverOut={() => setIsBodyHovered(false)}
         accessibilityRole="button"
         accessibilityLabel={openAccessibilityLabel}
         style={styles.body}
@@ -34,10 +43,12 @@ export function AttachmentPill({
       </Pressable>
       <Pressable
         onPress={onRemove}
+        onHoverIn={() => setIsCloseHovered(true)}
+        onHoverOut={() => setIsCloseHovered(false)}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={removeAccessibilityLabel}
-        style={styles.closeButton}
+        style={[styles.closeButton, !showRemove && styles.closeButtonHidden]}
       >
         <X size={12} color={theme.colors.foregroundMuted} />
       </Pressable>
@@ -68,5 +79,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,
+  },
+  closeButtonHidden: {
+    opacity: 0,
+    pointerEvents: "none",
   },
 }));
