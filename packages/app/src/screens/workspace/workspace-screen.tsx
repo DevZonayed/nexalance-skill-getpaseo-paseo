@@ -64,7 +64,7 @@ import {
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useProviderModels } from "@/hooks/use-provider-models";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
@@ -612,9 +612,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
 
-  // Prefetch provider models early so the model picker is warm by the time it opens
-  useProviderModels(normalizedServerId);
-
   const normalizedWorkspaceId =
     resolveWorkspaceRouteId({
       routeWorkspaceId: workspaceId,
@@ -645,6 +642,10 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   );
   const workspaceDirectory = workspaceAuthority?.workspaceDirectory ?? null;
   const isMissingWorkspaceExecutionAuthority = Boolean(workspaceDescriptor && !workspaceAuthority);
+
+  // Warm the server-side provider snapshot for this workspace cwd so the model
+  // picker is ready when opened. Consumers share the same query cache key.
+  useProvidersSnapshot(normalizedServerId, workspaceDirectory);
   const [pendingTerminalCreateInput, setPendingTerminalCreateInput] = useState<{
     paneId?: string;
   } | null>(null);
