@@ -27,7 +27,7 @@ interface UseProvidersSnapshotResult {
   error: string | null;
   supportsSnapshot: boolean;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
-  invalidate: () => void;
+  refetchIfStale: () => void;
 }
 
 export function useProvidersSnapshot(
@@ -99,8 +99,8 @@ export function useProvidersSnapshot(
     [refreshSnapshot],
   );
 
-  const invalidate = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey });
+  const refetchIfStale = useCallback(() => {
+    void queryClient.refetchQueries({ queryKey, type: "active", stale: true });
   }, [queryClient, queryKey]);
 
   return {
@@ -111,7 +111,7 @@ export function useProvidersSnapshot(
     error: snapshotQuery.error instanceof Error ? snapshotQuery.error.message : null,
     supportsSnapshot,
     refresh,
-    invalidate,
+    refetchIfStale,
   };
 }
 

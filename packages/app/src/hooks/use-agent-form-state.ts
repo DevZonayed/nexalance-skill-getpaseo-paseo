@@ -91,7 +91,7 @@ export type UseAgentFormStateResult = {
   isModelLoading: boolean;
   modelError: string | null;
   refreshProviderModels: () => void;
-  invalidateProviderModels: () => void;
+  refetchProviderModelsIfStale: () => void;
   setProviderAndModelFromUser: (provider: AgentProvider, modelId: string) => void;
   workingDirIsEmpty: boolean;
   persistFormPreferences: () => Promise<void>;
@@ -360,10 +360,9 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const {
     entries: snapshotEntries,
     isLoading: snapshotIsLoading,
-    isFetching: snapshotIsFetching,
     error: snapshotError,
     refresh: refreshSnapshot,
-    invalidate: invalidateSnapshot,
+    refetchIfStale: refetchSnapshotIfStale,
   } = useProvidersSnapshot(formState.serverId, formState.workingDir);
 
   const allProviderEntries = useMemo(() => snapshotEntries ?? [], [snapshotEntries]);
@@ -413,7 +412,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const allProviderModels = snapshotAllProviderModels;
   const availableModels = snapshotSelectedProviderModels;
   const modeOptions = snapshotSelectedProviderModes;
-  const isAllModelsLoading = snapshotIsLoading || snapshotIsFetching;
+  const isAllModelsLoading = snapshotIsLoading;
 
   // Combine initialValues with initialServerId for resolution
   const combinedInitialValues = useMemo((): FormInitialValues | undefined => {
@@ -625,9 +624,9 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     refreshSnapshot();
   }, [refreshSnapshot]);
 
-  const invalidateProviderModels = useCallback(() => {
-    invalidateSnapshot();
-  }, [invalidateSnapshot]);
+  const refetchProviderModelsIfStale = useCallback(() => {
+    refetchSnapshotIfStale();
+  }, [refetchSnapshotIfStale]);
 
   const persistFormPreferences = useCallback(async () => {
     const resolvedModel = resolveEffectiveModel(availableModels, formState.model);
@@ -662,7 +661,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const effectiveModel = resolveEffectiveModel(availableModels, formState.model);
   const resolvedModelId = effectiveModel?.id ?? formState.model;
   const availableThinkingOptions = effectiveModel?.thinkingOptions ?? [];
-  const isModelLoading = snapshotIsLoading || snapshotIsFetching;
+  const isModelLoading = snapshotIsLoading;
   const modelError = snapshotError;
 
   const workingDirIsEmpty = !formState.workingDir.trim();
@@ -695,7 +694,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       isModelLoading,
       modelError,
       refreshProviderModels,
-      invalidateProviderModels,
+      refetchProviderModelsIfStale,
       setProviderAndModelFromUser,
       workingDirIsEmpty,
       persistFormPreferences,
@@ -727,7 +726,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       isModelLoading,
       modelError,
       refreshProviderModels,
-      invalidateProviderModels,
+      refetchProviderModelsIfStale,
       setProviderAndModelFromUser,
       workingDirIsEmpty,
       persistFormPreferences,

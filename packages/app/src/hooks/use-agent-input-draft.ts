@@ -167,7 +167,7 @@ function buildDraftStatusControls(input: {
     features,
     onSetFeature,
     onDropdownClose,
-    onModelSelectorOpen: formState.invalidateProviderModels,
+    onModelSelectorOpen: formState.refetchProviderModelsIfStale,
   };
 }
 

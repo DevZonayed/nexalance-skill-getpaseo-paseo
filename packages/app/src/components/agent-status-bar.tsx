@@ -867,8 +867,7 @@ export const AgentStatusBar = memo(function AgentStatusBar({
   const {
     entries: snapshotEntries,
     isLoading: snapshotIsLoading,
-    isFetching: snapshotIsFetching,
-    invalidate: invalidateSnapshot,
+    refetchIfStale: refetchSnapshotIfStale,
   } = useProvidersSnapshot(serverId, agent?.cwd);
 
   const snapshotModels = useMemo(() => {
@@ -1034,8 +1033,8 @@ export const AgentStatusBar = memo(function AgentStatusBar({
           console.warn("[AgentStatusBar] setAgentFeature failed", error);
         });
       }}
-      isModelLoading={snapshotIsLoading || snapshotIsFetching}
-      onModelSelectorOpen={invalidateSnapshot}
+      isModelLoading={snapshotIsLoading}
+      onModelSelectorOpen={refetchSnapshotIfStale}
       onDropdownClose={onDropdownClose}
       disabled={!client}
     />
