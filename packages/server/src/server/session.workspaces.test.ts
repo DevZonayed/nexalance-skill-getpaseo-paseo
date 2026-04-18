@@ -1406,6 +1406,69 @@ describe("workspace aggregation", () => {
     expect(response?.payload.workspace?.id).toBe("/tmp/repo");
   });
 
+  test("open_project_request unarchives an existing archived workspace and project", async () => {
+    const emitted: Array<{ type: string; payload: unknown }> = [];
+    const session = createSessionForWorkspaceTests() as any;
+    const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+    const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+    const cwd = "/tmp/repo";
+    projects.set(
+      cwd,
+      createPersistedProjectRecord({
+        projectId: cwd,
+        rootPath: cwd,
+        kind: "non_git",
+        displayName: "repo",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        archivedAt: "2026-03-10T00:00:00.000Z",
+      }),
+    );
+    workspaces.set(
+      cwd,
+      createPersistedWorkspaceRecord({
+        workspaceId: cwd,
+        projectId: cwd,
+        cwd,
+        kind: "directory",
+        displayName: "repo",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        archivedAt: "2026-03-10T00:00:00.000Z",
+      }),
+    );
+
+    session.emit = (message: any) => emitted.push(message);
+    session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+    session.projectRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedProjectRecord>,
+    ) => {
+      projects.set(record.projectId, record);
+    };
+    session.workspaceRegistry.get = async (workspaceId: string) =>
+      workspaces.get(workspaceId) ?? null;
+    session.workspaceRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedWorkspaceRecord>,
+    ) => {
+      workspaces.set(record.workspaceId, record);
+    };
+    session.projectRegistry.list = async () => Array.from(projects.values());
+    session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+    await session.handleMessage({
+      type: "open_project_request",
+      cwd,
+      requestId: "req-open-unarchive",
+    });
+
+    expect(workspaces.get(cwd)?.archivedAt).toBeNull();
+    expect(projects.get(cwd)?.archivedAt).toBeNull();
+    const response = emitted.find((message) => message.type === "open_project_response") as any;
+    expect(response?.payload.error).toBeNull();
+    expect(response?.payload.workspace?.id).toBe(cwd);
+  });
+
   test.skip("open_project_request collapses a git subdirectory onto the repo root workspace", async () => {
     const emitted: Array<{ type: string; payload: unknown }> = [];
     const session = createSessionForWorkspaceTests() as any;

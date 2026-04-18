@@ -10,6 +10,7 @@ interface AttachmentPillProps {
   onRemove: () => void;
   openAccessibilityLabel: string;
   removeAccessibilityLabel: string;
+  disabled?: boolean;
   testID?: string;
   children: ReactNode;
 }
@@ -19,6 +20,7 @@ export function AttachmentPill({
   onRemove,
   openAccessibilityLabel,
   removeAccessibilityLabel,
+  disabled = false,
   testID,
   children,
 }: AttachmentPillProps) {
@@ -33,6 +35,7 @@ export function AttachmentPill({
       <Pressable
         testID={testID}
         onPress={onOpen}
+        disabled={disabled}
         onHoverIn={() => setIsBodyHovered(true)}
         onHoverOut={() => setIsBodyHovered(false)}
         accessibilityRole="button"
@@ -43,6 +46,7 @@ export function AttachmentPill({
       </Pressable>
       <Pressable
         onPress={onRemove}
+        disabled={disabled}
         onHoverIn={() => setIsCloseHovered(true)}
         onHoverOut={() => setIsCloseHovered(false)}
         hitSlop={8}

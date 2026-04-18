@@ -115,4 +115,71 @@ describe("shared messages attachments", () => {
       },
     ]);
   });
+
+  it("parses old-shape create-worktree payloads without the new intent fields", () => {
+    const parsed = CreatePaseoWorktreeRequestSchema.parse({
+      type: "create_paseo_worktree_request",
+      requestId: "req-4",
+      cwd: "/tmp/repo",
+      attachments: [],
+    });
+
+    expect(parsed).toEqual({
+      type: "create_paseo_worktree_request",
+      requestId: "req-4",
+      cwd: "/tmp/repo",
+      attachments: [],
+    });
+  });
+
+  it("accepts and strips create-worktree intent fields compatibly", () => {
+    const parsed = CreatePaseoWorktreeRequestSchema.parse({
+      type: "create_paseo_worktree_request",
+      requestId: "req-5",
+      cwd: "/tmp/repo",
+      attachments: [],
+      action: "checkout",
+      refName: "feature/ref-picker",
+      githubPrNumber: 42,
+      futureField: "ignored",
+    });
+
+    expect(parsed).toEqual({
+      type: "create_paseo_worktree_request",
+      requestId: "req-5",
+      cwd: "/tmp/repo",
+      attachments: [],
+      action: "checkout",
+      refName: "feature/ref-picker",
+      githubPrNumber: 42,
+    });
+  });
+
+  it("accepts optional create-agent git intent fields and strips unknown git fields", () => {
+    const parsed = CreateAgentRequestMessageSchema.parse({
+      type: "create_agent_request",
+      requestId: "req-6",
+      config: {
+        provider: "codex",
+        cwd: "/tmp/repo",
+      },
+      attachments: [],
+      git: {
+        createWorktree: true,
+        worktreeSlug: "review-42",
+        action: "checkout",
+        refName: "head-ref",
+        githubPrNumber: 42,
+        futureGitField: "ignored",
+      },
+    });
+
+    expect(parsed.git).toEqual({
+      createWorktree: true,
+      worktreeSlug: "review-42",
+      action: "checkout",
+      refName: "head-ref",
+      githubPrNumber: 42,
+    });
+  });
 });

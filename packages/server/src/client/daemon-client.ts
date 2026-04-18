@@ -16,8 +16,8 @@ import type {
   AgentSnapshotPayload,
   ProjectPlacementPayload,
   AgentPermissionResolvedMessage,
-  AgentAttachment,
   CreateAgentRequestMessage,
+  CreatePaseoWorktreeRequest,
   FileDownloadTokenResponse,
   FileExplorerResponse,
   FetchAgentTimelineResponseMessage,
@@ -37,6 +37,7 @@ import type {
   ValidateBranchResponse,
   BranchSuggestionsResponse,
   GitHubSearchResponse,
+  GitHubSearchRequest,
   DirectorySuggestionsResponse,
   PaseoWorktreeListResponse,
   PaseoWorktreeArchiveResponse,
@@ -206,7 +207,7 @@ export type SendMessageOptions = {
 
 type AgentConfigOverrides = Partial<Omit<AgentSessionConfig, "provider" | "cwd">>;
 
-export type CreateAgentRequestOptions = {
+export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   config?: AgentSessionConfig;
   provider?: AgentProvider;
   cwd?: string;
@@ -220,7 +221,13 @@ export type CreateAgentRequestOptions = {
   worktreeName?: string;
   requestId?: string;
   labels?: Record<string, string>;
-} & AgentConfigOverrides;
+}
+
+export interface CreatePaseoWorktreeInput
+  extends Pick<
+    CreatePaseoWorktreeRequest,
+    "cwd" | "worktreeSlug" | "attachments" | "refName" | "action" | "githubPrNumber"
+  > {}
 
 type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
 type SubscribeCheckoutDiffPayload = Extract<
@@ -2576,11 +2583,7 @@ export class DaemonClient {
   }
 
   async createPaseoWorktree(
-    input: {
-      cwd: string;
-      worktreeSlug?: string;
-      attachments?: AgentAttachment[];
-    },
+    input: CreatePaseoWorktreeInput,
     requestId?: string,
   ): Promise<CreatePaseoWorktreePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2592,6 +2595,9 @@ export class DaemonClient {
         ...(input.attachments && input.attachments.length > 0
           ? { attachments: input.attachments }
           : {}),
+        ...(input.refName !== undefined ? { refName: input.refName } : {}),
+        ...(input.action !== undefined ? { action: input.action } : {}),
+        ...(input.githubPrNumber !== undefined ? { githubPrNumber: input.githubPrNumber } : {}),
       },
       responseType: "create_paseo_worktree_response",
       timeout: 60000,
@@ -2632,7 +2638,7 @@ export class DaemonClient {
   }
 
   async searchGitHub(
-    options: { cwd: string; query: string; limit?: number },
+    options: { cwd: string; query: string; limit?: number; kinds?: GitHubSearchRequest["kinds"] },
     requestId?: string,
   ): Promise<GitHubSearchPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2642,6 +2648,7 @@ export class DaemonClient {
         cwd: options.cwd,
         query: options.query,
         limit: options.limit,
+        kinds: options.kinds,
       },
       responseType: "github_search_response",
       timeout: 15000,

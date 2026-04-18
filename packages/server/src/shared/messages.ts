@@ -837,6 +837,9 @@ const GitSetupOptionsSchema = z.object({
   newBranchName: z.string().optional(),
   createWorktree: z.boolean().optional(),
   worktreeSlug: z.string().optional(),
+  refName: z.string().min(1).optional(),
+  action: z.enum(["branch-off", "checkout"]).optional(),
+  githubPrNumber: z.number().int().positive().optional(),
 });
 
 export type GitSetupOptions = z.infer<typeof GitSetupOptionsSchema>;
@@ -1188,11 +1191,14 @@ export const GitHubSearchItemSchema = z.object({
   headRefName: z.string().nullable().optional(),
 });
 
+export const GitHubSearchKindSchema = z.enum(["github-issue", "github-pr"]);
+
 export const GitHubSearchRequestSchema = z.object({
   type: z.literal("github_search_request"),
   cwd: z.string(),
   query: z.string(),
   limit: z.number().int().min(1).max(50).optional(),
+  kinds: z.array(GitHubSearchKindSchema).optional(),
   requestId: z.string(),
 });
 
@@ -1226,6 +1232,9 @@ export const CreatePaseoWorktreeRequestSchema = z.object({
   cwd: z.string(),
   worktreeSlug: z.string().optional(),
   attachments: AgentAttachmentsSchema,
+  refName: z.string().min(1).optional(),
+  action: z.enum(["branch-off", "checkout"]).optional(),
+  githubPrNumber: z.number().int().positive().optional(),
   requestId: z.string(),
 });
 
@@ -1821,6 +1830,7 @@ export const AgentCreateFailedStatusPayloadSchema = z.object({
   status: z.literal("agent_create_failed"),
   requestId: z.string(),
   error: z.string(),
+  errorCode: z.string().optional(),
 });
 
 export const AgentResumedStatusPayloadSchema = z
@@ -2652,6 +2662,7 @@ export const CreatePaseoWorktreeResponseSchema = z.object({
   payload: z.object({
     workspace: WorkspaceDescriptorPayloadSchema.nullable(),
     error: z.string().nullable(),
+    errorCode: z.string().optional(),
     setupTerminalId: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -3228,6 +3239,7 @@ export type ValidateBranchResponse = z.infer<typeof ValidateBranchResponseSchema
 export type BranchSuggestionsRequest = z.infer<typeof BranchSuggestionsRequestSchema>;
 export type BranchSuggestionsResponse = z.infer<typeof BranchSuggestionsResponseSchema>;
 export type GitHubSearchItem = z.infer<typeof GitHubSearchItemSchema>;
+export type GitHubSearchKind = z.infer<typeof GitHubSearchKindSchema>;
 export type GitHubSearchRequest = z.infer<typeof GitHubSearchRequestSchema>;
 export type GitHubSearchResponse = z.infer<typeof GitHubSearchResponseSchema>;
 export type CreatePaseoWorktreeRequest = z.infer<typeof CreatePaseoWorktreeRequestSchema>;

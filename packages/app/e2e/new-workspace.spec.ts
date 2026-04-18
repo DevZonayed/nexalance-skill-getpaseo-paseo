@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { expect, test } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
@@ -8,9 +10,15 @@ import {
   clickNewWorkspaceButton,
   connectNewWorkspaceDaemonClient,
   createWorktreeViaDaemon,
+  expectComposerGithubAttachmentPill,
+  expectStartingRefPickerTriggerPr,
+  openNewWorkspaceComposer,
+  openStartingRefPicker,
   openProjectViaDaemon,
+  selectBranchInPicker,
+  selectGitHubPrInPicker,
 } from "./helpers/new-workspace";
-import { createTempGitRepo } from "./helpers/workspace";
+import { createTempGitRepo, readWorktreeBranchInfo } from "./helpers/workspace";
 import {
   expectSidebarWorkspaceSelected,
   expectWorkspaceHeader,
@@ -250,6 +258,96 @@ test.describe("New workspace flow", () => {
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeEditable({ timeout: 30_000 });
+    } finally {
+      await tempRepo.cleanup();
+    }
+  });
+
+  test("selected branch becomes the base of a new workspace worktree", async ({ page }) => {
+    const serverId = process.env.E2E_SERVER_ID;
+    if (!serverId) {
+      throw new Error("E2E_SERVER_ID is not set.");
+    }
+
+    const tempRepo = await createTempGitRepo("new-workspace-ref-", {
+      branches: ["main", "dev"],
+    });
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+
+      await switchWorkspaceViaSidebar({
+        page,
+        serverId,
+        targetWorkspacePath: openedProject.workspaceId,
+      });
+      await expectWorkspaceHeader(page, {
+        title: openedProject.workspaceName,
+        subtitle: openedProject.projectDisplayName,
+      });
+
+      await openNewWorkspaceComposer(page, {
+        projectKey: openedProject.projectKey,
+        projectDisplayName: openedProject.projectDisplayName,
+      });
+      await openStartingRefPicker(page);
+      await selectBranchInPicker(page, "dev");
+
+      const createButton = page
+        .getByTestId("message-input-root")
+        .getByRole("button", { name: "Create" });
+      await expect(createButton).toBeVisible({ timeout: 30_000 });
+      await createButton.click();
+
+      const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
+        serverId,
+        previousWorkspaceId: openedProject.workspaceId,
+        projectDisplayName: openedProject.projectDisplayName,
+      });
+      createdWorktreeIds.add(createdWorkspace.workspaceId);
+
+      expect(existsSync(createdWorkspace.workspaceId)).toBe(true);
+
+      const branchInfo = await readWorktreeBranchInfo({
+        worktreePath: createdWorkspace.workspaceId,
+      });
+      expect(branchInfo.currentBranch).toBe(path.basename(createdWorkspace.workspaceId));
+      expect(branchInfo.hasAncestor(tempRepo.branchHeads.main)).toBe(true);
+      expect(branchInfo.hasAncestor(tempRepo.branchHeads.dev)).toBe(true);
+    } finally {
+      await tempRepo.cleanup();
+    }
+  });
+
+  test("selected GitHub PR shows PR context in the trigger and composer", async ({ page }) => {
+    const tempRepo = await createTempGitRepo("new-workspace-pr-ref-");
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, tempRepo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await openNewWorkspaceComposer(page, {
+        projectKey: openedProject.projectKey,
+        projectDisplayName: openedProject.projectDisplayName,
+      });
+      await openStartingRefPicker(page);
+      await selectGitHubPrInPicker(page, 515);
+
+      await expectStartingRefPickerTriggerPr(page, {
+        number: 515,
+        title: "Review selected start ref",
+        headRef: "feature/start-from-pr",
+      });
+      await expectComposerGithubAttachmentPill(page, {
+        number: 515,
+        title: "Review selected start ref",
+      });
     } finally {
       await tempRepo.cleanup();
     }

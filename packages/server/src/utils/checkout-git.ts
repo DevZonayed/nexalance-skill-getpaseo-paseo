@@ -2,13 +2,19 @@ import { resolve, dirname, basename } from "path";
 import { existsSync, realpathSync } from "fs";
 import { open as openFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
-import { z } from "zod";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
+import type { GitHubSearchKind } from "../shared/messages.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
-import { findExecutable } from "./executable.js";
+import {
+  GitHubAuthenticationError,
+  GitHubCliMissingError,
+  createGitHubService,
+  resolveGitHubRepo,
+  type GitHubService,
+} from "../services/github-service.js";
+export { parseStatusCheckRollup } from "../services/github-service.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
-import { execCommand } from "./spawn.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
 import { requirePaseoWorktreeBaseRefName } from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
@@ -24,7 +30,6 @@ const SHORTSTAT_CACHE_MAX = 1_000;
 let pullRequestStatusCacheTtlMs = DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS;
 let pullRequestStatusCache = createPullRequestStatusCache(pullRequestStatusCacheTtlMs);
 const pullRequestStatusInFlight = new Map<string, Promise<PullRequestStatusResult>>();
-let cachedGhPath: string | null | undefined = undefined;
 let shortstatCacheTtlMs = DEFAULT_SHORTSTAT_CACHE_TTL_MS;
 let shortstatCache = createShortstatCache(shortstatCacheTtlMs);
 const shortstatInFlight = new Map<string, Promise<CheckoutShortstat | null>>();
@@ -67,14 +72,6 @@ export function __setPullRequestStatusCacheTtlForTests(ttlMs: number): void {
   pullRequestStatusCacheTtlMs = ttlMs;
   pullRequestStatusCache = createPullRequestStatusCache(ttlMs);
   pullRequestStatusInFlight.clear();
-}
-
-export function __resetGhPathCacheForTests(): void {
-  cachedGhPath = undefined;
-}
-
-export function __setGhPathForTests(path: string | null): void {
-  cachedGhPath = path;
 }
 
 export function __resetCheckoutShortstatCacheForTests(): void {
@@ -1837,279 +1834,12 @@ export type ChecksStatus = "none" | "pending" | "success" | "failure";
 
 export type ReviewDecision = "approved" | "changes_requested" | "pending" | null;
 
-const CheckRunNodeSchema = z.object({
-  __typename: z.literal("CheckRun"),
-  name: z.string(),
-  conclusion: z.string().nullable().optional(),
-  status: z.string().nullable().optional(),
-  detailsUrl: z.string().nullable().optional(),
-  startedAt: z.string().nullable().optional(),
-  completedAt: z.string().nullable().optional(),
-  checkSuite: z
-    .object({
-      workflowRun: z
-        .object({
-          databaseId: z.number().nullable().optional(),
-        })
-        .nullable()
-        .optional(),
-    })
-    .nullable()
-    .optional(),
-});
-
-const StatusContextNodeSchema = z.object({
-  __typename: z.literal("StatusContext"),
-  context: z.string(),
-  state: z.string().nullable().optional(),
-  targetUrl: z.string().nullable().optional(),
-  createdAt: z.string().nullable().optional(),
-});
-
-const StatusCheckRollupNodeSchema = z.discriminatedUnion("__typename", [
-  CheckRunNodeSchema,
-  StatusContextNodeSchema,
-]);
-
-const StatusCheckRollupArraySchema = z.array(z.unknown());
-const LegacyStatusCheckRollupSchema = z.object({
-  contexts: z.array(z.unknown()),
-});
-
-const ReviewDecisionSchema = z
-  .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
-  .nullable()
-  .catch(null);
-
-type CheckRunNode = z.infer<typeof CheckRunNodeSchema>;
-type StatusContextNode = z.infer<typeof StatusContextNodeSchema>;
-
-export async function resolveGhPath(): Promise<string> {
-  if (cachedGhPath === undefined) {
-    cachedGhPath = await findExecutable("gh");
-  }
-  if (cachedGhPath === null) {
-    throw new Error("GitHub CLI (gh) is not installed or not in PATH");
-  }
-  return cachedGhPath;
-}
-
-function getCommandErrorText(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
-  const stderr = typeof (error as any)?.stderr === "string" ? (error as any).stderr : "";
-  const stdout = typeof (error as any)?.stdout === "string" ? (error as any).stdout : "";
-  return `${error.message}\n${stderr}\n${stdout}`.toLowerCase();
-}
-
-function isGhAuthError(error: unknown): boolean {
-  const text = getCommandErrorText(error);
-  return (
-    text.includes("gh auth login") ||
-    text.includes("not logged into any github hosts") ||
-    text.includes("authentication failed") ||
-    text.includes("authentication required") ||
-    text.includes("bad credentials") ||
-    text.includes("http 401")
-  );
-}
-
-function mapCheckRunStatus(status: unknown, conclusion: unknown): PullRequestCheck["status"] {
-  if (status !== "COMPLETED") {
-    return "pending";
-  }
-
-  switch (conclusion) {
-    case "SUCCESS":
-      return "success";
-    case "FAILURE":
-    case "TIMED_OUT":
-    case "ACTION_REQUIRED":
-      return "failure";
-    case "CANCELLED":
-      return "cancelled";
-    case "SKIPPED":
-    case "NEUTRAL":
-      return "skipped";
-    default:
-      return "pending";
-  }
-}
-
-function mapStatusContextState(state: unknown): PullRequestCheck["status"] {
-  switch (state) {
-    case "SUCCESS":
-      return "success";
-    case "FAILURE":
-    case "ERROR":
-      return "failure";
-    case "EXPECTED":
-    case "PENDING":
-      return "pending";
-    default:
-      return "pending";
-  }
-}
-
-function getCheckRunRecency(context: CheckRunNode): number {
-  const workflowRunId = context.checkSuite?.workflowRun?.databaseId;
-  if (typeof workflowRunId === "number") {
-    return workflowRunId;
-  }
-
-  const timestamp =
-    typeof context.completedAt === "string"
-      ? context.completedAt
-      : typeof context.startedAt === "string"
-        ? context.startedAt
-        : null;
-  if (!timestamp) {
-    return 0;
-  }
-
-  const time = Date.parse(timestamp);
-  return Number.isNaN(time) ? 0 : time;
-}
-
-function getStatusContextRecency(context: StatusContextNode): number {
-  if (typeof context.createdAt !== "string" || context.createdAt.length === 0) {
-    return 0;
-  }
-
-  const time = Date.parse(context.createdAt);
-  return Number.isNaN(time) ? 0 : time;
-}
-
-export function parseStatusCheckRollup(value: unknown): PullRequestCheck[] {
-  const directContexts = StatusCheckRollupArraySchema.safeParse(value);
-  if (!directContexts.success) {
-    const legacyContexts = LegacyStatusCheckRollupSchema.safeParse(value);
-    if (!legacyContexts.success) {
-      return [];
-    }
-
-    return parseStatusCheckRollup(legacyContexts.data.contexts);
-  }
-  const contexts = directContexts.data;
-
-  const dedupedChecks = new Map<
-    string,
-    PullRequestCheck & {
-      recency: number;
-    }
-  >();
-
-  for (const entry of contexts) {
-    const parsed = StatusCheckRollupNodeSchema.safeParse(entry);
-    if (!parsed.success) {
-      continue;
-    }
-
-    const context = parsed.data;
-    let check: (PullRequestCheck & { recency: number }) | null = null;
-
-    if (context.__typename === "CheckRun") {
-      check = {
-        name: context.name,
-        status: mapCheckRunStatus(context.status, context.conclusion),
-        url: typeof context.detailsUrl === "string" ? context.detailsUrl : null,
-        recency: getCheckRunRecency(context),
-      };
-    } else if (context.__typename === "StatusContext") {
-      check = {
-        name: context.context,
-        status: mapStatusContextState(context.state),
-        url: typeof context.targetUrl === "string" ? context.targetUrl : null,
-        recency: getStatusContextRecency(context),
-      };
-    }
-
-    if (!check) {
-      continue;
-    }
-
-    const existing = dedupedChecks.get(check.name);
-    if (!existing || check.recency > existing.recency) {
-      dedupedChecks.set(check.name, check);
-    }
-  }
-
-  return Array.from(dedupedChecks.values(), ({ recency: _recency, ...check }) => check);
-}
-
-function computeChecksStatus(checks: PullRequestCheck[]): ChecksStatus {
-  if (checks.length === 0) {
-    return "none";
-  }
-  if (checks.some((check) => check.status === "failure")) {
-    return "failure";
-  }
-  if (checks.some((check) => check.status === "pending")) {
-    return "pending";
-  }
-  return "success";
-}
-
-function mapReviewDecision(value: unknown): ReviewDecision {
-  const reviewDecision = ReviewDecisionSchema.parse(value);
-  if (reviewDecision === "APPROVED") {
-    return "approved";
-  }
-  if (reviewDecision === "CHANGES_REQUESTED") {
-    return "changes_requested";
-  }
-  if (reviewDecision === "REVIEW_REQUIRED") {
-    return "pending";
-  }
-  return null;
-}
-
-async function resolveGitHubRepo(cwd: string): Promise<string | null> {
-  try {
-    const { stdout } = await runGitCommand(["config", "--get", "remote.origin.url"], {
-      cwd,
-      env: READ_ONLY_GIT_ENV,
-    });
-    const url = stdout.trim();
-    if (!url) {
-      return null;
-    }
-    let cleaned = url;
-    if (cleaned.startsWith("git@github.com:")) {
-      cleaned = cleaned.slice("git@github.com:".length);
-    } else if (cleaned.startsWith("https://github.com/")) {
-      cleaned = cleaned.slice("https://github.com/".length);
-    } else if (cleaned.startsWith("http://github.com/")) {
-      cleaned = cleaned.slice("http://github.com/".length);
-    } else {
-      const marker = "github.com/";
-      const index = cleaned.indexOf(marker);
-      if (index !== -1) {
-        cleaned = cleaned.slice(index + marker.length);
-      } else {
-        return null;
-      }
-    }
-    if (cleaned.endsWith(".git")) {
-      cleaned = cleaned.slice(0, -".git".length);
-    }
-    if (!cleaned.includes("/")) {
-      return null;
-    }
-    return cleaned;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
 export async function createPullRequest(
   cwd: string,
   options: CreatePullRequestOptions,
+  github: GitHubService = createGitHubService(),
 ): Promise<{ url: string; number: number }> {
   await requireGitRepo(cwd);
-  const ghPath = await resolveGhPath();
   const repo = await resolveGitHubRepo(cwd);
   if (!repo) {
     throw new Error("Unable to determine GitHub repo from git remote");
@@ -2131,22 +1861,20 @@ export async function createPullRequest(
 
   await runGitCommand(["push", "-u", "origin", head], { cwd, timeout: 120_000 });
 
-  const ghEnv: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
-  const args = ["api", "-X", "POST", `repos/${repo}/pulls`, "-f", `title=${options.title}`];
-  args.push("-f", `head=${head}`);
-  args.push("-f", `base=${normalizedBase}`);
-  if (options.body) {
-    args.push("-f", `body=${options.body}`);
-  }
-  const { stdout } = await execCommand(ghPath, args, { cwd, env: ghEnv });
-  const parsed = JSON.parse(stdout.trim());
-  if (!parsed?.url || !parsed?.number) {
-    throw new Error("GitHub CLI did not return PR url/number");
-  }
-  return { url: parsed.url, number: parsed.number };
+  return github.createPullRequest({
+    cwd,
+    repo,
+    title: options.title,
+    body: options.body,
+    head,
+    base: normalizedBase,
+  });
 }
 
-export async function getPullRequestStatus(cwd: string): Promise<PullRequestStatusResult> {
+export async function getPullRequestStatus(
+  cwd: string,
+  github: GitHubService = createGitHubService(),
+): Promise<PullRequestStatusResult> {
   const cacheKey = getPullRequestStatusCacheKey(cwd);
   const cached = pullRequestStatusCache.get(cacheKey);
   if (cached) {
@@ -2158,7 +1886,7 @@ export async function getPullRequestStatus(cwd: string): Promise<PullRequestStat
     return existing;
   }
 
-  const lookup = getPullRequestStatusUncached(cwd)
+  const lookup = getPullRequestStatusUncached(cwd, github)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
       return status;
@@ -2171,7 +1899,10 @@ export async function getPullRequestStatus(cwd: string): Promise<PullRequestStat
   return lookup;
 }
 
-async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestStatusResult> {
+async function getPullRequestStatusUncached(
+  cwd: string,
+  github: GitHubService,
+): Promise<PullRequestStatusResult> {
   await requireGitRepo(cwd);
   const head = await getCurrentBranch(cwd);
   if (!head) {
@@ -2180,62 +1911,15 @@ async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestSta
       githubFeaturesEnabled: false,
     };
   }
-  let ghPath: string;
   try {
-    ghPath = await resolveGhPath();
-  } catch {
+    const status = await github.getCurrentPullRequestStatus({ cwd, headRef: head });
     return {
-      status: null,
-      githubFeaturesEnabled: false,
-    };
-  }
-  try {
-    const { stdout } = await execCommand(
-      ghPath,
-      [
-        "pr",
-        "view",
-        "--json",
-        "url,title,state,baseRefName,headRefName,mergedAt,statusCheckRollup,reviewDecision",
-      ],
-      { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
-    );
-    const pr = JSON.parse(stdout.trim());
-    if (!pr || typeof pr !== "object" || !pr.url || !pr.title) {
-      return { status: null, githubFeaturesEnabled: true };
-    }
-    const mergedAt =
-      typeof pr.mergedAt === "string" && pr.mergedAt.trim().length > 0 ? pr.mergedAt : null;
-    const state =
-      mergedAt !== null
-        ? "merged"
-        : typeof pr.state === "string" && pr.state.trim().length > 0
-          ? pr.state.toLowerCase()
-          : "";
-    const checks = parseStatusCheckRollup(pr.statusCheckRollup);
-    const reviewDecision = mapReviewDecision(pr.reviewDecision);
-    return {
-      status: {
-        url: pr.url,
-        title: pr.title,
-        state,
-        baseRefName: pr.baseRefName ?? "",
-        headRefName: pr.headRefName ?? head,
-        isMerged: mergedAt !== null,
-        checks,
-        checksStatus: computeChecksStatus(checks),
-        reviewDecision,
-      },
+      status,
       githubFeaturesEnabled: true,
     };
   } catch (error) {
-    if (isGhAuthError(error)) {
+    if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
       return { status: null, githubFeaturesEnabled: false };
-    }
-    // gh pr view exits non-zero when no PR exists for the branch
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("no pull requests found") || message.includes("Could not resolve")) {
-      return { status: null, githubFeaturesEnabled: true };
     }
     throw error;
   }
@@ -2256,96 +1940,86 @@ export interface GitHubSearchResult {
   githubFeaturesEnabled: boolean;
 }
 
+interface SearchGitHubIssuesAndPrsOptions {
+  kinds?: GitHubSearchKind[];
+}
+
 export async function searchGitHubIssuesAndPrs(
   cwd: string,
   query: string,
   limit = 20,
+  github: GitHubService = createGitHubService(),
+  options: SearchGitHubIssuesAndPrsOptions = {},
 ): Promise<GitHubSearchResult> {
   await requireGitRepo(cwd);
-  let ghPath: string;
   try {
-    ghPath = await resolveGhPath();
-  } catch {
-    return { items: [], githubFeaturesEnabled: false };
-  }
-
-  try {
-    const [issuesResult, prsResult] = await Promise.allSettled([
-      execCommand(
-        ghPath,
-        [
-          "issue",
-          "list",
-          "--search",
-          query,
-          "--json",
-          "number,title,url,state,body,labels",
-          "--limit",
-          String(limit),
-        ],
-        { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
-      ),
-      execCommand(
-        ghPath,
-        [
-          "pr",
-          "list",
-          "--search",
-          query,
-          "--json",
-          "number,title,url,state,body,labels,baseRefName,headRefName",
-          "--limit",
-          String(limit),
-        ],
-        { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
-      ),
-    ]);
+    const kinds = options.kinds ?? ["github-issue", "github-pr"];
+    const shouldFetchIssues = kinds.includes("github-issue");
+    const shouldFetchPullRequests = kinds.includes("github-pr");
+    const issuesResult = shouldFetchIssues
+      ? await github.listIssues({ cwd, query, limit }).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason }),
+        )
+      : null;
+    const prsResult = shouldFetchPullRequests
+      ? await github.listPullRequests({ cwd, query, limit }).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason }),
+        )
+      : null;
 
     const items: GitHubSearchResult["items"] = [];
+    const requestedResults = [issuesResult, prsResult].filter((result) => result !== null);
+    const failures = requestedResults.filter((result) => result.status === "rejected");
+    if (
+      requestedResults.length > 0 &&
+      failures.length === requestedResults.length &&
+      failures.every(
+        (result) =>
+          result.status === "rejected" &&
+          (result.reason instanceof GitHubCliMissingError ||
+            result.reason instanceof GitHubAuthenticationError),
+      )
+    ) {
+      return { items: [], githubFeaturesEnabled: false };
+    }
 
-    if (issuesResult.status === "fulfilled") {
-      const parsed = JSON.parse(issuesResult.value.stdout.trim() || "[]");
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          items.push({
-            kind: "issue",
-            number: item.number,
-            title: item.title ?? "",
-            url: item.url ?? "",
-            state: item.state ?? "",
-            body: item.body ?? null,
-            labels: Array.isArray(item.labels)
-              ? item.labels.map((l: { name?: string }) => l.name ?? "").filter(Boolean)
-              : [],
-            baseRefName: item.baseRefName ?? null,
-            headRefName: item.headRefName ?? null,
-          });
-        }
+    if (issuesResult?.status === "fulfilled") {
+      for (const item of issuesResult.value) {
+        items.push({
+          kind: "issue",
+          number: item.number,
+          title: item.title,
+          url: item.url,
+          state: item.state,
+          body: item.body,
+          labels: item.labels,
+          baseRefName: null,
+          headRefName: null,
+        });
       }
     }
 
-    if (prsResult.status === "fulfilled") {
-      const parsed = JSON.parse(prsResult.value.stdout.trim() || "[]");
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          items.push({
-            kind: "pr",
-            number: item.number,
-            title: item.title ?? "",
-            url: item.url ?? "",
-            state: item.state ?? "",
-            body: item.body ?? null,
-            labels: Array.isArray(item.labels)
-              ? item.labels.map((l: { name?: string }) => l.name ?? "").filter(Boolean)
-              : [],
-          });
-        }
+    if (prsResult?.status === "fulfilled") {
+      for (const item of prsResult.value) {
+        items.push({
+          kind: "pr",
+          number: item.number,
+          title: item.title,
+          url: item.url,
+          state: item.state,
+          body: item.body,
+          labels: item.labels,
+          baseRefName: item.baseRefName,
+          headRefName: item.headRefName,
+        });
       }
     }
 
     return { items, githubFeaturesEnabled: true };
   } catch (error) {
-    if (isGhAuthError(error)) {
+    if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
       return { items: [], githubFeaturesEnabled: false };
     }
     throw error;

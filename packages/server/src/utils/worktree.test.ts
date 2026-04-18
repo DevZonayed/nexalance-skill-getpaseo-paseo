@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  createWorktree,
+  BranchAlreadyCheckedOutError,
+  createWorktree as createWorktreePrimitive,
   deriveWorktreeProjectHash,
   deletePaseoWorktree,
   getScriptConfigs,
@@ -12,6 +13,8 @@ import {
   type WorktreeSetupCommandProgressEvent,
   runWorktreeSetupCommands,
   slugify,
+  type CreateWorktreeOptions,
+  type WorktreeConfig,
 } from "./worktree";
 import { getPaseoWorktreeMetadataPath } from "./worktree-metadata.js";
 import { execSync } from "child_process";
@@ -27,6 +30,35 @@ import {
 import { dirname, join } from "path";
 import { tmpdir } from "os";
 import net from "node:net";
+
+interface LegacyCreateWorktreeTestOptions {
+  branchName: string;
+  cwd: string;
+  baseBranch: string;
+  worktreeSlug: string;
+  runSetup?: boolean;
+  paseoHome?: string;
+}
+
+function createLegacyWorktreeForTest(
+  options: CreateWorktreeOptions | LegacyCreateWorktreeTestOptions,
+): Promise<WorktreeConfig> {
+  if ("source" in options) {
+    return createWorktreePrimitive(options);
+  }
+
+  return createWorktreePrimitive({
+    cwd: options.cwd,
+    worktreeSlug: options.worktreeSlug,
+    source: {
+      kind: "branch-off",
+      baseBranch: options.baseBranch,
+      newBranchName: options.branchName,
+    },
+    runSetup: options.runSetup ?? true,
+    paseoHome: options.paseoHome,
+  });
+}
 
 describe.skipIf(process.platform === "win32")("createWorktree", () => {
   let tempDir: string;
@@ -55,7 +87,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
 
   it("creates a worktree for the current branch (main)", async () => {
     const projectHash = await deriveWorktreeProjectHash(repoDir);
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -86,7 +118,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     execSync("git add .", { cwd: varRepoDir });
     execSync('git -c commit.gpgsign=false commit -m "initial"', { cwd: varRepoDir });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: varRepoDir,
       baseBranch: "main",
@@ -113,7 +145,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
   });
 
   it("reports repoRoot as the repository root for paseo-owned worktrees", async () => {
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -138,23 +170,118 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
 
   it("creates a worktree with a new branch", async () => {
     const projectHash = await deriveWorktreeProjectHash(repoDir);
-    const result = await createWorktree({
-      branchName: "feature-branch",
+    const result = await createLegacyWorktreeForTest({
       cwd: repoDir,
-      baseBranch: "main",
       worktreeSlug: "my-feature",
+      source: { kind: "branch-off", baseBranch: "main", newBranchName: "feature/x" },
+      runSetup: true,
       paseoHome,
     });
 
     expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "my-feature"));
     expect(existsSync(result.worktreePath)).toBe(true);
 
-    // Verify branch was created
-    const branches = execSync("git branch", { cwd: repoDir }).toString();
-    expect(branches).toContain("feature-branch");
+    const currentBranch = execSync("git branch --show-current", {
+      cwd: result.worktreePath,
+    })
+      .toString()
+      .trim();
+    expect(currentBranch).toBe("feature/x");
+    execSync("git merge-base --is-ancestor main HEAD", { cwd: result.worktreePath });
+
     const metadataPath = getPaseoWorktreeMetadataPath(result.worktreePath);
     const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
     expect(metadata).toMatchObject({ version: 1, baseRefName: "main" });
+  });
+
+  it("checks out an existing local branch that is not checked out elsewhere", async () => {
+    execSync("git branch dev", { cwd: repoDir });
+
+    const result = await createLegacyWorktreeForTest({
+      cwd: repoDir,
+      worktreeSlug: "dev-worktree",
+      source: { kind: "checkout-branch", branchName: "dev" },
+      runSetup: true,
+      paseoHome,
+    });
+
+    expect(existsSync(result.worktreePath)).toBe(true);
+    const currentBranch = execSync("git branch --show-current", {
+      cwd: result.worktreePath,
+    })
+      .toString()
+      .trim();
+    expect(currentBranch).toBe("dev");
+
+    const metadataPath = getPaseoWorktreeMetadataPath(result.worktreePath);
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    expect(metadata).toMatchObject({ version: 1, baseRefName: "dev" });
+  });
+
+  it("throws a typed error when checking out a branch already checked out in the main repo", async () => {
+    let caughtError: unknown;
+    try {
+      await createLegacyWorktreeForTest({
+        cwd: repoDir,
+        worktreeSlug: "dev-worktree",
+        source: { kind: "checkout-branch", branchName: "main" },
+        runSetup: true,
+        paseoHome,
+      });
+    } catch (error) {
+      caughtError = error;
+    }
+
+    expect(caughtError).toBeInstanceOf(BranchAlreadyCheckedOutError);
+    expect((caughtError as BranchAlreadyCheckedOutError).branchName).toBe("main");
+  });
+
+  it("fetches a GitHub PR branch, checks it out, writes metadata, and runs setup", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    const remoteCloneDir = join(tempDir, "remote-clone");
+    execSync(`git clone --bare ${repoDir} ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+
+    execSync(`git clone ${remoteDir} ${remoteCloneDir}`);
+    execSync('git config user.email "test@test.com"', { cwd: remoteCloneDir });
+    execSync('git config user.name "Test"', { cwd: remoteCloneDir });
+    execSync("git checkout -b contributor/feature", { cwd: remoteCloneDir });
+    writeFileSync(join(remoteCloneDir, "file.txt"), "from-pr\n");
+    writeFileSync(
+      join(remoteCloneDir, "paseo.json"),
+      JSON.stringify({ worktree: { setup: ['echo "setup ran" > setup.log'] } }),
+    );
+    execSync("git add .", { cwd: remoteCloneDir });
+    execSync('git -c commit.gpgsign=false commit -m "pr branch"', { cwd: remoteCloneDir });
+    const prHead = execSync("git rev-parse HEAD", { cwd: remoteCloneDir }).toString().trim();
+    execSync("git push origin contributor/feature", { cwd: remoteCloneDir });
+    execSync(`git --git-dir=${remoteDir} update-ref refs/pull/42/head ${prHead}`);
+
+    const result = await createLegacyWorktreeForTest({
+      cwd: repoDir,
+      worktreeSlug: "pr-42",
+      source: {
+        kind: "checkout-github-pr",
+        githubPrNumber: 42,
+        headRef: "user/feature",
+        baseRefName: "main",
+      },
+      runSetup: true,
+      paseoHome,
+    });
+
+    expect(readFileSync(join(result.worktreePath, "file.txt"), "utf8")).toBe("from-pr\n");
+    expect(readFileSync(join(result.worktreePath, "setup.log"), "utf8")).toBe("setup ran\n");
+    const currentBranch = execSync("git branch --show-current", {
+      cwd: result.worktreePath,
+    })
+      .toString()
+      .trim();
+    expect(currentBranch).toBe("user/feature");
+
+    const metadataPath = getPaseoWorktreeMetadataPath(result.worktreePath);
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    expect(metadata).toMatchObject({ baseRefName: "main" });
   });
 
   it("prefers origin/{branch} over local {branch} when both exist", async () => {
@@ -181,7 +308,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
 
     execSync("git fetch origin", { cwd: repoDir });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "prefer-origin-feature",
       cwd: repoDir,
       baseBranch: "main",
@@ -198,7 +325,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     execSync("git add file.txt", { cwd: repoDir });
     execSync('git -c commit.gpgsign=false commit -m "advance local main only"', { cwd: repoDir });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "prefer-local-fallback-feature",
       cwd: repoDir,
       baseBranch: "main",
@@ -212,7 +339,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
 
   it("throws when neither origin/{branch} nor local {branch} exists", async () => {
     await expect(
-      createWorktree({
+      createLegacyWorktreeForTest({
         branchName: "missing-base-feature",
         cwd: repoDir,
         baseBranch: "does-not-exist",
@@ -225,7 +352,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
 
   it("fails with invalid branch name", async () => {
     await expect(
-      createWorktree({
+      createLegacyWorktreeForTest({
         branchName: "INVALID_UPPERCASE",
         cwd: repoDir,
         baseBranch: "main",
@@ -239,7 +366,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     // Create a branch named "hello" first
     execSync("git branch hello", { cwd: repoDir });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -260,7 +387,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     execSync("git branch hello", { cwd: repoDir });
     execSync("git branch hello-1", { cwd: repoDir });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -292,7 +419,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
       cwd: repoDir,
     });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -326,7 +453,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
       cwd: repoDir,
     });
 
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -367,7 +494,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
   });
 
   it("reuses persisted worktree runtime port across resolutions", async () => {
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -389,7 +516,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
   });
 
   it("fails runtime env resolution when persisted port is in use", async () => {
-    const result = await createWorktree({
+    const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -443,7 +570,7 @@ describe.skipIf(process.platform === "win32")("createWorktree", () => {
     const expectedWorktreePath = join(paseoHome, "worktrees", "test-repo", "fail-test");
 
     await expect(
-      createWorktree({
+      createLegacyWorktreeForTest({
         branchName: "main",
         cwd: repoDir,
         baseBranch: "main",
@@ -616,14 +743,14 @@ describe("paseo worktree manager", () => {
       execSync('git -c commit.gpgsign=false commit -m "initial"', { cwd: repo });
     }
 
-    const fromRepoA = await createWorktree({
+    const fromRepoA = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoA,
       baseBranch: "main",
       worktreeSlug: "alpha",
       paseoHome,
     });
-    const fromRepoB = await createWorktree({
+    const fromRepoB = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoB,
       baseBranch: "main",
@@ -643,14 +770,14 @@ describe("paseo worktree manager", () => {
   });
 
   it("lists and deletes paseo worktrees under ~/.paseo/worktrees/{hash}", async () => {
-    const first = await createWorktree({
+    const first = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "alpha",
       paseoHome,
     });
-    const second = await createWorktree({
+    const second = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -670,7 +797,7 @@ describe("paseo worktree manager", () => {
   });
 
   it("deletes a paseo worktree even when given a subdirectory path", async () => {
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
@@ -708,7 +835,7 @@ describe("paseo worktree manager", () => {
       },
     );
 
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "teardown-branch",
       cwd: repoDir,
       baseBranch: "main",
@@ -745,7 +872,7 @@ describe("paseo worktree manager", () => {
       { cwd: repoDir },
     );
 
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "teardown-port-missing-branch",
       cwd: repoDir,
       baseBranch: "main",
@@ -774,7 +901,7 @@ describe("paseo worktree manager", () => {
       { cwd: repoDir },
     );
 
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "teardown-failure-branch",
       cwd: repoDir,
       baseBranch: "main",
@@ -791,7 +918,7 @@ describe("paseo worktree manager", () => {
   });
 
   it("treats a worktree as paseo-owned even when its .git admin is missing", async () => {
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "orphan-admin-branch",
       cwd: repoDir,
       baseBranch: "main",
@@ -835,7 +962,7 @@ describe("paseo worktree manager", () => {
   });
 
   it("deletes a worktree whose .git admin dir has already been removed", async () => {
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "orphan-delete-branch",
       cwd: repoDir,
       baseBranch: "main",
@@ -859,7 +986,7 @@ describe("paseo worktree manager", () => {
   });
 
   it("is idempotent: deleting an already-absent worktree succeeds", async () => {
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "idempotent-delete-branch",
       cwd: repoDir,
       baseBranch: "main",
@@ -881,7 +1008,7 @@ describe("paseo worktree manager", () => {
   });
 
   it("deletes a worktree when the parent repo root is not available", async () => {
-    const created = await createWorktree({
+    const created = await createLegacyWorktreeForTest({
       branchName: "no-cwd-branch",
       cwd: repoDir,
       baseBranch: "main",

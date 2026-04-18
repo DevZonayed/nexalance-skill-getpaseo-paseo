@@ -3,13 +3,11 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, GitBranch } from "lucide-react-native";
+import { ChevronDown, GitBranch, GitPullRequest } from "lucide-react-native";
 import { Composer } from "@/components/composer";
 import { splitComposerAttachmentsForSubmit } from "@/components/composer-attachments";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import type { ComboboxOption as ComboboxOptionType } from "@/components/ui/combobox";
-import { SegmentedControl } from "@/components/ui/segmented-control";
-import type { SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
@@ -29,8 +27,10 @@ import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
 import { requireWorkspaceExecutionAuthority } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload } from "@/components/message-input";
-import type { AgentAttachment } from "@server/shared/messages";
+import type { AgentAttachment, GitHubSearchItem } from "@server/shared/messages";
+import { pickerItemToCheckoutRequest, type PickerItem } from "./new-workspace-picker-item";
 
 interface NewWorkspaceScreenProps {
   serverId: string;
@@ -38,24 +38,69 @@ interface NewWorkspaceScreenProps {
   displayName?: string;
 }
 
-type BaseRef = { name: string };
-
-interface Checkout {
-  action: "checkout" | "branch-off";
-  ref: BaseRef;
+interface PickerOptionData {
+  options: ComboboxOptionType[];
+  itemById: Map<string, PickerItem>;
+  firstBranchId: string | null;
+  firstPrId: string | null;
 }
 
-function refId(ref: BaseRef): string {
-  return `branch:${ref.name}`;
+interface PickerSelection {
+  item: PickerItem;
+  attachedPrNumber: number | null;
 }
 
-function refLabel(ref: BaseRef): string {
-  return ref.name;
+const BRANCH_OPTION_PREFIX = "branch:";
+const PR_OPTION_PREFIX = "github-pr:";
+
+function branchOptionId(name: string): string {
+  return `${BRANCH_OPTION_PREFIX}${name}`;
 }
 
-function formatCheckoutBadge(c: Checkout): string {
-  const label = c.ref.name;
-  return c.action === "branch-off" ? `new branch off ${label}` : label;
+function prOptionId(number: number): string {
+  return `${PR_OPTION_PREFIX}${number}`;
+}
+
+function formatPrLabel(item: { number: number; title: string }): string {
+  return `#${item.number} ${item.title}`;
+}
+
+function pickerItemLabel(item: PickerItem): string {
+  return item.kind === "branch" ? item.name : formatPrLabel(item.item);
+}
+
+function pickerItemTriggerLabel(item: PickerItem): string {
+  return item.kind === "branch" ? item.name : formatPrLabel(item.item);
+}
+
+function syncPickerPrAttachment(input: {
+  attachments: ComposerAttachment[];
+  previousPickerPrNumber: number | null;
+  item: PickerItem;
+}): { attachments: ComposerAttachment[]; attachedPrNumber: number | null } {
+  let nextAttachments = input.attachments;
+  let attachedPrNumber: number | null = null;
+
+  if (input.previousPickerPrNumber !== null) {
+    nextAttachments = nextAttachments.filter(
+      (attachment) =>
+        attachment.kind !== "github_pr" || attachment.item.number !== input.previousPickerPrNumber,
+    );
+  }
+
+  if (input.item.kind === "github-pr") {
+    const selectedPr = input.item.item;
+    const hasExistingPrAttachment = nextAttachments.some(
+      (attachment) =>
+        attachment.kind === "github_pr" && attachment.item.number === selectedPr.number,
+    );
+    if (!hasExistingPrAttachment) {
+      nextAttachments = [...nextAttachments, { kind: "github_pr", item: selectedPr }];
+      attachedPrNumber = selectedPr.number;
+    }
+  }
+
+  return { attachments: nextAttachments, attachedPrNumber };
 }
 
 export function NewWorkspaceScreen({
@@ -72,13 +117,14 @@ export function NewWorkspaceScreen({
     typeof normalizeWorkspaceDescriptor
   > | null>(null);
   const [pendingAction, setPendingAction] = useState<"chat" | null>(null);
-  const [checkout, setCheckout] = useState<Checkout | null>(null);
-  const [checkoutPickerOpen, setCheckoutPickerOpen] = useState(false);
-  const [pickerAction, setPickerAction] = useState<Checkout["action"]>("branch-off");
-  const checkoutAnchorRef = useRef<View>(null);
+  const [pickerSelection, setPickerSelection] = useState<PickerSelection | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerAnchorRef = useRef<View>(null);
 
   const displayName = displayNameProp?.trim() ?? "";
   const workspace = createdWorkspace;
+  const selectedItem = pickerSelection?.item ?? null;
+  const isPending = pendingAction !== null;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const chatDraft = useAgentInputDraft({
@@ -121,41 +167,115 @@ export function NewWorkspaceScreen({
       return connectedClient.getBranchSuggestions({ cwd: sourceDirectory, limit: 20 });
     },
     enabled: isConnected && !!client,
+    staleTime: 15_000,
   });
 
-  const checkoutRefs: BaseRef[] = useMemo(
-    () => (branchSuggestionsQuery.data?.branches ?? []).map((name): BaseRef => ({ name })),
-    [branchSuggestionsQuery.data?.branches],
+  const githubPrSearchQuery = useQuery({
+    queryKey: ["new-workspace-github-prs", serverId, sourceDirectory],
+    queryFn: async () => {
+      const connectedClient = withConnectedClient();
+      return connectedClient.searchGitHub({
+        cwd: sourceDirectory,
+        query: "",
+        limit: 20,
+        kinds: ["github-pr"],
+      });
+    },
+    enabled: isConnected && !!client,
+    staleTime: 60_000,
+  });
+
+  const branchNames: string[] = branchSuggestionsQuery.data?.branches ?? [];
+  const githubFeaturesEnabled = githubPrSearchQuery.data?.githubFeaturesEnabled !== false;
+  const prItems: GitHubSearchItem[] = useMemo(() => {
+    if (!githubFeaturesEnabled) return [];
+    const items = githubPrSearchQuery.data?.items ?? [];
+    return items.filter((item): item is GitHubSearchItem => item.kind === "pr");
+  }, [githubFeaturesEnabled, githubPrSearchQuery.data?.items]);
+
+  const { options, itemById, firstBranchId, firstPrId }: PickerOptionData = useMemo(() => {
+    const collectedOptions: ComboboxOptionType[] = [];
+    const idMap = new Map<string, PickerItem>();
+    let firstBranch: string | null = null;
+    let firstPr: string | null = null;
+
+    for (const name of branchNames) {
+      const id = branchOptionId(name);
+      collectedOptions.push({ id, label: name });
+      idMap.set(id, { kind: "branch", name });
+      if (firstBranch === null) firstBranch = id;
+    }
+
+    for (const pr of prItems) {
+      if (!pr.headRefName) continue;
+      const id = prOptionId(pr.number);
+      collectedOptions.push({ id, label: formatPrLabel(pr) });
+      idMap.set(id, {
+        kind: "github-pr",
+        item: pr,
+      });
+      if (firstPr === null) firstPr = id;
+    }
+
+    return {
+      options: collectedOptions,
+      itemById: idMap,
+      firstBranchId: firstBranch,
+      firstPrId: firstPr,
+    };
+  }, [branchNames, prItems]);
+
+  const triggerLabel = useMemo(() => {
+    if (selectedItem) return pickerItemTriggerLabel(selectedItem);
+    return currentBranch ?? "main";
+  }, [currentBranch, selectedItem]);
+
+  const selectedOptionId = useMemo(() => {
+    if (!selectedItem) return "";
+    return selectedItem.kind === "branch"
+      ? branchOptionId(selectedItem.name)
+      : prOptionId(selectedItem.item.number);
+  }, [selectedItem]);
+
+  const handleSelectOption = useCallback(
+    (id: string) => {
+      const item = itemById.get(id);
+      if (!item) return;
+
+      const next = syncPickerPrAttachment({
+        attachments: chatDraft.attachments,
+        previousPickerPrNumber: pickerSelection?.attachedPrNumber ?? null,
+        item,
+      });
+
+      setPickerSelection({
+        item,
+        attachedPrNumber: next.attachedPrNumber,
+      });
+      if (next.attachments !== chatDraft.attachments) {
+        chatDraft.setAttachments(next.attachments);
+      }
+      setPickerOpen(false);
+    },
+    [chatDraft, itemById, pickerSelection?.attachedPrNumber],
   );
 
-  const checkoutOptions: ComboboxOptionType[] = useMemo(
-    () =>
-      checkoutRefs.map((ref) => ({
-        id: refId(ref),
-        label: refLabel(ref),
-      })),
-    [checkoutRefs],
-  );
-
-  const effectiveCheckout: Checkout | null =
-    checkout ?? (currentBranch ? { action: "branch-off", ref: { name: currentBranch } } : null);
-
-  const commitCheckout = useCallback((ref: BaseRef, action: Checkout["action"]) => {
-    setCheckout({ action, ref });
-    setCheckoutPickerOpen(false);
+  const openPicker = useCallback(() => {
+    setPickerOpen(true);
   }, []);
 
-  const openCheckoutPicker = useCallback(() => {
-    setPickerAction(effectiveCheckout?.action ?? "branch-off");
-    setCheckoutPickerOpen(true);
-  }, [effectiveCheckout]);
+  const buildCreateWorktreeInput = useCallback(
+    (input: { cwd: string; attachments: AgentAttachment[] }) => {
+      const checkoutRequest = pickerItemToCheckoutRequest(selectedItem);
 
-  const checkoutModeOptions: SegmentedControlOption<Checkout["action"]>[] = useMemo(
-    () => [
-      { value: "checkout", label: "Check out" },
-      { value: "branch-off", label: "Branch off" },
-    ],
-    [],
+      return {
+        cwd: input.cwd,
+        worktreeSlug: createNameId(),
+        ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
+        ...(checkoutRequest ?? {}),
+      };
+    },
+    [selectedItem],
   );
 
   const ensureWorkspace = useCallback(
@@ -165,11 +285,7 @@ export function NewWorkspaceScreen({
       }
 
       const connectedClient = withConnectedClient();
-      const payload = await connectedClient.createPaseoWorktree({
-        cwd: input.cwd,
-        worktreeSlug: createNameId(),
-        ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
-      });
+      const payload = await connectedClient.createPaseoWorktree(buildCreateWorktreeInput(input));
 
       if (payload.error || !payload.workspace) {
         throw new Error(payload.error ?? "Failed to create worktree");
@@ -180,7 +296,7 @@ export function NewWorkspaceScreen({
       setCreatedWorkspace(normalizedWorkspace);
       return normalizedWorkspace;
     },
-    [createdWorkspace, mergeWorkspaces, serverId, withConnectedClient],
+    [buildCreateWorktreeInput, createdWorkspace, mergeWorkspaces, serverId, withConnectedClient],
   );
 
   const handleCreateChatAgent = useCallback(
@@ -251,6 +367,72 @@ export function NewWorkspaceScreen({
     addImagesRef.current = addImages;
   }, []);
 
+  const renderPickerOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOptionType;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => {
+      const item = itemById.get(option.id);
+      if (!item) return <View key={option.id} />;
+
+      const isBranch = item.kind === "branch";
+      const isFirstInSection =
+        (isBranch && option.id === firstBranchId) || (!isBranch && option.id === firstPrId);
+
+      const header = isFirstInSection ? (
+        <Text style={styles.sectionHeader}>{isBranch ? "Branches" : "Pull requests"}</Text>
+      ) : null;
+
+      const leadingSlot = (
+        <View style={styles.rowIconBox}>
+          {isBranch ? (
+            <GitBranch size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          ) : (
+            <GitPullRequest size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          )}
+        </View>
+      );
+
+      const testID = isBranch
+        ? `new-workspace-ref-picker-branch-${item.name}`
+        : `new-workspace-ref-picker-pr-${item.item.number}`;
+
+      const description =
+        !isBranch && item.item.baseRefName ? `into ${item.item.baseRefName}` : undefined;
+
+      return (
+        <>
+          {header}
+          <ComboboxItem
+            testID={testID}
+            label={pickerItemLabel(item)}
+            description={description}
+            selected={selected}
+            active={active}
+            disabled={isPending}
+            onPress={onPress}
+            leadingSlot={leadingSlot}
+          />
+        </>
+      );
+    },
+    [
+      firstBranchId,
+      firstPrId,
+      isPending,
+      itemById,
+      theme.colors.foregroundMuted,
+      theme.iconSize.sm,
+    ],
+  );
+
   return (
     <View style={styles.container}>
       <ScreenHeader
@@ -281,6 +463,7 @@ export function NewWorkspaceScreen({
             allowEmptySubmit={true}
             submitButtonAccessibilityLabel="Create"
             isSubmitLoading={pendingAction === "chat"}
+            submitBehavior="preserve-and-lock"
             blurOnSubmit={true}
             value={chatDraft.text}
             onChangeText={chatDraft.setText}
@@ -296,7 +479,7 @@ export function NewWorkspaceScreen({
               composerState
                 ? {
                     ...composerState.statusControls,
-                    disabled: pendingAction !== null,
+                    disabled: isPending,
                   }
                 : undefined
             }
@@ -307,21 +490,31 @@ export function NewWorkspaceScreen({
               <Tooltip>
                 <TooltipTrigger asChild triggerRefProp="ref">
                   <Pressable
-                    ref={checkoutAnchorRef}
-                    onPress={openCheckoutPicker}
+                    ref={pickerAnchorRef}
+                    testID="new-workspace-ref-picker-trigger"
+                    onPress={openPicker}
+                    disabled={isPending}
                     style={({ pressed, hovered }) => [
                       styles.badge,
-                      hovered && styles.badgeHovered,
-                      pressed && styles.badgePressed,
+                      hovered && !isPending && styles.badgeHovered,
+                      pressed && !isPending && styles.badgePressed,
+                      isPending && styles.badgeDisabled,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel="Checkout ref"
+                    accessibilityLabel="Starting ref"
                   >
                     <View style={styles.badgeIconBox}>
-                      <GitBranch size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                      {selectedItem?.kind === "github-pr" ? (
+                        <GitPullRequest
+                          size={theme.iconSize.sm}
+                          color={theme.colors.foregroundMuted}
+                        />
+                      ) : (
+                        <GitBranch size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                      )}
                     </View>
                     <Text style={styles.badgeText} numberOfLines={1}>
-                      {effectiveCheckout ? formatCheckoutBadge(effectiveCheckout) : "main"}
+                      {triggerLabel}
                     </Text>
                     <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
                   </Pressable>
@@ -331,51 +524,18 @@ export function NewWorkspaceScreen({
                 </TooltipContent>
               </Tooltip>
               <Combobox
-                options={checkoutOptions}
-                value={effectiveCheckout ? refId(effectiveCheckout.ref) : ""}
-                onSelect={(id) => {
-                  const ref = checkoutRefs.find((r) => refId(r) === id);
-                  if (ref) commitCheckout(ref, pickerAction);
-                }}
+                options={options}
+                value={selectedOptionId}
+                onSelect={handleSelectOption}
                 searchable
-                searchPlaceholder="Search branches"
+                searchPlaceholder="Search branches and PRs"
                 title="Start from"
-                open={checkoutPickerOpen}
-                onOpenChange={setCheckoutPickerOpen}
+                open={pickerOpen}
+                onOpenChange={setPickerOpen}
                 desktopPlacement="bottom-start"
-                anchorRef={checkoutAnchorRef}
-                emptyText="No branches."
-                stickyHeader={
-                  <View style={styles.checkoutPickerHeader}>
-                    <SegmentedControl
-                      size="sm"
-                      options={checkoutModeOptions}
-                      value={pickerAction}
-                      onValueChange={setPickerAction}
-                    />
-                  </View>
-                }
-                renderOption={({ option, selected, active, onPress }) => {
-                  const ref = checkoutRefs.find((r) => refId(r) === option.id);
-                  if (!ref) return <View key={option.id} />;
-                  return (
-                    <ComboboxItem
-                      key={option.id}
-                      label={refLabel(ref)}
-                      selected={selected}
-                      active={active}
-                      onPress={onPress}
-                      leadingSlot={
-                        <View style={styles.rowIconBox}>
-                          <GitBranch
-                            size={theme.iconSize.sm}
-                            color={theme.colors.foregroundMuted}
-                          />
-                        </View>
-                      }
-                    />
-                  );
-                }}
+                anchorRef={pickerAnchorRef}
+                emptyText="No matching refs."
+                renderOption={renderPickerOption}
               />
             </View>
           </View>
@@ -458,6 +618,9 @@ const styles = StyleSheet.create((theme) => ({
   badgePressed: {
     backgroundColor: theme.colors.surface0,
   },
+  badgeDisabled: {
+    opacity: 0.6,
+  },
   badgeText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
@@ -466,12 +629,6 @@ const styles = StyleSheet.create((theme) => ({
   tooltipText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.popoverForeground,
-  },
-  checkoutPickerHeader: {
-    paddingHorizontal: theme.spacing[2],
-    paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[1],
-    alignItems: "flex-start",
   },
   badgeIconBox: {
     width: theme.iconSize.md,
@@ -485,5 +642,14 @@ const styles = StyleSheet.create((theme) => ({
     height: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
+  },
+  sectionHeader: {
+    paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[1],
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0,
   },
 }));

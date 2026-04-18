@@ -5,6 +5,7 @@ export interface AgentInputSubmitActionInput<TAttachment> {
   attachments: TAttachment[];
   hasExternalContent?: boolean;
   allowEmptySubmit?: boolean;
+  submitBehavior?: "clear" | "preserve-and-lock";
   forceSend?: boolean;
   isAgentRunning: boolean;
   canSubmit: boolean;
@@ -23,6 +24,7 @@ export async function submitAgentInput<TAttachment>(
 ): Promise<AgentInputSubmitResult> {
   const trimmedMessage = input.message.trim();
   const attachments = input.attachments;
+  const shouldClearOnSubmit = input.submitBehavior !== "preserve-and-lock";
 
   if (
     !trimmedMessage &&
@@ -39,14 +41,18 @@ export async function submitAgentInput<TAttachment>(
 
   if (input.isAgentRunning && !input.forceSend) {
     input.queueMessage({ message: trimmedMessage, attachments });
-    input.setUserInput("");
-    input.setAttachments([]);
+    if (shouldClearOnSubmit) {
+      input.setUserInput("");
+      input.setAttachments([]);
+    }
     return "queued";
   }
 
   // Clear immediately so optimistic stream updates and composer state stay in sync.
-  input.setUserInput("");
-  input.setAttachments([]);
+  if (shouldClearOnSubmit) {
+    input.setUserInput("");
+    input.setAttachments([]);
+  }
   input.setSendError(null);
   input.setIsProcessing(true);
 
@@ -57,8 +63,10 @@ export async function submitAgentInput<TAttachment>(
     return "submitted";
   } catch (error) {
     input.onSubmitError?.(error);
-    input.setUserInput(trimmedMessage);
-    input.setAttachments(attachments);
+    if (shouldClearOnSubmit) {
+      input.setUserInput(trimmedMessage);
+      input.setAttachments(attachments);
+    }
     input.setSendError(error instanceof Error ? error.message : "Failed to send message");
     input.setIsProcessing(false);
     return "failed";

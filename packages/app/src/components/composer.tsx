@@ -102,6 +102,7 @@ interface ComposerProps {
   submitButtonAccessibilityLabel?: string;
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
+  submitBehavior?: "clear" | "preserve-and-lock";
   /** When true, blurs the input immediately when submitting. */
   blurOnSubmit?: boolean;
   value: string;
@@ -142,6 +143,7 @@ export function Composer({
   allowEmptySubmit = false,
   submitButtonAccessibilityLabel,
   isSubmitLoading = false,
+  submitBehavior = "clear",
   blurOnSubmit = false,
   value,
   onChangeText,
@@ -218,6 +220,7 @@ export function Composer({
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
+  const isComposerLocked = submitBehavior === "preserve-and-lock" && isSubmitLoading;
   const keyboardHandlerIdRef = useRef(
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`,
   );
@@ -401,6 +404,7 @@ export function Composer({
       hasExternalContent,
       allowEmptySubmit,
       forceSend,
+      submitBehavior,
       isAgentRunning: agentState.status === "running",
       // Parent-managed submits are still valid submit paths even when the
       // transport is disconnected, because the parent decides the failure mode.
@@ -815,7 +819,7 @@ export function Composer({
     >
       <AttachmentLightbox metadata={lightboxMetadata} onClose={() => setLightboxMetadata(null)} />
       {/* Input area */}
-      <View style={styles.inputAreaContainer}>
+      <View style={[styles.inputAreaContainer, isComposerLocked && styles.inputAreaLocked]}>
         <View style={styles.inputAreaContent}>
           {/* Queue list */}
           {queuedMessages.length > 0 && (
@@ -874,6 +878,7 @@ export function Composer({
                         onRemove={() => handleRemoveAttachment(index)}
                         openAccessibilityLabel="Open image attachment"
                         removeAccessibilityLabel="Remove image attachment"
+                        disabled={isComposerLocked}
                       >
                         <ImageAttachmentThumbnail image={attachment.metadata} />
                       </AttachmentPill>
@@ -890,6 +895,7 @@ export function Composer({
                       onRemove={() => handleRemoveAttachment(index)}
                       openAccessibilityLabel={`Open ${kindLabel} #${item.number}`}
                       removeAccessibilityLabel={`Remove ${kindLabel} #${item.number}`}
+                      disabled={isComposerLocked}
                     >
                       <View style={styles.githubPillBody}>
                         <View style={styles.githubPillIcon}>
@@ -1042,6 +1048,9 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     width: "100%",
     overflow: "visible",
     padding: theme.spacing[4],
+  },
+  inputAreaLocked: {
+    opacity: 0.6,
   },
   inputAreaContent: {
     width: "100%",

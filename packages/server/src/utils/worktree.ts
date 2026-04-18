@@ -6,7 +6,6 @@ import { join, basename, dirname, resolve, sep } from "path";
 import net from "node:net";
 import { createHash } from "node:crypto";
 import * as pty from "node-pty";
-import { createNameId } from "mnemonic-id";
 import stripAnsi from "strip-ansi";
 import { buildStringCommandShellInvocation } from "./string-command-shell.js";
 import {
@@ -153,13 +152,50 @@ export type PaseoWorktreeOwnership = {
   worktreePath?: string;
 };
 
-interface CreateWorktreeOptions {
-  branchName: string;
+export type WorktreeSource =
+  | { kind: "branch-off"; baseBranch: string; newBranchName: string }
+  | { kind: "checkout-branch"; branchName: string }
+  | {
+      kind: "checkout-github-pr";
+      githubPrNumber: number;
+      headRef: string;
+      baseRefName: string;
+    };
+
+export interface CreateWorktreeOptions {
   cwd: string;
-  baseBranch: string;
-  worktreeSlug?: string;
-  runSetup?: boolean;
+  worktreeSlug: string;
+  source: WorktreeSource;
+  runSetup: boolean;
   paseoHome?: string;
+}
+
+interface ResolveExistingWorktreeForSlugOptions {
+  slug: string;
+  repoRoot: string;
+  paseoHome?: string;
+}
+
+export class BranchAlreadyCheckedOutError extends Error {
+  readonly branchName: string;
+
+  constructor(branchName: string) {
+    super(`Branch already checked out: ${branchName}`);
+    this.name = "BranchAlreadyCheckedOutError";
+    this.branchName = branchName;
+  }
+}
+
+export class UnknownBranchError extends Error {
+  readonly branchName: string;
+  readonly cwd: string;
+
+  constructor(params: { branchName: string; cwd: string }) {
+    super(`Unknown branch: ${params.branchName}`);
+    this.name = "UnknownBranchError";
+    this.branchName = params.branchName;
+    this.cwd = params.cwd;
+  }
 }
 
 function readPaseoConfig(repoRoot: string): PaseoConfig | null {
@@ -792,10 +828,6 @@ export function slugify(input: string): string {
   return truncated.replace(/-+$/, "");
 }
 
-function generateWorktreeSlug(): string {
-  return createNameId();
-}
-
 const WORKTREE_PROJECT_HASH_LENGTH = 8;
 
 function deriveShortAlphanumericHash(value: string): string {
@@ -974,6 +1006,36 @@ export async function listPaseoWorktrees({
     }));
 }
 
+export async function resolveExistingWorktreeForSlug({
+  slug,
+  repoRoot,
+  paseoHome,
+}: ResolveExistingWorktreeForSlugOptions): Promise<WorktreeConfig | null> {
+  const worktrees = await listPaseoWorktrees({
+    cwd: repoRoot,
+    paseoHome,
+  });
+  const slugSuffix = `${sep}${slug}`;
+  const existingWorktree = worktrees.find((worktree) => worktree.path.endsWith(slugSuffix));
+  if (!existingWorktree) {
+    return null;
+  }
+
+  const { stdout } = await runGitCommand(["branch", "--show-current"], {
+    cwd: existingWorktree.path,
+    env: READ_ONLY_GIT_ENV,
+  });
+  const branchName = stdout.trim();
+  if (!branchName) {
+    throw new Error(`Unable to resolve branch for existing worktree: ${existingWorktree.path}`);
+  }
+
+  return {
+    branchName,
+    worktreePath: existingWorktree.path,
+  };
+}
+
 export async function resolvePaseoWorktreeRootForCwd(
   cwd: string,
   options?: { paseoHome?: string },
@@ -1099,8 +1161,11 @@ async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -1136,79 +1201,16 @@ async function removeDirectoryWithRetries(path: string): Promise<void> {
 /**
  * Create a git worktree with proper naming conventions
  */
-export async function createWorktree({
-  branchName,
+export const createWorktree = async ({
   cwd,
-  baseBranch,
+  source,
   worktreeSlug,
-  runSetup = true,
+  runSetup,
   paseoHome,
-}: CreateWorktreeOptions): Promise<WorktreeConfig> {
-  // Validate branch name
-  const validation = validateBranchSlug(branchName);
-  if (!validation.valid) {
-    throw new Error(`Invalid branch name: ${validation.error}`);
-  }
-
-  const normalizedBaseBranch = baseBranch ? normalizeBaseRefName(baseBranch) : "";
-  if (!normalizedBaseBranch) {
-    throw new Error("Base branch is required when creating a Paseo worktree");
-  }
-  if (normalizedBaseBranch === "HEAD") {
-    throw new Error("Base branch cannot be HEAD when creating a Paseo worktree");
-  }
-
-  // Resolve the base branch - prefer origin/{branch}, then fall back to local
-  let resolvedBaseBranch = normalizedBaseBranch;
-  try {
-    await runGitCommand(["rev-parse", "--verify", `origin/${normalizedBaseBranch}`], { cwd });
-    resolvedBaseBranch = `origin/${normalizedBaseBranch}`;
-  } catch {
-    try {
-      await runGitCommand(["rev-parse", "--verify", normalizedBaseBranch], { cwd });
-    } catch {
-      throw new Error(`Base branch not found: ${normalizedBaseBranch}`);
-    }
-  }
-
-  let worktreePath: string;
-  const desiredSlug = worktreeSlug || generateWorktreeSlug();
-
-  worktreePath = join(await getPaseoWorktreesRoot(cwd, paseoHome), desiredSlug);
+}: CreateWorktreeOptions): Promise<WorktreeConfig> => {
+  const sourcePlan = await resolveWorktreeSourcePlan({ cwd, source, desiredSlug: worktreeSlug });
+  let worktreePath = join(await getPaseoWorktreesRoot(cwd, paseoHome), worktreeSlug);
   mkdirSync(dirname(worktreePath), { recursive: true });
-
-  // Check if branch already exists
-  let branchExists = false;
-  try {
-    await runGitCommand(["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], {
-      cwd,
-    });
-    branchExists = true;
-  } catch {
-    branchExists = false;
-  }
-
-  // Always create a new branch for the worktree
-  // If branchName already exists, use it as base and create worktree-slug as branch name
-  // If branchName doesn't exist, create it from baseBranch (resolved to remote if needed)
-  const base = branchExists ? branchName : resolvedBaseBranch;
-  const candidateBranch = branchExists ? desiredSlug : branchName;
-
-  // Find unique branch name if collision
-  let newBranchName = candidateBranch;
-  let suffix = 1;
-  while (true) {
-    try {
-      await runGitCommand(["show-ref", "--verify", "--quiet", `refs/heads/${newBranchName}`], {
-        cwd,
-      });
-      // Branch exists, try with suffix
-      newBranchName = `${candidateBranch}-${suffix}`;
-      suffix++;
-    } catch {
-      break;
-    }
-  }
 
   // Also handle worktree path collision
   let finalWorktreePath = worktreePath;
@@ -1218,24 +1220,170 @@ export async function createWorktree({
     pathSuffix++;
   }
 
-  await runGitCommand(["worktree", "add", finalWorktreePath, "-b", newBranchName, base], {
+  // Primitive owner for `git worktree add`; callers route through createWorktreeCore.
+  await runGitCommand(["worktree", "add", finalWorktreePath, ...sourcePlan.addArguments], {
     cwd,
     timeout: 120_000,
   });
   worktreePath = normalizePathForOwnership(finalWorktreePath);
 
-  writePaseoWorktreeMetadata(worktreePath, { baseRefName: normalizedBaseBranch });
+  writePaseoWorktreeMetadata(worktreePath, { baseRefName: sourcePlan.metadataBaseRefName });
 
   if (runSetup) {
     await runWorktreeSetupCommands({
       worktreePath,
-      branchName: newBranchName,
+      branchName: sourcePlan.branchName,
       cleanupOnFailure: true,
     });
   }
 
   return {
-    branchName: newBranchName,
+    branchName: sourcePlan.branchName,
     worktreePath,
   };
+};
+
+interface ResolveWorktreeSourcePlanOptions {
+  cwd: string;
+  source: WorktreeSource;
+  desiredSlug: string;
+}
+
+interface WorktreeSourcePlan {
+  branchName: string;
+  metadataBaseRefName: string;
+  addArguments: string[];
+}
+
+async function resolveWorktreeSourcePlan({
+  cwd,
+  source,
+  desiredSlug,
+}: ResolveWorktreeSourcePlanOptions): Promise<WorktreeSourcePlan> {
+  switch (source.kind) {
+    case "branch-off": {
+      const branchName = source.newBranchName;
+      validateWorktreeBranchName(branchName);
+      const normalizedBaseBranch = normalizeRequiredBaseBranch(source.baseBranch);
+      const resolvedBaseBranch = await resolveBaseBranchForWorktree(cwd, normalizedBaseBranch);
+      const branchExists = await localBranchExists(cwd, branchName);
+      const base = branchExists ? branchName : resolvedBaseBranch;
+      const candidateBranch = branchExists ? desiredSlug : branchName;
+      const newBranchName = await resolveUniqueLocalBranchName(cwd, candidateBranch);
+
+      return {
+        branchName: newBranchName,
+        metadataBaseRefName: normalizedBaseBranch,
+        addArguments: ["-b", newBranchName, base],
+      };
+    }
+    case "checkout-branch": {
+      validateWorktreeBranchName(source.branchName);
+      if (!(await localBranchExists(cwd, source.branchName))) {
+        try {
+          await runGitCommand(["fetch", "origin", `${source.branchName}:${source.branchName}`], {
+            cwd,
+            timeout: 120_000,
+          });
+        } catch {
+          throw new UnknownBranchError({ branchName: source.branchName, cwd });
+        }
+      }
+      if (await isBranchCheckedOut(cwd, source.branchName)) {
+        throw new BranchAlreadyCheckedOutError(source.branchName);
+      }
+
+      return {
+        branchName: source.branchName,
+        metadataBaseRefName: source.branchName,
+        addArguments: [source.branchName],
+      };
+    }
+    case "checkout-github-pr": {
+      validateWorktreeBranchName(source.headRef);
+      const normalizedBaseRefName = normalizeRequiredBaseBranch(source.baseRefName);
+      await runGitCommand(
+        [
+          "fetch",
+          "origin",
+          `refs/pull/${source.githubPrNumber}/head:refs/heads/${source.headRef}`,
+          "--force",
+        ],
+        {
+          cwd,
+          timeout: 120_000,
+        },
+      );
+
+      return {
+        branchName: source.headRef,
+        metadataBaseRefName: normalizedBaseRefName,
+        addArguments: [source.headRef],
+      };
+    }
+  }
+}
+
+function validateWorktreeBranchName(branchName: string): void {
+  const validation = validateBranchSlug(branchName);
+  if (!validation.valid) {
+    throw new Error(`Invalid branch name: ${validation.error}`);
+  }
+}
+
+function normalizeRequiredBaseBranch(baseBranch: string): string {
+  const normalizedBaseBranch = normalizeBaseRefName(baseBranch);
+  if (!normalizedBaseBranch) {
+    throw new Error("Base branch is required when creating a Paseo worktree");
+  }
+  if (normalizedBaseBranch === "HEAD") {
+    throw new Error("Base branch cannot be HEAD when creating a Paseo worktree");
+  }
+  return normalizedBaseBranch;
+}
+
+async function resolveBaseBranchForWorktree(
+  cwd: string,
+  normalizedBaseBranch: string,
+): Promise<string> {
+  try {
+    await runGitCommand(["rev-parse", "--verify", `origin/${normalizedBaseBranch}`], { cwd });
+    return `origin/${normalizedBaseBranch}`;
+  } catch {
+    try {
+      await runGitCommand(["rev-parse", "--verify", normalizedBaseBranch], { cwd });
+      return normalizedBaseBranch;
+    } catch {
+      throw new Error(`Base branch not found: ${normalizedBaseBranch}`);
+    }
+  }
+}
+
+async function localBranchExists(cwd: string, branchName: string): Promise<boolean> {
+  try {
+    await runGitCommand(["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], {
+      cwd,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveUniqueLocalBranchName(cwd: string, candidateBranch: string): Promise<string> {
+  let newBranchName = candidateBranch;
+  let suffix = 1;
+  while (await localBranchExists(cwd, newBranchName)) {
+    newBranchName = `${candidateBranch}-${suffix}`;
+    suffix++;
+  }
+  return newBranchName;
+}
+
+async function isBranchCheckedOut(cwd: string, branchName: string): Promise<boolean> {
+  const { stdout } = await runGitCommand(["worktree", "list", "--porcelain"], {
+    cwd,
+    env: READ_ONLY_GIT_ENV,
+  });
+  return parseWorktreeList(stdout).some((entry) => entry.branchName === branchName);
 }

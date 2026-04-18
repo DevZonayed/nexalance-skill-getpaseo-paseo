@@ -59,6 +59,51 @@ describe("submitAgentInput", () => {
     expect(clearDraft).toHaveBeenCalledWith("sent");
   });
 
+  it("preserves the composer before an in-flight submit resolves when requested", async () => {
+    const deferred = createDeferredPromise<void>();
+    const attachments = [{ id: "img-1" }];
+    const queueMessage = vi.fn();
+    const submitMessage = vi.fn(async () => {
+      await deferred.promise;
+    });
+    const clearDraft = vi.fn();
+    const setUserInput = vi.fn();
+    const setAttachments = vi.fn();
+    const setSendError = vi.fn();
+    const setIsProcessing = vi.fn();
+
+    const submitPromise = submitAgentInput({
+      message: "  keep me  ",
+      attachments,
+      submitBehavior: "preserve-and-lock",
+      isAgentRunning: false,
+      canSubmit: true,
+      queueMessage,
+      submitMessage,
+      clearDraft,
+      setUserInput,
+      setAttachments,
+      setSendError,
+      setIsProcessing,
+    });
+
+    expect(queueMessage).not.toHaveBeenCalled();
+    expect(submitMessage).toHaveBeenCalledWith({
+      message: "keep me",
+      attachments,
+    });
+    expect(setUserInput).not.toHaveBeenCalled();
+    expect(setAttachments).not.toHaveBeenCalled();
+    expect(setSendError).toHaveBeenCalledWith(null);
+    expect(setIsProcessing).toHaveBeenCalledWith(true);
+    expect(clearDraft).not.toHaveBeenCalled();
+
+    deferred.resolve();
+
+    await expect(submitPromise).resolves.toBe("submitted");
+    expect(clearDraft).toHaveBeenCalledWith("sent");
+  });
+
   it("queues while the agent is running and clears the composer immediately", async () => {
     const queueMessage = vi.fn();
     const submitMessage = vi.fn();

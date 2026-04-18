@@ -20,7 +20,7 @@ import {
   forwardRef,
 } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, ArrowUp, Plus, Square } from "lucide-react-native";
+import { Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "./dictation-controls";
@@ -1181,7 +1181,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   {isSubmitLoading ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <ArrowUp size={buttonIconSize} color="white" />
+                    <CornerDownLeft size={buttonIconSize} color="white" />
                   )}
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>

@@ -386,6 +386,7 @@ export function TooltipTrigger({
     const mergedProps = {
       ...childProps,
       ...triggerProps,
+      disabled: childProps.disabled || disabled,
       onHoverIn: composeEventHandlers(childProps.onHoverIn, handleHoverIn),
       onHoverOut: composeEventHandlers(childProps.onHoverOut, handleHoverOut),
       onFocus: composeEventHandlers(childProps.onFocus, handleFocus),

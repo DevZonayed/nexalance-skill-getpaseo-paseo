@@ -5,13 +5,45 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
-import {
-  createAgentWorktree,
-  runAsyncWorktreeBootstrap,
-  spawnWorktreeScripts,
-} from "./worktree-bootstrap.js";
+import { runAsyncWorktreeBootstrap, spawnWorktreeScripts } from "./worktree-bootstrap.js";
 import { ScriptRouteStore } from "./script-proxy.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
+import {
+  createWorktree as createWorktreePrimitive,
+  type WorktreeConfig,
+} from "../utils/worktree.js";
+import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { TerminalSession } from "../terminal/terminal.js";
+
+interface CreateAgentWorktreeTestOptions {
+  cwd: string;
+  branchName: string;
+  baseBranch: string;
+  worktreeSlug: string;
+  paseoHome?: string;
+}
+
+interface CreateAgentWorktreeTestResult {
+  worktree: WorktreeConfig;
+  shouldBootstrap: boolean;
+}
+
+async function createBootstrapWorktreeForTest(
+  options: CreateAgentWorktreeTestOptions,
+): Promise<CreateAgentWorktreeTestResult> {
+  const worktree = await createWorktreePrimitive({
+    cwd: options.cwd,
+    worktreeSlug: options.worktreeSlug,
+    source: {
+      kind: "branch-off",
+      baseBranch: options.baseBranch,
+      newBranchName: options.branchName,
+    },
+    runSetup: false,
+    paseoHome: options.paseoHome,
+  });
+  return { worktree, shouldBootstrap: true };
+}
 
 describe("runAsyncWorktreeBootstrap", () => {
   let tempDir: string;
@@ -62,7 +94,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       stdio: "pipe",
     });
 
-    const worktreeBootstrap = await createAgentWorktree({
+    const worktreeBootstrap = await createBootstrapWorktreeForTest({
       cwd: repoDir,
       branchName: "feature-streaming-setup",
       baseBranch: "main",
@@ -170,7 +202,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       stdio: "pipe",
     });
 
-    const worktreeBootstrap = await createAgentWorktree({
+    const worktreeBootstrap = await createBootstrapWorktreeForTest({
       cwd: repoDir,
       branchName: "feature-live-failure",
       baseBranch: "main",
@@ -221,7 +253,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       stdio: "pipe",
     });
 
-    const worktreeBootstrap = await createAgentWorktree({
+    const worktreeBootstrap = await createBootstrapWorktreeForTest({
       cwd: repoDir,
       branchName: "feature-large-output",
       baseBranch: "main",
@@ -280,7 +312,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       stdio: "pipe",
     });
 
-    const worktreeBootstrap = await createAgentWorktree({
+    const worktreeBootstrap = await createBootstrapWorktreeForTest({
       cwd: repoDir,
       branchName: "feature-carriage-return",
       baseBranch: "main",
@@ -336,7 +368,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       stdio: "pipe",
     });
 
-    const worktreeBootstrap = await createAgentWorktree({
+    const worktreeBootstrap = await createBootstrapWorktreeForTest({
       cwd: repoDir,
       branchName: "feature-terminal-readiness",
       baseBranch: "main",
@@ -428,7 +460,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       stdio: "pipe",
     });
 
-    const worktreeBootstrap = await createAgentWorktree({
+    const worktreeBootstrap = await createBootstrapWorktreeForTest({
       cwd: repoDir,
       branchName: "feature-shared-runtime-port",
       baseBranch: "main",
@@ -510,12 +542,16 @@ describe("runAsyncWorktreeBootstrap", () => {
 
   function createStubTerminalManager(
     createTerminalCalls: Array<{ cwd: string; name?: string; env?: Record<string, string> }>,
-  ) {
+  ): TerminalManager {
     return {
       async getTerminals() {
         return [];
       },
-      async createTerminal(options: { cwd: string; name?: string; env?: Record<string, string> }) {
+      async createTerminal(options: {
+        cwd: string;
+        name?: string;
+        env?: Record<string, string>;
+      }): Promise<TerminalSession> {
         createTerminalCalls.push(options);
         return {
           id: "term-service",
@@ -536,6 +572,7 @@ describe("runAsyncWorktreeBootstrap", () => {
           getSize: () => ({ rows: 1, cols: 1 }),
           getTitle: () => undefined,
           getExitInfo: () => null,
+          killAndWait: async () => {},
         };
       },
       registerCwdEnv() {},
@@ -543,6 +580,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         return undefined;
       },
       killTerminal() {},
+      async killTerminalAndWait() {},
       listDirectories() {
         return [];
       },
@@ -582,7 +620,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       daemonPort: null,
       routeStore,
       runtimeStore,
-      terminalManager: createStubTerminalManager(createTerminalCalls) as any,
+      terminalManager: createStubTerminalManager(createTerminalCalls),
     });
 
     expect(results).toHaveLength(1);
@@ -629,7 +667,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       daemonPort: 6767,
       routeStore,
       runtimeStore,
-      terminalManager: createStubTerminalManager(createTerminalCalls) as any,
+      terminalManager: createStubTerminalManager(createTerminalCalls),
     });
 
     expect(results).toHaveLength(1);
@@ -687,7 +725,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       daemonListenHost: "100.64.0.20",
       routeStore,
       runtimeStore,
-      terminalManager: createStubTerminalManager(createTerminalCalls) as any,
+      terminalManager: createStubTerminalManager(createTerminalCalls),
     });
 
     expect(createTerminalCalls).toHaveLength(1);

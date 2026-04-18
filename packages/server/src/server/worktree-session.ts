@@ -1,36 +1,23 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { Logger } from "pino";
-import { v4 as uuidv4 } from "uuid";
+import { basename } from "node:path";
 
 import type { AgentSessionConfig } from "./agent/agent-sdk-types.js";
 import type { AgentManager } from "./agent/agent-manager.js";
-import type { AgentStorage } from "./agent/agent-storage.js";
+import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import {
   type AgentAttachment,
   type GitSetupOptions,
-  type ProjectPlacementPayload,
   type SessionInboundMessage,
   type SessionOutboundMessage,
   type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
 } from "./messages.js";
-import { findGitHubPrAttachment } from "./agent/prompt-attachments.js";
-import type {
-  PersistedProjectRecord,
-  PersistedWorkspaceRecord,
-  ProjectRegistry,
-  WorkspaceRegistry,
-} from "./workspace-registry.js";
+import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
-import {
-  deriveWorkspaceId,
-  normalizeWorkspaceId as normalizePersistedWorkspaceId,
-} from "./workspace-registry-model.js";
+import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
 import {
   applyWorktreeSetupProgressEvent,
   buildWorktreeSetupDetail,
-  createAgentWorktree,
   createWorktreeSetupProgressAccumulator,
   getWorktreeSetupProgressResults,
   spawnWorktreeScripts,
@@ -38,14 +25,9 @@ import {
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
-import {
-  getCheckoutStatus,
-  getCurrentBranch,
-  resolveRepositoryDefaultBranch,
-} from "../utils/checkout-git.js";
+import { getCheckoutStatus, resolveRepositoryDefaultBranch } from "../utils/checkout-git.js";
 import { expandTilde } from "../utils/path.js";
 import {
-  computeWorktreePath,
   deletePaseoWorktree,
   getWorktreeSetupCommands,
   isPaseoOwnedWorktreeCwd,
@@ -59,19 +41,26 @@ import {
   type WorktreeSetupCommandResult,
   WorktreeSetupError,
 } from "../utils/worktree.js";
-import { writePaseoWorktreeMetadata } from "../utils/worktree-metadata.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
+import type {
+  CreatePaseoWorktreeInput,
+  CreatePaseoWorktreeResult,
+} from "./paseo-worktree-service.js";
+import { toWorktreeWireError } from "./worktree-errors.js";
 
-const execFileAsync = promisify(execFile);
 const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
 
-export type NormalizedGitOptions = {
+export interface NormalizedGitOptions {
   baseBranch?: string;
   createNewBranch: boolean;
   newBranchName?: string;
   createWorktree: boolean;
   worktreeSlug?: string;
-};
+  requestedWorktreeSlug?: string;
+  refName?: string;
+  action?: "branch-off" | "checkout";
+  githubPrNumber?: number;
+}
 
 type EmitSessionMessage = (message: SessionOutboundMessage) => void;
 
@@ -79,6 +68,12 @@ type BuildAgentSessionConfigDependencies = {
   paseoHome?: string;
   sessionLogger: Logger;
   workspaceGitService?: WorkspaceGitService;
+  createPaseoWorktree: (
+    input: CreatePaseoWorktreeInput,
+    options?: {
+      resolveRepositoryDefaultBranch?: (repoRoot: string) => Promise<string>;
+    },
+  ) => Promise<CreatePaseoWorktreeResult>;
   checkoutExistingBranch: (cwd: string, branch: string) => Promise<void>;
   createBranchFromBase: (params: {
     cwd: string;
@@ -97,29 +92,6 @@ type ArchivePaseoWorktreeDependencies = {
   isPathWithinRoot: (rootPath: string, candidatePath: string) => boolean;
   killTerminalsUnderPath: (rootPath: string) => Promise<void>;
   sessionLogger?: Logger;
-};
-
-type RegisterPendingWorktreeWorkspaceDependencies = {
-  buildPersistedProjectRecord: (input: {
-    workspaceId: string;
-    cwd: string;
-    placement: ProjectPlacementPayload;
-    createdAt: string;
-    updatedAt: string;
-  }) => PersistedProjectRecord;
-  buildPersistedWorkspaceRecord: (input: {
-    workspaceId: string;
-    cwd: string;
-    placement: ProjectPlacementPayload;
-    createdAt: string;
-    updatedAt: string;
-  }) => PersistedWorkspaceRecord;
-  buildProjectPlacement: (cwd: string) => Promise<ProjectPlacementPayload>;
-  findWorkspaceByDirectory: (directory: string) => Promise<PersistedWorkspaceRecord | null>;
-  projectRegistry: Pick<ProjectRegistry, "get" | "upsert" | "archive">;
-  syncWorkspaceGitWatchTarget: (cwd: string, options: { isGit: boolean }) => Promise<void>;
-  workspaceRegistry: Pick<WorkspaceRegistry, "get" | "upsert" | "list">;
-  archiveProjectRecordIfEmpty: (projectId: string, archivedAt: string) => Promise<void>;
 };
 
 type CreatePaseoWorktreeInBackgroundDependencies = {
@@ -144,17 +116,11 @@ type HandleWorkspaceSetupStatusRequestDependencies = {
 
 type HandleCreatePaseoWorktreeRequestDependencies = {
   paseoHome?: string;
-  workspaceGitService?: WorkspaceGitService;
   describeWorkspaceRecord: (
     workspace: PersistedWorkspaceRecord,
   ) => Promise<WorkspaceDescriptorPayload>;
   emit: EmitSessionMessage;
-  registerPendingWorktreeWorkspace: (options: {
-    repoRoot: string;
-    worktreePath: string;
-    branchName: string;
-  }) => Promise<PersistedWorkspaceRecord>;
-  syncWorkspaceGitWatchTarget: (cwd: string, options: { isGit: boolean }) => Promise<void>;
+  createPaseoWorktree: (input: CreatePaseoWorktreeInput) => Promise<CreatePaseoWorktreeResult>;
   sessionLogger: Logger;
   runWorktreeSetupInBackground: (options: {
     requestCwd: string;
@@ -199,73 +165,38 @@ export async function buildAgentSessionConfig(
   }
 
   if (normalized.createWorktree) {
-    const githubPrAttachment = findGitHubPrAttachment(attachments);
-    if (githubPrAttachment) {
-      const baseBranch =
-        githubPrAttachment.baseRefName?.trim() ||
-        normalized.baseBranch ||
-        (await resolveGitCreateBaseBranch(
-          cwd,
-          dependencies.workspaceGitService,
-          dependencies.paseoHome,
-        ));
-      const worktreeSlug =
-        normalized.worktreeSlug ?? slugify(resolveGitHubPrBranchName(githubPrAttachment));
-      const createdWorktree = await createGitHubPrWorktree({
-        cwd,
-        branchName: resolveGitHubPrBranchName(githubPrAttachment),
-        baseBranch,
-        prNumber: githubPrAttachment.number,
-        worktreeSlug,
-        paseoHome: dependencies.paseoHome,
-      });
-      cwd = createdWorktree.worktreePath;
-      worktreeBootstrap = {
-        worktree: createdWorktree,
-        shouldBootstrap: true,
-      };
-      return {
-        sessionConfig: {
-          ...config,
-          cwd,
-        },
-        worktreeBootstrap,
-      };
-    }
-
-    let targetBranch: string;
-
-    if (normalized.createNewBranch) {
-      targetBranch = normalized.newBranchName!;
-    } else {
-      targetBranch = (await getCurrentBranch(cwd)) ?? "";
-    }
-
-    if (!targetBranch) {
-      throw new Error("A branch name is required when creating a worktree.");
-    }
-
     dependencies.sessionLogger.info(
-      { worktreeSlug: normalized.worktreeSlug ?? targetBranch, branch: targetBranch },
-      `Creating worktree '${normalized.worktreeSlug ?? targetBranch}' for branch ${targetBranch}`,
+      { worktreeSlug: normalized.requestedWorktreeSlug },
+      "Creating worktree through createWorktreeCore",
     );
 
-    const baseBranch =
-      normalized.baseBranch ??
-      (await resolveGitCreateBaseBranch(
+    const createdWorktree = await dependencies.createPaseoWorktree(
+      {
         cwd,
-        dependencies.workspaceGitService,
-        dependencies.paseoHome,
-      ));
-    const createdWorktree = await createAgentWorktree({
-      branchName: targetBranch,
-      cwd,
-      baseBranch,
-      worktreeSlug: normalized.worktreeSlug ?? targetBranch,
-      paseoHome: dependencies.paseoHome,
-    });
+        worktreeSlug: normalized.worktreeSlug,
+        refName: normalized.refName,
+        action: normalized.action,
+        githubPrNumber: normalized.githubPrNumber,
+        attachments,
+        runSetup: false,
+        paseoHome: dependencies.paseoHome,
+      },
+      {
+        resolveRepositoryDefaultBranch: normalized.baseBranch
+          ? async () => normalized.baseBranch!
+          : (repoRoot) =>
+              resolveGitCreateBaseBranch(
+                repoRoot,
+                dependencies.workspaceGitService,
+                dependencies.paseoHome,
+              ),
+      },
+    );
     cwd = createdWorktree.worktree.worktreePath;
-    worktreeBootstrap = createdWorktree;
+    worktreeBootstrap = {
+      worktree: createdWorktree.worktree,
+      shouldBootstrap: createdWorktree.created,
+    };
   } else if (normalized.createNewBranch) {
     const baseBranch =
       normalized.baseBranch ??
@@ -314,11 +245,20 @@ export function normalizeGitOptions(
   const createWorktree = Boolean(merged.createWorktree);
   const createNewBranch = Boolean(merged.createNewBranch);
   const normalizedBranchName = merged.newBranchName ? slugify(merged.newBranchName) : undefined;
-  const normalizedWorktreeSlug = merged.worktreeSlug
-    ? slugify(merged.worktreeSlug)
-    : normalizedBranchName;
+  const requestedWorktreeSlug = merged.worktreeSlug ? slugify(merged.worktreeSlug) : undefined;
+  const normalizedWorktreeSlug = requestedWorktreeSlug ?? normalizedBranchName;
+  const refName = merged.refName?.trim() || undefined;
+  const action = merged.action;
+  const githubPrNumber = merged.githubPrNumber;
 
-  if (!createWorktree && !createNewBranch && !baseBranch) {
+  if (
+    !createWorktree &&
+    !createNewBranch &&
+    !baseBranch &&
+    !refName &&
+    !action &&
+    !githubPrNumber
+  ) {
     return null;
   }
 
@@ -349,6 +289,10 @@ export function normalizeGitOptions(
     newBranchName: normalizedBranchName,
     createWorktree,
     worktreeSlug: normalizedWorktreeSlug,
+    requestedWorktreeSlug,
+    refName,
+    action,
+    githubPrNumber,
   };
 }
 
@@ -388,56 +332,6 @@ export async function resolveGitCreateBaseBranch(
     throw new Error("Unable to resolve repository default branch");
   }
   return baseBranch;
-}
-
-function resolveGitHubPrBranchName(
-  attachment: Extract<AgentAttachment, { type: "github_pr" }>,
-): string {
-  const trimmed = attachment.headRefName?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : `pr-${attachment.number}`;
-}
-
-async function fetchGitHubPrBranch(params: {
-  cwd: string;
-  branchName: string;
-  prNumber: number;
-}): Promise<void> {
-  await execFileAsync(
-    "git",
-    [
-      "fetch",
-      "origin",
-      `refs/pull/${params.prNumber}/head:refs/heads/${params.branchName}`,
-      "--force",
-    ],
-    { cwd: params.cwd },
-  );
-}
-
-async function createGitHubPrWorktree(params: {
-  cwd: string;
-  branchName: string;
-  baseBranch: string;
-  prNumber: number;
-  worktreeSlug: string;
-  paseoHome?: string;
-}): Promise<WorktreeConfig> {
-  assertSafeGitRef(params.branchName, "github pr branch");
-  await computeWorktreePath(params.cwd, params.worktreeSlug, params.paseoHome);
-  await fetchGitHubPrBranch({
-    cwd: params.cwd,
-    branchName: params.branchName,
-    prNumber: params.prNumber,
-  });
-  const worktreePath = await computeWorktreePath(params.cwd, params.worktreeSlug, params.paseoHome);
-  await execFileAsync("git", ["worktree", "add", worktreePath, params.branchName], {
-    cwd: params.cwd,
-  });
-  writePaseoWorktreeMetadata(worktreePath, { baseRefName: params.baseBranch });
-  return {
-    branchName: params.branchName,
-    worktreePath,
-  };
 }
 
 export async function handlePaseoWorktreeListRequest(
@@ -515,7 +409,15 @@ export async function archivePaseoWorktree(
     affectedWorkspaceIds.add(normalizePersistedWorkspaceId(agent.cwd));
   }
 
-  const storedRecords = await dependencies.agentStorage.list().catch(() => []);
+  let storedRecords: StoredAgentRecord[] = [];
+  try {
+    storedRecords = await dependencies.agentStorage.list();
+  } catch (error) {
+    dependencies.sessionLogger?.warn(
+      { err: error, targetPath },
+      "Failed to list stored agents during worktree archive; continuing",
+    );
+  }
   const matchingStoredRecords = storedRecords.filter((record) =>
     dependencies.isPathWithinRoot(targetPath, record.cwd),
   );
@@ -550,11 +452,23 @@ export async function archivePaseoWorktree(
   // Agent storage removal runs after closeAgent so file handles on the agent
   // state file are released; still allSettled so a single bad record can't
   // derail the rest.
-  await Promise.allSettled(
-    Array.from(agentIdsToRemoveFromStorage).map((agentId) =>
-      dependencies.agentStorage.remove(agentId),
-    ),
+  const agentIdsToRemove = Array.from(agentIdsToRemoveFromStorage);
+  const storageRemovalResults = await Promise.allSettled(
+    agentIdsToRemove.map((agentId) => dependencies.agentStorage.remove(agentId)),
   );
+  storageRemovalResults.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      return;
+    }
+    dependencies.sessionLogger?.warn(
+      {
+        err: result.reason,
+        agentId: agentIdsToRemove[index],
+        targetPath,
+      },
+      "Failed to remove archived worktree agent from storage; continuing",
+    );
+  });
 
   await deletePaseoWorktree({
     cwd: options.repoRoot,
@@ -669,126 +583,23 @@ export async function handlePaseoWorktreeArchiveRequest(
   }
 }
 
-export async function registerPendingWorktreeWorkspace(
-  dependencies: RegisterPendingWorktreeWorkspaceDependencies,
-  options: {
-    repoRoot: string;
-    worktreePath: string;
-    branchName: string;
-  },
-): Promise<PersistedWorkspaceRecord> {
-  const normalizedWorktreePath = normalizePersistedWorkspaceId(options.worktreePath);
-  const basePlacement = await dependencies.buildProjectPlacement(options.repoRoot);
-  const placement: ProjectPlacementPayload = {
-    ...basePlacement,
-    checkout: {
-      cwd: normalizedWorktreePath,
-      isGit: true,
-      currentBranch: options.branchName,
-      remoteUrl: basePlacement.checkout.remoteUrl,
-      worktreeRoot: options.worktreePath,
-      isPaseoOwnedWorktree: true,
-      mainRepoRoot: options.repoRoot,
-    },
-  };
-  const workspaceId = deriveWorkspaceId(normalizedWorktreePath, placement.checkout);
-  const now = new Date().toISOString();
-  const existingWorkspace = await dependencies.findWorkspaceByDirectory(normalizedWorktreePath);
-  const existingProject = await dependencies.projectRegistry.get(placement.projectKey);
-  const nextProjectRecord = dependencies.buildPersistedProjectRecord({
-    workspaceId,
-    cwd: normalizedWorktreePath,
-    placement,
-    createdAt: existingProject?.createdAt ?? now,
-    updatedAt: now,
-  });
-  const nextWorkspaceRecord = dependencies.buildPersistedWorkspaceRecord({
-    workspaceId,
-    cwd: normalizedWorktreePath,
-    placement,
-    createdAt: existingWorkspace?.createdAt ?? now,
-    updatedAt: now,
-  });
-
-  await dependencies.projectRegistry.upsert(nextProjectRecord);
-  await dependencies.workspaceRegistry.upsert(nextWorkspaceRecord);
-  await dependencies.syncWorkspaceGitWatchTarget(normalizedWorktreePath, { isGit: true });
-
-  if (
-    existingWorkspace &&
-    !existingWorkspace.archivedAt &&
-    existingWorkspace.projectId !== nextWorkspaceRecord.projectId
-  ) {
-    await dependencies.archiveProjectRecordIfEmpty(existingWorkspace.projectId, now);
-  }
-
-  return (await dependencies.workspaceRegistry.get(nextWorkspaceRecord.workspaceId))!;
-}
-
 export async function handleCreatePaseoWorktreeRequest(
   dependencies: HandleCreatePaseoWorktreeRequestDependencies,
   request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
 ): Promise<void> {
   try {
-    let repoRoot = request.cwd;
-    if (dependencies.workspaceGitService) {
-      const snapshot = await dependencies.workspaceGitService.getSnapshot(request.cwd);
-      if (!snapshot.git.isGit) {
-        throw new Error("Create worktree requires a git repository");
-      }
-
-      repoRoot = snapshot.git.isPaseoOwnedWorktree
-        ? (snapshot.git.mainRepoRoot ?? snapshot.git.repoRoot ?? request.cwd)
-        : (snapshot.git.repoRoot ?? request.cwd);
-    } else {
-      const checkout = await getCheckoutStatus(
-        request.cwd,
-        dependencies.paseoHome ? { paseoHome: dependencies.paseoHome } : undefined,
-      );
-      if (!checkout.isGit) {
-        throw new Error("Create worktree requires a git repository");
-      }
-
-      repoRoot = checkout.isPaseoOwnedWorktree
-        ? (checkout.mainRepoRoot ?? checkout.repoRoot ?? request.cwd)
-        : (checkout.repoRoot ?? request.cwd);
-    }
-    const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
-    if (!baseBranch) {
-      throw new Error("Unable to resolve repository default branch");
-    }
-
-    const normalizedSlug = request.worktreeSlug ? slugify(request.worktreeSlug) : uuidv4();
-    const validation = validateBranchSlug(normalizedSlug);
-    if (!validation.valid) {
-      throw new Error(`Invalid worktree name: ${validation.error}`);
-    }
-
-    const githubPrAttachment = findGitHubPrAttachment(request.attachments);
-    const createdWorktree = githubPrAttachment
-      ? {
-          worktree: await createGitHubPrWorktree({
-            cwd: repoRoot,
-            branchName: resolveGitHubPrBranchName(githubPrAttachment),
-            baseBranch: githubPrAttachment.baseRefName?.trim() || baseBranch,
-            prNumber: githubPrAttachment.number,
-            worktreeSlug: normalizedSlug,
-            paseoHome: dependencies.paseoHome,
-          }),
-          shouldBootstrap: true,
-        }
-      : await createAgentWorktree({
-          cwd: repoRoot,
-          branchName: normalizedSlug,
-          baseBranch,
-          worktreeSlug: normalizedSlug,
-          paseoHome: dependencies.paseoHome,
-        });
-    const workspace = await dependencies.registerPendingWorktreeWorkspace({
-      repoRoot,
-      worktreePath: createdWorktree.worktree.worktreePath,
-      branchName: createdWorktree.worktree.branchName,
+    const createdWorktree = await dependencies.createPaseoWorktree({
+      cwd: request.cwd,
+      worktreeSlug: request.worktreeSlug,
+      refName: request.refName,
+      action: request.action,
+      githubPrNumber: request.githubPrNumber,
+      attachments: request.attachments,
+      runSetup: false,
+      paseoHome: dependencies.paseoHome,
     });
+    const slug = basename(createdWorktree.worktree.worktreePath);
+    const workspace = createdWorktree.workspace;
 
     const descriptor = await dependencies.describeWorkspaceRecord(workspace);
     dependencies.emit({
@@ -803,15 +614,15 @@ export async function handleCreatePaseoWorktreeRequest(
 
     void dependencies.runWorktreeSetupInBackground({
       requestCwd: request.cwd,
-      repoRoot,
+      repoRoot: createdWorktree.repoRoot,
       workspaceId: workspace.workspaceId,
       worktree: createdWorktree.worktree,
-      shouldBootstrap: createdWorktree.shouldBootstrap,
-      slug: normalizedSlug,
+      shouldBootstrap: createdWorktree.created,
+      slug,
       worktreePath: createdWorktree.worktree.worktreePath,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create worktree";
+    const wireError = toWorktreeWireError(error);
     dependencies.sessionLogger.error(
       { err: error, cwd: request.cwd, worktreeSlug: request.worktreeSlug },
       "Failed to create worktree",
@@ -820,7 +631,8 @@ export async function handleCreatePaseoWorktreeRequest(
       type: "create_paseo_worktree_response",
       payload: {
         workspace: null,
-        error: message,
+        error: wireError.message,
+        errorCode: wireError.code,
         setupTerminalId: null,
         requestId: request.requestId,
       },

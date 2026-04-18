@@ -153,7 +153,7 @@ export async function createWorktreeViaDaemon(
   };
 }
 
-export async function clickNewWorkspaceButton(
+export async function openNewWorkspaceComposer(
   page: Page,
   input: { projectKey: string; projectDisplayName: string },
 ): Promise<void> {
@@ -168,12 +168,56 @@ export async function clickNewWorkspaceButton(
   await expect(page).toHaveURL(/\/h\/[^/]+\/new(?:\?.*)?$/, {
     timeout: 30_000,
   });
+}
 
+export async function clickNewWorkspaceButton(
+  page: Page,
+  input: { projectKey: string; projectDisplayName: string },
+): Promise<void> {
+  await openNewWorkspaceComposer(page, input);
   const createButton = page
     .getByTestId("message-input-root")
     .getByRole("button", { name: "Create" });
   await expect(createButton).toBeVisible({ timeout: 30_000 });
   await createButton.click();
+}
+
+export async function openStartingRefPicker(page: Page): Promise<void> {
+  const trigger = page.getByTestId("new-workspace-ref-picker-trigger");
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  await trigger.click();
+}
+
+export async function selectBranchInPicker(page: Page, name: string): Promise<void> {
+  const branchRow = page.getByTestId(`new-workspace-ref-picker-branch-${name}`);
+  await expect(branchRow).toBeVisible({ timeout: 30_000 });
+  await branchRow.click();
+}
+
+export async function selectGitHubPrInPicker(page: Page, number: number): Promise<void> {
+  const prRow = page.getByTestId(`new-workspace-ref-picker-pr-${number}`);
+  await expect(prRow).toBeVisible({ timeout: 30_000 });
+  await prRow.click();
+}
+
+export async function expectStartingRefPickerTriggerPr(
+  page: Page,
+  input: { number: number; title: string; headRef: string },
+): Promise<void> {
+  const trigger = page.getByTestId("new-workspace-ref-picker-trigger");
+  await expect(trigger).toContainText(`#${input.number}`);
+  await expect(trigger).toContainText(input.title);
+  await expect(trigger).not.toContainText(input.headRef);
+}
+
+export async function expectComposerGithubAttachmentPill(
+  page: Page,
+  input: { number: number; title: string },
+): Promise<void> {
+  const pills = page.getByTestId("composer-github-attachment-pill");
+  await expect(pills).toHaveCount(1);
+  await expect(pills.first()).toContainText(`#${input.number}`);
+  await expect(pills.first()).toContainText(input.title);
 }
 
 export async function assertNewWorkspaceSidebarAndHeader(

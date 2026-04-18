@@ -87,6 +87,9 @@ function formatListenTarget(listenTarget: ListenTarget | null): string | null {
 }
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
+import { createGitHubService } from "../services/github-service.js";
+import { createPaseoWorktree } from "./paseo-worktree-service.js";
+import { createWorktreeCoreDeps } from "./worktree-core.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
@@ -424,9 +427,13 @@ export async function createPaseoDaemon(
     });
 
     const terminalManager = createTerminalManager();
+    const github = createGitHubService();
     const workspaceGitService = new WorkspaceGitServiceImpl({
       logger,
       paseoHome: config.paseoHome,
+      deps: {
+        github,
+      },
     });
 
     const detachAgentStoragePersistence = attachAgentStoragePersistence(
@@ -492,6 +499,37 @@ export async function createPaseoDaemon(
             boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           scheduleService,
           providerRegistry,
+          github,
+          createPaseoWorktree: (input, serviceOptions) => {
+            const coreDeps = createWorktreeCoreDeps(github);
+            return createPaseoWorktree(input, {
+              ...coreDeps,
+              ...(serviceOptions?.resolveRepositoryDefaultBranch
+                ? {
+                    resolveRepositoryDefaultBranch: serviceOptions.resolveRepositoryDefaultBranch,
+                  }
+                : {}),
+              projectRegistry,
+              workspaceRegistry,
+              workspaceGitService,
+              primeWorkspaceGitWatchFingerprints: async (workspace) => {
+                await Promise.all(
+                  wsServer
+                    ?.listActiveSessions()
+                    .map((session) =>
+                      session.primeWorkspaceGitWatchFingerprintForWorkspace(workspace),
+                    ) ?? [],
+                );
+              },
+              broadcastWorkspaceUpdate: async (workspaceId) => {
+                await Promise.all(
+                  wsServer
+                    ?.listActiveSessions()
+                    .map((session) => session.emitWorkspaceUpdateForWorkspaceId(workspaceId)) ?? [],
+                );
+              },
+            });
+          },
           paseoHome: config.paseoHome,
           callerAgentId,
           enableVoiceTools: false,
@@ -688,6 +726,7 @@ export async function createPaseoDaemon(
               () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
               (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
               workspaceGitService,
+              github,
             );
 
             if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {

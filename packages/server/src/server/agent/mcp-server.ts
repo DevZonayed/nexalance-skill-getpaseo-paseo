@@ -20,18 +20,21 @@ import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "./timeline-append.js";
-import { type WorktreeConfig } from "../../utils/worktree.js";
+import {
+  deletePaseoWorktree,
+  listPaseoWorktrees,
+  type WorktreeConfig,
+} from "../../utils/worktree.js";
 import { WaitForAgentTracker } from "./wait-for-agent-tracker.js";
 import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../voice-types.js";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { captureTerminalLines } from "../../terminal/terminal.js";
-import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
+import { runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
 import type { ScheduleService } from "../schedule/service.js";
 import { ScheduleSummarySchema, StoredScheduleSchema } from "../schedule/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
-import { deletePaseoWorktree, listPaseoWorktrees } from "../../utils/worktree.js";
 import {
   AgentModelSchema,
   AgentProviderEnum,
@@ -47,6 +50,13 @@ import {
   toScheduleSummary,
   waitForAgentWithTimeout,
 } from "./mcp-shared.js";
+import type { GitHubService } from "../../services/github-service.js";
+import type {
+  CreatePaseoWorktreeFn,
+  CreatePaseoWorktreeInput,
+  CreatePaseoWorktreeResult,
+} from "../paseo-worktree-service.js";
+import { toWorktreeRequestError } from "../worktree-errors.js";
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
@@ -55,6 +65,8 @@ export interface AgentMcpServerOptions {
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   providerRegistry?: Record<AgentProvider, ProviderDefinition> | null;
+  github?: GitHubService;
+  createPaseoWorktree?: CreatePaseoWorktreeFn;
   paseoHome?: string;
   /**
    * ID of the agent that is connecting to this MCP server.
@@ -382,6 +394,17 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       .string()
       .optional()
       .describe("Required when worktreeName is set: the base branch to diff/merge against."),
+    refName: z.string().min(1).optional().describe("Optional source ref for worktree creation."),
+    action: z
+      .enum(["branch-off", "checkout"])
+      .optional()
+      .describe("Optional worktree creation action."),
+    githubPrNumber: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Optional GitHub pull request number to checkout."),
     background: z
       .boolean()
       .optional()
@@ -519,24 +542,31 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         thinking = topLevelArgs.thinking;
         labels = topLevelArgs.labels;
         notifyOnFinish = topLevelArgs.notifyOnFinish ?? false;
-        const { cwd, mode, worktreeName, baseBranch } = topLevelArgs;
+        const { cwd, mode, worktreeName, baseBranch, refName, action, githubPrNumber } =
+          topLevelArgs;
 
         resolvedCwd = expandUserPath(cwd);
 
         if (worktreeName) {
-          if (!baseBranch) {
+          if (!baseBranch && !refName && !action && githubPrNumber === undefined) {
             throw new Error("baseBranch is required when creating a worktree");
           }
-          const worktreeBootstrap = await createAgentWorktree({
-            branchName: worktreeName,
-            cwd: resolvedCwd,
-            baseBranch,
-            worktreeSlug: worktreeName,
-            paseoHome: options.paseoHome,
+          const createdWorktree = await createMcpWorktree({
+            input: {
+              cwd: resolvedCwd,
+              worktreeSlug: worktreeName,
+              refName,
+              action,
+              githubPrNumber,
+              runSetup: false,
+              paseoHome: options.paseoHome,
+            },
+            createPaseoWorktree: options.createPaseoWorktree,
+            resolveRepositoryDefaultBranch: baseBranch ? async () => baseBranch : undefined,
           });
-          resolvedCwd = worktreeBootstrap.worktree.worktreePath;
-          worktreeConfig = worktreeBootstrap.worktree;
-          shouldBootstrapWorktree = worktreeBootstrap.shouldBootstrap;
+          resolvedCwd = createdWorktree.worktree.worktreePath;
+          worktreeConfig = createdWorktree.worktree;
+          shouldBootstrapWorktree = createdWorktree.created;
         }
 
         resolvedMode = mode;
@@ -1513,28 +1543,42 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           .string()
           .optional()
           .describe("Optional repository cwd. Defaults to the caller agent cwd."),
-        branchName: z.string(),
-        baseBranch: z.string(),
+        branchName: z.string().optional(),
+        baseBranch: z.string().optional(),
+        refName: z.string().min(1).optional(),
+        action: z.enum(["branch-off", "checkout"]).optional(),
+        githubPrNumber: z.number().int().positive().optional(),
       },
       outputSchema: {
         branchName: z.string(),
         worktreePath: z.string(),
       },
     },
-    async ({ cwd, branchName, baseBranch }) => {
-      const worktree = await createAgentWorktree({
-        branchName,
-        cwd: resolveScopedCwd(cwd, { required: true }),
-        baseBranch,
-        worktreeSlug: branchName,
-        paseoHome: options.paseoHome,
+    async ({ cwd, branchName, baseBranch, refName, action, githubPrNumber }) => {
+      if (!branchName && !refName && githubPrNumber === undefined) {
+        throw new Error("create_worktree requires branchName, refName, or githubPrNumber");
+      }
+      const repoRoot = resolveScopedCwd(cwd, { required: true });
+      const createdWorktree = await createMcpWorktree({
+        input: {
+          cwd: repoRoot,
+          worktreeSlug: branchName,
+          refName,
+          action,
+          githubPrNumber,
+          runSetup: false,
+          paseoHome: options.paseoHome,
+        },
+        createPaseoWorktree: options.createPaseoWorktree,
+        resolveRepositoryDefaultBranch: baseBranch ? async () => baseBranch : undefined,
       });
+      const { worktree } = createdWorktree;
 
       return {
         content: [],
         structuredContent: ensureValidJson({
-          branchName,
-          worktreePath: worktree.worktree.worktreePath,
+          branchName: worktree.branchName,
+          worktreePath: worktree.worktreePath,
         }),
       };
     },
@@ -1710,4 +1754,25 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
   );
 
   return server;
+}
+
+interface CreateMcpWorktreeOptions {
+  input: CreatePaseoWorktreeInput;
+  createPaseoWorktree: CreatePaseoWorktreeFn | undefined;
+  resolveRepositoryDefaultBranch?: (repoRoot: string) => Promise<string>;
+}
+
+async function createMcpWorktree(
+  options: CreateMcpWorktreeOptions,
+): Promise<CreatePaseoWorktreeResult> {
+  try {
+    if (!options.createPaseoWorktree) {
+      throw new Error("Paseo worktree service is not configured");
+    }
+    return await options.createPaseoWorktree(options.input, {
+      resolveRepositoryDefaultBranch: options.resolveRepositoryDefaultBranch,
+    });
+  } catch (error) {
+    throw toWorktreeRequestError(error);
+  }
 }

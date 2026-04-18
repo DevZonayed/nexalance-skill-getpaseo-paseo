@@ -5,6 +5,7 @@ import path from "node:path";
 
 type TempRepo = {
   path: string;
+  branchHeads: Record<string, string>;
   cleanup: () => Promise<void>;
 };
 
@@ -14,6 +15,7 @@ export const createTempGitRepo = async (
     withRemote?: boolean;
     paseoConfig?: Record<string, unknown>;
     files?: Array<{ path: string; content: string }>;
+    branches?: string[];
   },
 ): Promise<TempRepo> => {
   // Keep E2E repo paths short so terminal prompt + typed commands stay visible without zsh clipping.
@@ -47,19 +49,72 @@ export const createTempGitRepo = async (
   }
   execSync('git commit -m "Initial commit"', { cwd: repoPath, stdio: "ignore" });
 
+  const branchHeads: Record<string, string> = {};
+  const branches = Array.from(new Set(options?.branches ?? []));
+  for (const branch of branches) {
+    if (branch !== "main") {
+      execSync(`git checkout -b ${JSON.stringify(branch)} main`, {
+        cwd: repoPath,
+        stdio: "ignore",
+      });
+    }
+    const markerPath = `.paseo-e2e-${branch.replace(/[^a-zA-Z0-9._-]/g, "-")}.txt`;
+    await writeFile(path.join(repoPath, markerPath), `branch ${branch}\n`);
+    execSync(`git add ${JSON.stringify(markerPath)}`, { cwd: repoPath, stdio: "ignore" });
+    execSync(`git commit -m ${JSON.stringify(`Add ${branch} marker`)}`, {
+      cwd: repoPath,
+      stdio: "ignore",
+    });
+    branchHeads[branch] = execSync(`git rev-parse ${JSON.stringify(branch)}`, {
+      cwd: repoPath,
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
+    execSync("git checkout main", { cwd: repoPath, stdio: "ignore" });
+  }
+
   if (withRemote) {
     // Deterministic local remote to avoid relying on external auth/network in e2e.
     const remoteDir = path.join(repoPath, "remote.git");
     await mkdir(remoteDir, { recursive: true });
     execSync(`git init --bare -b main ${remoteDir}`, { cwd: repoPath, stdio: "ignore" });
     execSync(`git remote add origin ${remoteDir}`, { cwd: repoPath, stdio: "ignore" });
-    execSync("git push -u origin main", { cwd: repoPath, stdio: "ignore" });
+    execSync("git push -u origin --all", { cwd: repoPath, stdio: "ignore" });
   }
 
   return {
     path: repoPath,
+    branchHeads,
     cleanup: async () => {
       await rm(repoPath, { recursive: true, force: true });
     },
   };
 };
+
+export async function readWorktreeBranchInfo({ worktreePath }: { worktreePath: string }): Promise<{
+  currentBranch: string;
+  hasAncestor: (ref: string) => boolean;
+}> {
+  const currentBranch = execSync("git branch --show-current", {
+    cwd: worktreePath,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+
+  return {
+    currentBranch,
+    hasAncestor: (ref: string) => {
+      try {
+        execSync(`git merge-base --is-ancestor ${JSON.stringify(ref)} HEAD`, {
+          cwd: worktreePath,
+          stdio: "ignore",
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}

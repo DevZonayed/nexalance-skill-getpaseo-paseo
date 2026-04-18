@@ -176,7 +176,7 @@ vi.mock("lucide-react-native", () => {
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });
   return {
-    ArrowUp: createIcon("ArrowUp"),
+    CornerDownLeft: createIcon("CornerDownLeft"),
     Square: createIcon("Square"),
     Pencil: createIcon("Pencil"),
     AudioLines: createIcon("AudioLines"),
@@ -579,9 +579,13 @@ function imageAttachment(id: string): AttachmentMetadata {
 function ComposerHarness({
   initialText = "",
   initialAttachments = [],
+  isSubmitLoading = false,
+  submitBehavior,
 }: {
   initialText?: string;
   initialAttachments?: ComposerAttachment[];
+  isSubmitLoading?: boolean;
+  submitBehavior?: "clear" | "preserve-and-lock";
 }) {
   const [text, setText] = useState(initialText);
   const [attachments, setAttachments] = useState(initialAttachments);
@@ -603,6 +607,8 @@ function ComposerHarness({
             return next;
           });
         }}
+        isSubmitLoading={isSubmitLoading}
+        submitBehavior={submitBehavior}
         cwd="/repo"
         clearDraft={vi.fn()}
       />
@@ -611,7 +617,12 @@ function ComposerHarness({
 }
 
 function renderComposer(
-  input: { initialText?: string; initialAttachments?: ComposerAttachment[] } = {},
+  input: {
+    initialText?: string;
+    initialAttachments?: ComposerAttachment[];
+    isSubmitLoading?: boolean;
+    submitBehavior?: "clear" | "preserve-and-lock";
+  } = {},
 ) {
   act(() => {
     root?.render(<ComposerHarness {...input} />);
@@ -833,6 +844,32 @@ describe("Composer attachments", () => {
     expect(queryByTestId("attachment-lightbox-image")).not.toBeNull();
     expect(openExternalUrlMock).not.toHaveBeenCalled();
     expect(latestAttachments).toEqual([{ kind: "image", metadata: image }]);
+  });
+
+  it("locks the preserved draft while submit loading", () => {
+    renderComposer({
+      initialText: "keep this prompt",
+      initialAttachments: [{ kind: "github_pr", item: prItem }],
+      isSubmitLoading: true,
+      submitBehavior: "preserve-and-lock",
+    });
+
+    const textInput = document.querySelector('[aria-label="Message agent..."]');
+    const attachButton = queryByTestId("message-input-attach-button");
+    const pill = queryByTestId("composer-github-attachment-pill");
+    const removeButton = document.querySelector(`[aria-label="Remove PR #${prItem.number}"]`);
+
+    expect(textInput).toHaveProperty("readOnly", true);
+    expect(textInput).toHaveProperty("value", "keep this prompt");
+    expect(attachButton).toHaveProperty("disabled", true);
+    expect(pill).not.toBeNull();
+    expect(removeButton).not.toBeNull();
+
+    click(pill!);
+    click(removeButton!);
+
+    expect(openExternalUrlMock).not.toHaveBeenCalled();
+    expect(latestAttachments).toEqual([{ kind: "github_pr", item: prItem }]);
   });
 
   it("closes the image lightbox when its close button is pressed", () => {
