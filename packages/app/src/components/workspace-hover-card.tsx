@@ -19,6 +19,7 @@ import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list"
 import type { PrHint } from "@/hooks/use-checkout-pr-status-query";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { PrBadge } from "@/components/sidebar-workspace-list";
+import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 
 interface Rect {
   x: number;
@@ -99,10 +100,10 @@ function WorkspaceHoverCardDesktop({
   children,
 }: PropsWithChildren<WorkspaceHoverCardProps>): ReactElement {
   const triggerRef = useRef<View>(null);
+  const contentRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerHoveredRef = useRef(false);
-  const contentHoveredRef = useRef(false);
 
   const hasContent = prHint !== null || !!workspace.diffStat;
 
@@ -114,14 +115,12 @@ function WorkspaceHoverCardDesktop({
   }, []);
 
   const scheduleClose = useCallback(() => {
-    clearGraceTimer();
+    if (graceTimerRef.current) return;
     graceTimerRef.current = setTimeout(() => {
-      if (!triggerHoveredRef.current && !contentHoveredRef.current) {
-        setOpen(false);
-      }
       graceTimerRef.current = null;
+      setOpen(false);
     }, HOVER_GRACE_MS);
-  }, [clearGraceTimer]);
+  }, []);
 
   const handleTriggerEnter = useCallback(() => {
     triggerHoveredRef.current = true;
@@ -133,18 +132,18 @@ function WorkspaceHoverCardDesktop({
 
   const handleTriggerLeave = useCallback(() => {
     triggerHoveredRef.current = false;
-    scheduleClose();
-  }, [scheduleClose]);
+  }, []);
 
-  const handleContentEnter = useCallback(() => {
-    contentHoveredRef.current = true;
-    clearGraceTimer();
-  }, [clearGraceTimer]);
-
-  const handleContentLeave = useCallback(() => {
-    contentHoveredRef.current = false;
-    scheduleClose();
-  }, [scheduleClose]);
+  // While open, the safe zone covers trigger + content + the bridge between
+  // them. Close only fires when the pointer leaves the safe zone; re-entering
+  // it (including the bridge) cancels the pending close.
+  useHoverSafeZone({
+    enabled: open,
+    triggerRef,
+    contentRef,
+    onEnterSafeZone: clearGraceTimer,
+    onLeaveSafeZone: scheduleClose,
+  });
 
   // Close when drag starts
   useEffect(() => {
@@ -182,8 +181,7 @@ function WorkspaceHoverCardDesktop({
           workspace={workspace}
           prHint={prHint}
           triggerRef={triggerRef}
-          onContentEnter={handleContentEnter}
-          onContentLeave={handleContentLeave}
+          contentRef={contentRef}
         />
       ) : null}
     </View>
@@ -194,14 +192,12 @@ function WorkspaceHoverCardContent({
   workspace,
   prHint,
   triggerRef,
-  onContentEnter,
-  onContentLeave,
+  contentRef,
 }: {
   workspace: SidebarWorkspaceEntry;
   prHint: PrHint | null;
   triggerRef: React.RefObject<View | null>;
-  onContentEnter: () => void;
-  onContentLeave: () => void;
+  contentRef: React.RefObject<View | null>;
 }): ReactElement | null {
   const { theme } = useUnistyles();
   const bottomSheetInternal = useBottomSheetModalInternal(true);
@@ -250,12 +246,11 @@ function WorkspaceHoverCardContent({
     <Portal hostName={bottomSheetInternal?.hostName}>
       <View pointerEvents="box-none" style={styles.portalOverlay}>
         <Animated.View
+          ref={contentRef}
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}
           onLayout={handleLayout}
-          onPointerEnter={onContentEnter}
-          onPointerLeave={onContentLeave}
           accessibilityRole="menu"
           accessibilityLabel="Workspace scripts"
           testID="workspace-hover-card"
