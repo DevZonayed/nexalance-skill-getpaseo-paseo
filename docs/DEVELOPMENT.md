@@ -54,6 +54,33 @@ npm run db:query -- --db /path/to/db "SELECT ..."
 Auto-detects the running dev daemon's database from `/tmp/paseo-dev.*`, `PASEO_HOME`, or `~/.paseo/db`.
 Pass either a DB directory or a `paseo.sqlite` file to `--db`. The script opens the database directly in read-only mode.
 
+## paseo.json service scripts
+
+Every `scripts` entry with `"type": "service"` receives these environment variables:
+
+| Variable | Value |
+|---|---|
+| `PASEO_SERVICE_<NAME>_URL` | Proxied daemon URL for a declared peer service. Prefer this for peer discovery; it survives peer restarts. |
+| `PASEO_SERVICE_<NAME>_PORT` | Raw ephemeral port for a declared peer service. Use only as a bypass escape hatch; it can go stale if that peer restarts. |
+| `PASEO_URL` | Self alias for `PASEO_SERVICE_<SELF>_URL`. |
+| `PASEO_PORT` | Self alias for `PASEO_SERVICE_<SELF>_PORT`. |
+| `HOST` | Bind host for the service process. |
+
+`<NAME>` is normalized from the script name by uppercasing it, replacing each run of non-`A-Z0-9` characters with `_`, and trimming leading or trailing `_`. For example, `app-server` and `app.server` both normalize to `APP_SERVER`; that collision fails at spawn time with an actionable error.
+
+`PORT` is not injected by default. If a framework requires `PORT`, set it in the command:
+
+```json
+{
+  "scripts": {
+    "web": {
+      "type": "service",
+      "command": "PORT=$PASEO_PORT npm run dev:web"
+    }
+  }
+}
+```
+
 ## Build sync gotchas
 
 ### Relay → Daemon
