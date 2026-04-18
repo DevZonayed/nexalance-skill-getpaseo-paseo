@@ -802,7 +802,8 @@ function RootStack() {
     >
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
-        <Stack.Screen name="settings" />
+        <Stack.Screen name="settings/index" />
+        <Stack.Screen name="settings/[section]" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       <Stack.Screen
@@ -819,6 +820,7 @@ function RootStack() {
       <Stack.Screen name="h/[serverId]/open-project" />
       <Stack.Screen name="h/[serverId]/settings" />
       <Stack.Screen name="index" />
+      <Stack.Screen name="settings/hosts/[serverId]" />
     </Stack>
   );
 }

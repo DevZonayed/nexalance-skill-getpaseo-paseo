@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, Text, View, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { QrCode, Link2, ClipboardPaste, ExternalLink } from "lucide-react-native";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { QrCode, Link2, ClipboardPaste, ExternalLink, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/runtime/host-runtime";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
+import { Button } from "@/components/ui/button";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { buildHostRootRoute } from "@/utils/host-routes";
@@ -30,6 +31,10 @@ type WelcomeAction = {
 };
 
 const styles = StyleSheet.create((theme) => ({
+  scrollView: {
+    flex: 1,
+    backgroundColor: theme.colors.surface0,
+  },
   container: {
     flexGrow: 1,
     backgroundColor: theme.colors.surface0,
@@ -47,14 +52,17 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.medium,
-    marginBottom: theme.spacing[3],
     textAlign: "center",
   },
   subtitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
-    marginBottom: theme.spacing[8],
+  },
+  copyBlock: {
+    alignItems: "center",
+    gap: theme.spacing[2],
+    marginBottom: theme.spacing[12],
   },
   actions: {
     width: "100%",
@@ -117,19 +125,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.destructive,
     fontSize: theme.fontSize.sm,
   },
-  setupHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-    marginBottom: theme.spacing[6],
-    lineHeight: theme.fontSize.sm * 1.5,
-  },
   setupLink: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    marginBottom: theme.spacing[6],
   },
   setupLinkText: {
     color: theme.colors.accent,
@@ -140,6 +140,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     textAlign: "center",
+    marginTop: theme.spacing[6],
+  },
+  settingsButton: {
+    alignSelf: "center",
     marginTop: theme.spacing[6],
   },
 }));
@@ -233,6 +237,35 @@ export interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const { theme } = useUnistyles();
+  useEffect(() => {
+    const probe = (tag: string) => {
+      // eslint-disable-next-line no-console
+      console.log(`[trace-theme] ${tag}`, {
+        runtimeName: UnistylesRuntime.themeName,
+        hookSurface0: theme.colors.surface0,
+        hookForeground: theme.colors.foreground,
+        hookSurface2: theme.colors.surface2,
+        stylesContainerBg: (styles.container as { backgroundColor?: string } | undefined)
+          ?.backgroundColor,
+        stylesTitleColor: (styles.title as { color?: string } | undefined)?.color,
+        stylesActionButtonBg: (styles.actionButton as { backgroundColor?: string } | undefined)
+          ?.backgroundColor,
+        stylesActionButtonPrimaryBg: (
+          styles.actionButtonPrimary as { backgroundColor?: string } | undefined
+        )?.backgroundColor,
+        stylesSubtitleColor: (styles.subtitle as { color?: string } | undefined)?.color,
+      });
+    };
+    probe("poll-t0");
+    const t1 = setTimeout(() => probe("poll-t1s"), 1000);
+    const t2 = setTimeout(() => probe("poll-t3s"), 3000);
+    const t3 = setTimeout(() => probe("poll-t6s"), 6000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [theme]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const appVersion = resolveAppVersion();
@@ -243,13 +276,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const anyOnlineServerId = useAnyHostOnline(hosts.map((h) => h.serverId));
 
   useEffect(() => {
-    const currentPathname = typeof window === "undefined" ? null : window.location.pathname || null;
-    if (currentPathname && currentPathname !== "/welcome") {
-      return;
-    }
-    if (!anyOnlineServerId) {
-      return;
-    }
+    if (!anyOnlineServerId) return;
     router.replace(buildHostRootRoute(anyOnlineServerId));
   }, [anyOnlineServerId, router]);
 
@@ -310,32 +337,38 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.surface0 }}
+      style={[styles.scrollView, { backgroundColor: "#00ffff" }]}
       contentContainerStyle={[
         styles.container,
-        { paddingBottom: theme.spacing[6] + insets.bottom },
+        {
+          backgroundColor: "#ff00ff",
+          paddingBottom: theme.spacing[6] + insets.bottom,
+        },
       ]}
       showsVerticalScrollIndicator={false}
       testID="welcome-screen"
     >
       <View style={styles.content}>
         <PaseoLogo size={96} />
-        <Text style={styles.title}>Welcome to Paseo</Text>
-        <Text style={styles.subtitle}>
-          {showHostList ? "Connecting to your hosts…" : "Connect to your host to start"}
-        </Text>
-
-        {!showHostList && isNative && (
-          <>
-            <Text style={styles.setupHint}>
-              You need the Paseo desktop app or server running on your computer first.
-            </Text>
-            <Pressable style={styles.setupLink} onPress={() => openExternalUrl("https://paseo.sh")}>
-              <Text style={styles.setupLinkText}>Get started at paseo.sh</Text>
-              <ExternalLink size={14} color={theme.colors.accent} />
-            </Pressable>
-          </>
-        )}
+        <View style={styles.copyBlock}>
+          <Text style={styles.title}>Welcome to Paseo</Text>
+          {showHostList ? (
+            <Text style={styles.subtitle}>Connecting to your hosts…</Text>
+          ) : (
+            <>
+              <Text style={styles.subtitle}>Connect your computer to get started</Text>
+              {isNative ? (
+                <Pressable
+                  style={styles.setupLink}
+                  onPress={() => openExternalUrl("https://paseo.sh")}
+                >
+                  <Text style={styles.setupLinkText}>paseo.sh</Text>
+                  <ExternalLink size={14} color={theme.colors.accent} />
+                </Pressable>
+              ) : null}
+            </>
+          )}
+        </View>
 
         <View style={styles.actions}>
           {actions.map((action) => {
@@ -366,6 +399,17 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
             ))}
           </View>
         )}
+
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={Settings}
+          onPress={() => router.push("/settings")}
+          style={styles.settingsButton}
+          testID="welcome-open-settings"
+        >
+          Settings
+        </Button>
       </View>
       <Text style={styles.versionLabel}>{appVersionText}</Text>
 
