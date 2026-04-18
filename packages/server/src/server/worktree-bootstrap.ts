@@ -18,6 +18,16 @@ import {
 import { findFreePort, type ScriptRouteStore } from "./script-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { AgentTimelineItem, ToolCallDetail } from "./agent/agent-sdk-types.js";
+import {
+  assertNoServiceEnvNameCollisions,
+  buildWorkspaceServiceEnv,
+  type WorkspaceServicePeer,
+} from "./workspace-service-env.js";
+import {
+  ensureWorkspaceServicePortPlan,
+  requirePlannedWorkspaceServicePort,
+  refreshWorkspaceServicePort,
+} from "./workspace-service-port-registry.js";
 
 export interface WorktreeBootstrapTerminalResult {
   name: string | null;
@@ -675,7 +685,12 @@ export interface WorktreeScriptResult {
   terminalId: string;
 }
 
-type SpawnWorkspaceScriptOptions = {
+interface WorkspaceServiceDeclaration {
+  scriptName: string;
+  port?: number;
+}
+
+interface SpawnWorkspaceScriptOptions {
   repoRoot: string;
   workspaceId: string;
   branchName: string | null;
@@ -687,24 +702,6 @@ type SpawnWorkspaceScriptOptions = {
   terminalManager: TerminalManager;
   logger?: Logger;
   onLifecycleChanged?: () => void;
-};
-
-function isLoopbackListenHost(host: string | null | undefined): boolean {
-  if (!host) {
-    return true;
-  }
-
-  const normalizedHost = host.trim().toLowerCase();
-  return (
-    normalizedHost === "localhost" ||
-    normalizedHost === "127.0.0.1" ||
-    normalizedHost === "::1" ||
-    normalizedHost === "[::1]"
-  );
-}
-
-export function resolveServiceBindHost(daemonListenHost: string | null | undefined): string {
-  return isLoopbackListenHost(daemonListenHost) ? "127.0.0.1" : "0.0.0.0";
 }
 
 export async function spawnWorkspaceScript(
@@ -734,45 +731,82 @@ export async function spawnWorkspaceScript(
   let port: number | null = null;
   let terminal: TerminalSession | null = null;
   let runtimeRegistered = false;
+  let routeRegistered = false;
 
   try {
     if (runtimeStore.isRunning({ workspaceId, scriptName })) {
       throw new Error(`Script '${scriptName}' is already running`);
     }
 
+    let env: Record<string, string> | undefined;
     if (serviceScript) {
-      port = config.port ?? (await findFreePort());
+      const serviceDeclarations: WorkspaceServiceDeclaration[] = [];
+      for (const [configuredScriptName, scriptConfig] of scriptConfigs) {
+        if (isServiceScript(scriptConfig)) {
+          serviceDeclarations.push({
+            scriptName: configuredScriptName,
+            port: scriptConfig.port,
+          });
+        }
+      }
+      assertNoServiceEnvNameCollisions(
+        serviceDeclarations.map((serviceDeclaration) => serviceDeclaration.scriptName),
+      );
+
+      const plannedPorts = await ensureWorkspaceServicePortPlan({
+        workspaceId,
+        services: serviceDeclarations,
+        allocatePort: findFreePort,
+      });
+      const existingRuntimeEntry = runtimeStore.get({ workspaceId, scriptName });
+      const servicePort =
+        existingRuntimeEntry?.lifecycle === "stopped"
+          ? await refreshWorkspaceServicePort({
+              workspaceId,
+              service: { scriptName, port: config.port },
+              allocatePort: findFreePort,
+            })
+          : requirePlannedWorkspaceServicePort(plannedPorts, scriptName);
+
+      port = servicePort;
+
+      const peers: WorkspaceServicePeer[] = [];
+      for (const [peerScriptName, peerPort] of plannedPorts) {
+        peers.push({
+          scriptName: peerScriptName,
+          port: peerScriptName === scriptName ? servicePort : peerPort,
+        });
+      }
+
+      env = buildWorkspaceServiceEnv({
+        scriptName,
+        branchName,
+        daemonPort,
+        daemonListenHost,
+        peers,
+      });
+
       routeStore.registerRoute({
         hostname: hostname!,
-        port,
+        port: servicePort,
         workspaceId,
         scriptName,
       });
+      routeRegistered = true;
     }
 
-    const env = serviceScript
-      ? {
-          PORT: String(port),
-          HOST: resolveServiceBindHost(daemonListenHost),
-          ...(daemonPort !== null && daemonPort !== undefined
-            ? {
-                PASEO_SCRIPT_URL: `http://${hostname!}:${daemonPort}`,
-              }
-            : {}),
-        }
-      : undefined;
-
-    terminal = await terminalManager.createTerminal({
+    const createdTerminal = await terminalManager.createTerminal({
       cwd: repoRoot,
       name: scriptName,
       env,
     });
+    terminal = createdTerminal;
     runtimeStore.set({
       workspaceId,
       scriptName,
       type: serviceScript ? "service" : "script",
       lifecycle: "running",
-      terminalId: terminal.id,
+      terminalId: createdTerminal.id,
       exitCode: null,
     });
     runtimeRegistered = true;
@@ -786,7 +820,7 @@ export async function spawnWorkspaceScript(
         scriptName,
         type: serviceScript ? "service" : "script",
         lifecycle: "stopped",
-        terminalId: terminal!.id,
+        terminalId: createdTerminal.id,
         exitCode: info.exitCode,
       });
       onLifecycleChanged?.();
@@ -795,7 +829,7 @@ export async function spawnWorkspaceScript(
           scriptName,
           hostname,
           exitCode: info.exitCode,
-          terminalId: terminal!.id,
+          terminalId: createdTerminal.id,
         },
         "Stopped worktree script",
       );
@@ -825,7 +859,7 @@ export async function spawnWorkspaceScript(
       terminalId: terminal.id,
     };
   } catch (error) {
-    if (hostname && port !== null) {
+    if (routeRegistered && hostname) {
       routeStore.removeRoute(hostname);
     }
     if (runtimeRegistered) {
