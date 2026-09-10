@@ -132,7 +132,7 @@
     "playwright": "^1.56.1",
     "serve-sim": "^0.1.40",
     "typescript": "~5.9.2",
-    "vitest": "^4.1.6",
+    "vitest": "^4.1.11",
     "wrangler": "^4.75.0",
     "ws": "^8.20.0"
   }
